@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.2.0
+// @version      0.2.1
 // @description  Race strategy study calculators for iGP Manager (fuel, tyres, pit window, stints). Manual input — study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint). Input manual — alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
@@ -21,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.2.0';
+    const VERSION = '0.2.1';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -466,33 +466,38 @@
 
     const CSS = `
         #igpas-btn{position:fixed;right:14px;bottom:14px;z-index:2147483000;
-            background:#101826;color:#9fd0ff;border:1px solid #2b3b55;border-radius:999px;
-            padding:8px 14px;font:600 12px/1 system-ui,sans-serif;cursor:pointer;
-            box-shadow:0 4px 14px rgba(0,0,0,.35);user-select:none}
-        #igpas-panel{position:fixed;right:14px;bottom:56px;width:340px;max-height:78vh;
-            overflow:auto;z-index:2147483000;background:#0d1420;color:#dbe6f5;border-radius:12px;
-            border:1px solid #2b3b55;box-shadow:0 8px 30px rgba(0,0,0,.5);
-            font:12px/1.45 system-ui,sans-serif;padding:12px}
-        #igpas-panel h3{margin:0 0 4px;font-size:13px;color:#9fd0ff}
-        #igpas-panel .sub{color:#7b8ba1;margin:0 0 10px;font-size:11px}
-        .igpas-calc{border:1px solid #22314a;border-radius:8px;padding:8px;margin-bottom:10px;background:#111b2c}
-        .igpas-calc legend{color:#9fd0ff;font-weight:600;padding:0 4px}
-        .igpas-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0}
-        .igpas-row label{flex:1;color:#a9b8cd}
-        .igpas-row input{flex:1;background:#0d1420;border:1px solid #2b3b55;color:#dbe6f5;
-            border-radius:6px;padding:4px 6px;font:12px system-ui;max-width:110px;text-align:right}
-        .igpas-out{margin-top:6px;border-top:1px dashed #22314a;padding-top:6px}
-        .igpas-out .row{display:flex;justify-content:space-between;gap:8px;margin:2px 0}
-        .igpas-out .row span:first-child{color:#8fa1b8}
-        .igpas-out .row span:last-child{color:#eaf2ff;font-weight:600}
-        .igpas-err{color:#ff9d9d}
-        .igpas-warn{color:#ffce6b}
+            background:#FFD23F;color:#101010;border:2px solid #101010;border-radius:12px;
+            padding:9px 15px;font:800 12px/1 system-ui,sans-serif;cursor:pointer;
+            box-shadow:3px 3px 0 #101010;user-select:none;transition:transform .06s,box-shadow .06s}
+        #igpas-btn:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 #101010}
+        #igpas-btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #101010}
+        #igpas-panel{position:fixed;right:14px;bottom:56px;width:344px;max-height:78vh;
+            overflow:auto;z-index:2147483000;background:#F6F2E9;color:#101010;border-radius:14px;
+            border:2.5px solid #101010;box-shadow:6px 6px 0 #101010;
+            font:12.5px/1.45 system-ui,sans-serif;padding:12px}
+        #igpas-panel h3{margin:0 0 4px;font-size:13px;font-weight:800;letter-spacing:.3px;color:#101010}
+        #igpas-panel .sub{color:#5f584d;margin:0 0 10px;font-size:11px;font-weight:600}
+        .igpas-calc{border:2px solid #101010;border-radius:10px;padding:9px;margin-bottom:10px;background:#FFFDF7;box-shadow:3px 3px 0 #101010}
+        .igpas-calc legend{color:#101010;font-weight:800;padding:0 5px}
+        .igpas-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:5px 0}
+        .igpas-row label{flex:1;color:#3c372e;font-weight:700}
+        .igpas-row input{flex:1;background:#fff;border:2px solid #101010;color:#101010;
+            border-radius:9px;padding:5px 8px;font:600 12px system-ui;max-width:110px;text-align:right}
+        .igpas-row input:focus{outline:3px solid #FFD23F;outline-offset:1px}
+        .igpas-out{margin-top:7px;border-top:2px solid #101010;padding-top:7px}
+        .igpas-out .row{display:flex;justify-content:space-between;gap:8px;margin:3px 0}
+        .igpas-out .row span:first-child{color:#5f584d;font-weight:600}
+        .igpas-out .row span:last-child{color:#101010;font-weight:800}
+        .igpas-err{background:#FF6B6B;color:#101010;border:2px solid #101010;border-radius:8px;padding:2px 9px;font-weight:800;display:inline-block}
+        .igpas-warn{background:#FFD23F;color:#101010;border:2px solid #101010;border-radius:8px;padding:2px 9px;font-weight:800;display:inline-block}
         #igpas-prof{display:flex;gap:6px;margin:8px 0 2px;align-items:center;flex-wrap:wrap}
-        #igpas-prof input,#igpas-prof select{background:#0d1420;border:1px solid #2b3b55;color:#dbe6f5;
-            border-radius:6px;padding:4px 6px;font:12px system-ui}
-        #igpas-prof button{background:#1c2b44;color:#9fd0ff;border:1px solid #2b3b55;border-radius:6px;
-            padding:4px 8px;cursor:pointer;font:12px system-ui}
-        .igpas-foot{color:#6a788d;font-size:10px;margin-top:8px;text-align:center}
+        #igpas-prof input,#igpas-prof select{background:#fff;border:2px solid #101010;color:#101010;
+            border-radius:9px;padding:5px 8px;font:600 12px system-ui}
+        #igpas-prof button{background:#4DA3FF;color:#101010;border:2px solid #101010;border-radius:9px;
+            padding:5px 10px;cursor:pointer;font:700 12px system-ui;box-shadow:3px 3px 0 #101010;
+            transition:transform .06s,box-shadow .06s}
+        #igpas-prof button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #101010}
+        .igpas-foot{color:#5f584d;font-size:10px;margin-top:8px;text-align:center;font-weight:700}
     `;
 
     const UI = (() => {

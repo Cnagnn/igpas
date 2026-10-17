@@ -5,46 +5,68 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>I.G.P.A.S — Command Center</title>
 <style>
-    :root { color-scheme: dark; }
+    :root { color-scheme: light;
+        --ink:#101010; --paper:#F6F2E9; --card:#FFFDF7;
+        --blue:#4DA3FF; --yellow:#FFD23F; --pink:#FF6B6B;
+        --green:#7CE38B; --muted:#5f584d; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: #0d1420; color: #dbe6f5;
+    body { margin: 0; background: var(--paper); color: var(--ink);
            font: 14px/1.5 system-ui, sans-serif; }
-    header { padding: 18px 24px 10px; border-bottom: 1px solid #22314a;
+
+    header { padding: 20px 24px 14px; border-bottom: 3px solid var(--ink);
              display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-    header h1 { margin: 0; font-size: 18px; color: #9fd0ff; }
-    header .tag { color: #7b8ba1; font-size: 12px; }
-    main { max-width: 1180px; margin: 0 auto; padding: 18px 24px 60px;
-           display: grid; gap: 16px; }
-    section { background: #111b2c; border: 1px solid #22314a; border-radius: 12px;
-              padding: 14px 16px; }
-    section h2 { margin: 0 0 8px; font-size: 14px; color: #9fd0ff; }
-    section .hint { color: #7b8ba1; font-size: 12px; margin: 0 0 10px; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px;
-             font-size: 11px; border: 1px solid #2b3b55; color: #8fa1b8; }
-    .badge.ok { color: #7ce38b; border-color: #2c5a37; }
-    .badge.off { color: #ff9d9d; border-color: #5a2c2c; }
-    table { border-collapse: collapse; width: 100%; font-size: 13px; }
-    th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #1a2740; }
-    th { color: #8fa1b8; font-weight: 600; }
+    header h1 { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: .3px; }
+    header .tag { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .badge { display: inline-block; padding: 3px 10px; border: 2px solid var(--ink);
+             border-radius: 10px; font-size: 11px; font-weight: 800; background: var(--card);
+             box-shadow: 3px 3px 0 var(--ink); }
+    .badge.ok { background: var(--green); }
+    .badge.off { background: var(--pink); }
+
+    main { max-width: 1180px; margin: 0 auto; padding: 22px 24px 70px;
+           display: grid; gap: 20px; }
+    section { background: var(--card); border: 2.5px solid var(--ink);
+              border-radius: 14px; padding: 16px 18px; box-shadow: 6px 6px 0 var(--ink); }
+    section h2 { margin: 0 0 6px; font-size: 15px; font-weight: 800; }
+    section .hint { color: var(--muted); font-size: 12px; margin: 0 0 12px; font-weight: 600; }
+
+    table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+    th, td { text-align: left; padding: 6px 9px; border-bottom: 2px solid var(--ink); }
+    th { font-weight: 800; text-transform: uppercase; letter-spacing: .4px; font-size: 11px; }
     td.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+
+    .row { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin: 7px 0; }
     input[type=number], input[type=text], select, textarea {
-        background: #0d1420; border: 1px solid #2b3b55; color: #dbe6f5;
-        border-radius: 6px; padding: 6px 8px; font: 13px system-ui; }
-    textarea { width: 100%; min-height: 110px; font-family: ui-monospace, monospace; }
-    button { background: #1c2b44; color: #9fd0ff; border: 1px solid #2b3b55;
-             border-radius: 6px; padding: 6px 12px; cursor: pointer; font: 13px system-ui; }
-    button:hover { background: #24385a; }
-    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        background: #fff; border: 2px solid var(--ink); color: var(--ink);
+        border-radius: 10px; padding: 7px 10px; font: 600 13px system-ui; }
+    input:focus, textarea:focus, select:focus {
+        outline: 3px solid var(--yellow); outline-offset: 1px; }
+    textarea { width: 100%; min-height: 120px; font-family: ui-monospace, monospace; font-weight: 600; }
+
+    button { background: var(--yellow); color: var(--ink); border: 2px solid var(--ink);
+             border-radius: 10px; padding: 7px 14px; cursor: pointer; font: 700 13px system-ui;
+             box-shadow: 3px 3px 0 var(--ink); transition: transform .06s, box-shadow .06s; }
+    button:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+    button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+    #igpas-strategy button { background: var(--blue); }
+    #igpas-lab button { background: var(--green); }
+    #igpas-connection button { background: var(--pink); }
+    button#ig-lab-example, button#ig-str-demo { background: var(--card); }
+
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
     @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
-    .rec { padding: 8px 10px; border-left: 3px solid #9fd0ff; background: #0d1626;
-           border-radius: 6px; margin: 6px 0; }
-    .rec .why { color: #8fa1b8; font-size: 12px; }
-    .warn { color: #ffce6b; }
-    footer { text-align: center; color: #6a788d; font-size: 11px;
-             padding: 12px; border-top: 1px solid #1a2740; }
-    code { background: #0d1420; border: 1px solid #22314a; padding: 1px 6px;
-           border-radius: 6px; font-size: 12px; }
+
+    .rec { padding: 10px 12px; border: 2px solid var(--ink); border-radius: 10px;
+           background: #EAF3FF; box-shadow: 3px 3px 0 var(--ink); margin: 8px 0; }
+    .rec .why { color: #37414d; font-size: 12.5px; }
+    .warn { color: var(--ink); background: var(--pink); display: inline-block;
+            padding: 2px 9px; border: 2px solid var(--ink); border-radius: 8px;
+            font-weight: 800; }
+
+    footer { text-align: center; color: var(--muted); font-size: 11px;
+             padding: 14px; border-top: 3px solid var(--ink); margin-top: 34px; font-weight: 700; }
+    code { background: #fff; border: 2px solid var(--ink); padding: 1px 7px;
+           border-radius: 8px; font-size: 12px; font-weight: 700; }
 </style>
 </head>
 <body>
