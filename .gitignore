@@ -1,0 +1,10 @@
+# Konteks lokal agent — jangan dipublish
+.opencode-context.md
+.opencode-jce/
+.opencode/
+
+# Sanity umum
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
