@@ -1,0 +1,238 @@
+<!doctype html>
+<!--
+  Fixture race.html (v0.7.3) — REKONSTRUKSI tersanitasi dari capture live halaman
+  pra-balapan iGP Manager (p=race, tab Race/Setup/Strategy, #pageId="race").
+  Dibuang dari capture asli: semua <script> javascript/jQuery (kecuali blok data
+  inerten type="application/json" milik game yang tidak dieksekusi), input csrf
+  (csrfName/csrfToken/#cmsCsrfToken), nama manager + id profil + link/pixel FB,
+  semua resource eksternal. Nama driver diganti identitas generik.
+  Struktur/id/class yang dipakai adapter DIPERTAHANKAN seperti yang game render:
+  slider setup + bar ideal (style calc()), komentar engineer + health/condition/
+  engine, cuaca (waterLevelText + °C), #raceLaps, #rules (JSON aturan liga),
+  #dN-StrategyJson (blok data JSON), #dN-FuelPrediction, #dN-AdvancedFuel,
+  #dN-TotalLaps, kartu stint (data-stint/data-tyre + input tyreN/fuelN/lapsN).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iGP Manager (fixture race, sanitasi)</title>
+</head>
+<body>
+<div id="page-wrap">
+<input type="hidden" id="pageId" value="race">
+<div id="page-content">
+  <span id="raceLaps" class="hide">63</span>
+
+  <!-- ===== Tab RACE (live) — HARUS tetap 100% tanpa UI advisor ===== -->
+  <div id="race">
+    <h1 class="clearfix">Circuit de Spa-Francorchamps</h1>
+    <div class="raceInfo"><span>63 laps</span><span>4.341 km</span></div>
+    <div class="trackCharacteristic">
+      <div class="trackCharacteristicBar"><span>Overtaking</span>
+        <div class="ratingBar"><div style="width:70%"></div></div></div>
+      <div class="trackCharacteristicBar"><span>Fuel consumption</span>
+        <div class="ratingBar"><div style="width:80%"></div></div></div>
+      <div class="trackCharacteristicBar"><span>Tyre wear</span>
+        <div class="ratingBar"><div style="width:45%"></div></div></div>
+    </div>
+  </div>
+
+  <!-- ===== Tab SETUP ===== -->
+  <div id="setup" class="pt-2">
+    <a class="raceWeatherBadge" href="#">
+      <div class="waterLevel weatherSunImg"></div>
+      <span class="waterLevelText weatherTemp">0mm</span> 5°C
+    </a>
+
+    <div id="beginner-d1Comments">
+      <div class="choiceDivInclude driver1Include">
+        <div class="staffImage typeDriver1">
+          <div class="driverName">Andi<br>Pratama</div>
+        </div>
+      </div>
+      <div class="choiceDivInclude driver1Include" id="d1SetupComments">
+        <p class="shrinkText">"The car is in bad shape and we have to repair it."</p>
+        <div>Current health <span id="d1HealthVal">9</span>%, condition
+          <span id="d1ConditionVal">100</span>%, engine <span id="d1EngineVal">100</span>%.</div>
+      </div>
+    </div>
+
+    <div class="setupSliderWrap" id="d1Ride">
+      <span class="setupSlider-label">Ride height</span>
+      <div class="setupSlider-track">
+        <div class="setupSlider-indicator" style="left:calc(49% + 2px)"></div>
+        <div class="setupSlider-idealRange" style="left:calc(0% + 2px);width:calc(100% - 4px)"></div>
+      </div>
+      <input class="setupSlider-input" name="ride" type="range" min="1" max="100" value="50">
+      <span class="setupSlider-value">50</span>
+    </div>
+    <div class="setupSliderWrap" id="d1Suspension">
+      <span class="setupSlider-label">Suspension</span>
+      <div class="setupSlider-track">
+        <div class="setupSlider-indicator" style="left:calc(49% + 2px)"></div>
+        <div class="setupSlider-idealRange" style="left:calc(0% + 2px);width:calc(100% - 4px)"></div>
+      </div>
+      <input class="setupSlider-input" name="suspension" type="range" min="1" max="100" value="50">
+      <span class="setupSlider-value">50</span>
+    </div>
+    <div class="setupSliderWrap" id="d1Aerodynamics">
+      <span class="setupSlider-label">Wing level</span>
+      <div class="setupSlider-track">
+        <div class="setupSlider-indicator" style="left:calc(49% + 2px)"></div>
+        <div class="setupSlider-idealRange" style="left:calc(0% + 2px);width:calc(100% - 4px)"></div>
+      </div>
+      <input class="setupSlider-input" name="rwing" type="range" min="1" max="100" value="50">
+      <span class="setupSlider-value">50</span>
+    </div>
+
+    <div class="practiceLapsCard" id="d1Laps">
+      <table>
+        <thead><tr><th>Lap</th><th>Ride</th><th>Susp.</th><th>Wing</th><th>Fuel</th><th>Tyre</th><th>Time</th></tr></thead>
+        <tbody><tr><td colspan="7">No practice laps yet.</td></tr></tbody>
+      </table>
+    </div>
+    <span id="d1SetupImpactHistory" class="hide">{}</span>
+
+    <div id="beginner-d2Comments">
+      <div class="choiceDivInclude driver2Include">
+        <div class="staffImage typeDriver2">
+          <div class="driverName">Budi<br>Santoso</div>
+        </div>
+      </div>
+      <div class="choiceDivInclude driver2Include" id="d2SetupComments">
+        <p class="shrinkText">"We are still learning the ideal setup for this track."</p>
+        <div>Current health <span id="d2HealthVal">8</span>%, condition
+          <span id="d2ConditionVal">100</span>%, engine <span id="d2EngineVal">100</span>%.</div>
+      </div>
+    </div>
+
+    <div class="setupSliderWrap" id="d2Ride">
+      <span class="setupSlider-label">Ride height</span>
+      <div class="setupSlider-track">
+        <div class="setupSlider-indicator" style="left:calc(48% + 2px)"></div>
+        <div class="setupSlider-idealRange" style="left:calc(0% + 2px);width:calc(100% - 4px)"></div>
+      </div>
+      <input class="setupSlider-input" name="ride" type="range" min="1" max="100" value="49">
+      <span class="setupSlider-value">49</span>
+    </div>
+    <div class="setupSliderWrap" id="d2Suspension">
+      <span class="setupSlider-label">Suspension</span>
+      <div class="setupSlider-track">
+        <div class="setupSlider-indicator" style="left:calc(48% + 2px)"></div>
+        <div class="setupSlider-idealRange" style="left:calc(0% + 2px);width:calc(100% - 4px)"></div>
+      </div>
+      <input class="setupSlider-input" name="suspension" type="range" min="1" max="100" value="49">
+      <span class="setupSlider-value">49</span>
+    </div>
+    <div class="setupSliderWrap" id="d2Aerodynamics">
+      <span class="setupSlider-label">Wing level</span>
+      <div class="setupSlider-track">
+        <div class="setupSlider-indicator" style="left:calc(48% + 2px)"></div>
+        <div class="setupSlider-idealRange" style="left:calc(0% + 2px);width:calc(100% - 4px)"></div>
+      </div>
+      <input class="setupSlider-input" name="rwing" type="range" min="1" max="100" value="49">
+      <span class="setupSlider-value">49</span>
+    </div>
+
+    <div class="practiceLapsCard" id="d2Laps">
+      <table>
+        <thead><tr><th>Lap</th><th>Ride</th><th>Susp.</th><th>Wing</th><th>Fuel</th><th>Tyre</th><th>Time</th></tr></thead>
+        <tbody><tr><td colspan="7">No practice laps yet.</td></tr></tbody>
+      </table>
+    </div>
+    <span id="d2SetupImpactHistory" class="hide">{}</span>
+  </div>
+
+  <!-- ===== Tab STRATEGY ===== -->
+  <div id="strategy" class="pt-2" style="display:none;">
+    <span id="rules" class="hidden">{"refuelling":"0","two_tyres":"1","fast_point":"0","flags":"0","safety_car":"0"}</span>
+
+    <div id="d1StrategyBlock">
+      <div class="stintCards" id="d1StintCards" data-startlabel="Start" data-pitlabel="Pit">
+        <div class="stintCard" data-stint="1" data-dnum="1" data-tyre="M" data-refuelling="0">
+          <input type="hidden" name="tyre1" value="M">
+          <input type="hidden" name="fuel1" value="174">
+          <input type="hidden" name="laps1" value="16">
+          <span class="fuelOrLaps">16</span>
+        </div>
+        <div class="stintCard" data-stint="2" data-dnum="1" data-tyre="M" data-refuelling="0">
+          <input type="hidden" name="tyre2" value="M">
+          <input type="hidden" name="fuel2" value="1">
+          <input type="hidden" name="laps2" value="16">
+          <span class="fuelOrLaps">16</span>
+        </div>
+        <div class="stintCard" data-stint="3" data-dnum="1" data-tyre="M" data-refuelling="0">
+          <input type="hidden" name="tyre3" value="M">
+          <input type="hidden" name="fuel3" value="1">
+          <input type="hidden" name="laps3" value="16">
+          <span class="fuelOrLaps">16</span>
+        </div>
+        <div class="stintCard" data-stint="4" data-dnum="1" data-tyre="S" data-refuelling="0">
+          <input type="hidden" name="tyre4" value="S">
+          <input type="hidden" name="fuel4" value="1">
+          <input type="hidden" name="laps4" value="16">
+          <span class="fuelOrLaps">16</span>
+        </div>
+        <div class="stintCard hide" data-stint="5" data-dnum="1" data-tyre="S" data-refuelling="0">
+          <input type="hidden" name="tyre5" value="S">
+          <input type="hidden" name="fuel5" value="1">
+          <input type="hidden" name="laps5" value="1">
+          <span class="fuelOrLaps">1</span>
+        </div>
+      </div>
+      <div>Estimated <span id="d1TotalLaps" class="block-grey">64</span> laps</div>
+      <div class="advancedOptions">
+        <input type="number" name="advancedFuel" id="d1AdvancedFuel" class="number" value="174">
+        <span id="d1FuelPrediction" class="hide">2.5</span>
+      </div>
+      <div id="d1TyreWarning" class="errorList" style="display:none;">Must use two types of tyre!</div>
+      <script type="application/json" id="d1StrategyJson">{"stint":{"1":{"tyre":"M","fuel":174,"laps":16},"2":{"tyre":"M","fuel":1,"laps":16},"3":{"tyre":"M","fuel":1,"laps":16},"4":{"tyre":"S","fuel":1,"laps":16},"5":{"tyre":"S","fuel":1,"laps":1}},"isDefault":1,"auto_fuel":0,"pits":3,"stints":4,"risk_level":60}</script>
+    </div>
+
+    <div id="d2StrategyBlock">
+      <div class="stintCards" id="d2StintCards" data-startlabel="Start" data-pitlabel="Pit">
+        <div class="stintCard" data-stint="1" data-dnum="2" data-tyre="M" data-refuelling="0">
+          <input type="hidden" name="tyre1" value="M">
+          <input type="hidden" name="fuel1" value="174">
+          <input type="hidden" name="laps1" value="16">
+          <span class="fuelOrLaps">16</span>
+        </div>
+        <div class="stintCard" data-stint="2" data-dnum="2" data-tyre="M" data-refuelling="0">
+          <input type="hidden" name="tyre2" value="M">
+          <input type="hidden" name="fuel2" value="1">
+          <input type="hidden" name="laps2" value="16">
+          <span class="fuelOrLaps">16</span>
+        </div>
+        <div class="stintCard" data-stint="3" data-dnum="2" data-tyre="M" data-refuelling="0">
+          <input type="hidden" name="tyre3" value="M">
+          <input type="hidden" name="fuel3" value="1">
+          <input type="hidden" name="laps3" value="16">
+          <span class="fuelOrLaps">16</span>
+        </div>
+        <div class="stintCard" data-stint="4" data-dnum="2" data-tyre="S" data-refuelling="0">
+          <input type="hidden" name="tyre4" value="S">
+          <input type="hidden" name="fuel4" value="1">
+          <input type="hidden" name="laps4" value="16">
+          <span class="fuelOrLaps">16</span>
+        </div>
+        <div class="stintCard hide" data-stint="5" data-dnum="2" data-tyre="S" data-refuelling="0">
+          <input type="hidden" name="tyre5" value="S">
+          <input type="hidden" name="fuel5" value="1">
+          <input type="hidden" name="laps5" value="1">
+          <span class="fuelOrLaps">1</span>
+        </div>
+      </div>
+      <div>Estimated <span id="d2TotalLaps" class="block-grey">64</span> laps</div>
+      <div class="advancedOptions">
+        <input type="number" name="advancedFuel" id="d2AdvancedFuel" class="number" value="174">
+        <span id="d2FuelPrediction" class="hide">2.5</span>
+      </div>
+      <div id="d2TyreWarning" class="errorList" style="display:none;">Must use two types of tyre!</div>
+      <script type="application/json" id="d2StrategyJson">{"stint":{"1":{"tyre":"M","fuel":174,"laps":16},"2":{"tyre":"M","fuel":1,"laps":16},"3":{"tyre":"M","fuel":1,"laps":16},"4":{"tyre":"S","fuel":1,"laps":16},"5":{"tyre":"S","fuel":1,"laps":1}},"isDefault":1,"auto_fuel":0,"pits":3,"stints":4,"risk_level":60}</script>
+    </div>
+  </div>
+
+</div>
+</div>
+</body>
+</html>

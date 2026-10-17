@@ -79,12 +79,15 @@ python3 -m http.server 8787 -d docs   # lalu buka http://localhost:8787/ (landin
 
 Semua angka berasal dari **input Anda sendiri** — tidak ada asumsi data game.
 
-## Advisor in-page (v0.7.0, diperluas v0.7.2)
+## Advisor in-page (v0.7.0, diperluas v0.7.3)
 
 Userscript kini menempel **panel rekomendasi langsung di halaman iGP** yang
 Anda buka — hanya di halaman **studi** (`#pageId` `cars`, `manufacturers`,
-`staff`, dan `transfers`, termasuk dialog Supply terbuka); halaman
-balapan/strategi **tidak pernah** mendapat UI. Sifatnya:
+`staff`, dan `transfers`, termasuk dialog Supply terbuka), plus — sejak
+v0.7.3, atas permintaan user — halaman **pra-balapan** (`#pageId` `race`) tapi
+**hanya di tab Setup & Strategy**. Tab **Race live tidak pernah** mendapat UI
+apa pun (diverifikasi test snapshot innerHTML), dan halaman lain juga tidak.
+Sifatnya:
 
 - **Supply (dialog Engine/Fuel/Tyres terbuka)** — membandingkan supplier aktif
   dengan alternatif di dialog: Σ bonus stat, biaya per balapan, dan
@@ -105,13 +108,26 @@ balapan/strategi **tidak pernah** mendapat UI. Sifatnya:
   atribut / merah = kelemahan dari tooltip game). Pasar bisa berubah sendiri
   (refresh lelang) — panel diberi catatan dan di-render ulang saat Anda
   berinteraksi.
+- **Setup & Strategy pra-balapan (v0.7.3)** — di tab **Setup**: nilai slider
+  vs **bar ideal milik game** (titik tengah bar sebagai estimasi; bar setebal
+  track = ideal belum dipelajari — ditulis jujur, bukan dikarang), kondisi
+  mobil (health/condition/engine; health <30% ditandai "kritis — repair
+  dulu"), cuaca, jumlah lap practice, dan kutipan komentar engineer game.
+  Di tab **Strategy**: ringkasan alokasi per driver — total lap stint vs laps
+  balapan, bensin tersedia vs kebutuhan (laps × fuel/lap game, sisa buffer
+  dalam liter & ekuivalen lap), susunan ban per stint + cek aturan
+  dua-compound liga (span `#rules`), jumlah pit & risk level game. Panel
+  bersifat **snapshot** saat dimuat — kalau Anda mengubah stint/slider,
+  buka ulang tab agar perhitungan ikut baru.
 
 Semua panel berlabel **"estimasi — bukan rumus game"**: heuristik transparan
 atas angka yang memang tampil, bukan kepastian performa. Ada tombol
 **I.G.P.A.S advisor** di kiri-bawah untuk menyembunyikan/menampilkan panel
-(preferensi tersimpan lokal). Advisor hanya **membaca** DOM yang tampak:
-tanpa klik, tanpa submit, tanpa jaringan, tanpa request mailbox, dan elemen
-game tidak pernah diubah.
+(preferensi tersimpan lokal; tombol hanya muncul saat ada panel yang
+terpasang). Advisor hanya **membaca** DOM yang tampak: tanpa klik, tanpa
+submit, tanpa jaringan, tanpa request mailbox, dan elemen game tidak pernah
+diubah — di tab Race live bahkan satu node pun tidak ditambahkan
+(diverifikasi test snapshot innerHTML).
 
 **Menu capture fixture (v0.7.1):** lewat menu userscript
 ("I.G.P.A.S: salin capture DOM halaman ini") Anda bisa menyalin DOM halaman

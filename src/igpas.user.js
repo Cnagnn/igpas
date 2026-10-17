@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.7.2
-// @description  Race strategy study calculators + read-only snapshot autoload for iGP Manager (account, car, supply, manufacturers). Study tool only, no live-race assistance, no automation.
-// @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + autoload snapshot read-only (akun, mobil, supply, manufacturers). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
+// @version      0.7.3
+// @description  Race strategy study calculators + read-only study advice (account, car, supply, manufacturers, team, transfers) and pre-race setup/strategy estimate panels (ids `Setup`/`Strategy` tabs only — never the live Race tab). Study tool only, no live-race assistance, no automation.
+// @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + catatan studi read-only (akun, mobil, supply, manufacturers, tim, transfers) + estimasi setup & strategi pra-balapan (hanya tab Setup/Strategy — bukan tab Race live). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
 // @supportURL   https://github.com/Cnagnn/igpas/issues
@@ -21,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.7.2';
+    const VERSION = '0.7.3';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -439,6 +439,121 @@
                 weaken: grab("class='[^']*block-red[^']*'[^>]*>(?:<icon>[^<]*</icon>)?([^<]+)"),
                 special: grab("class='[^']*specialA\\d*[^']*'[^>]*>([^<]+)")
                     .filter(x => x.toLowerCase() !== 'none'),
+            };
+        },
+
+        /**
+         * Baca posisi BAR IDEAL slider setup dari atribut stylenya (v0.7.3).
+         * Game menulis: left:calc(X% + Npx);width:calc(Y% - Npx) pada
+         * .setupSlider-idealRange. Ekstraksi murni regex persen — tanpa asumsi
+         * lain. Bar setebal track penuh (width >= 100%) = ideal BELUM
+         * dipelajari; pemanggil wajib menampilkan "belum diketahui", bukan
+         * mengarang angka tengah.
+         * @param {string|null} styleAttr atribut style mentah
+         * @returns {{left:Number,width:Number}|null}
+         */
+        parseSliderIdeal(styleAttr) {
+            const m = String(styleAttr == null ? '' : styleAttr).match(/-?\d+(?:\.\d+)?%/g);
+            if (!m || m.length < 2) return null;
+            const left = parseFloat(m[0]);
+            const width = parseFloat(m[1]);
+            if (!Number.isFinite(left) || !Number.isFinite(width)) return null;
+            return {
+                left: Math.round(left * 10) / 10,
+                width: Math.round(width * 10) / 10,
+            };
+        },
+
+        /**
+         * Estimasi satu slider vs bar ideal game (v0.7.3). Titik tengah bar di
+         * pakai sebagai estimasi ideal; selisih = nilai slider sekarang − mid.
+         * Bar penuh (width >= 100%) → learned:false (data belum cukup).
+         * @param {object} p { ideal:{left,width}|null, current:Number-like|null }
+         */
+        setupAdvice(p) {
+            const cur = (p && p.current != null && Number.isFinite(Number(p.current)))
+                ? Number(p.current) : null;
+            const ideal = (p && p.ideal) || null;
+            if (!ideal || ideal.width == null || ideal.width >= 100) {
+                return { learned: false, current: cur };
+            }
+            const mid = Math.round((ideal.left + ideal.width / 2) * 10) / 10;
+            const delta = (cur != null) ? Math.round((cur - mid) * 10) / 10 : null;
+            return { learned: true, mid: mid, delta: delta, current: cur };
+        },
+
+        /**
+         * Ringkas strategi balapan SATU driver (v0.7.3) dari data yang MEMANG
+         * ditulis game di halaman (JSON strategi #dN-StrategyJson, #raceLaps,
+         * #dN-FuelPrediction, bensin opsi lanjutan #dN-AdvancedFuel) + aturan
+         * liga span #rules. Semua perhitungan = aritmetika tampil + heuristik
+         * berlabel estimasi di panel. null = data tidak tampil — JANGAN jadi 0
+         * (pitfall Number(null) === 0 dijaga lewat numOrNull).
+         * @param {object} p { strategy, raceLaps, fuelPerLap, advancedFuel,
+         *                     ruleTwoTyres:Boolean, ruleRefuelling:Boolean }
+         */
+        summarizeStrategy(p) {
+            const st = (p && p.strategy) || null;
+            const stintMap = (st && st.stint && typeof st.stint === 'object') ? st.stint : null;
+            const activeCount = st ? Number(st.stints) : NaN;
+            if (!stintMap) return { ok: false, error: 'JSON strategi game tidak terbaca' };
+            if (!Number.isFinite(activeCount)) {
+                return { ok: false, error: 'jumlah stint aktif (game) tidak terbaca' };
+            }
+            const numOrNull = v =>
+                ((v != null && String(v) !== '' && Number.isFinite(Number(v))) ? Number(v) : null);
+            const raceLaps = numOrNull(p ? p.raceLaps : null);
+            const fpl = numOrNull(p ? p.fuelPerLap : null);
+            const advFuel = numOrNull(p ? p.advancedFuel : null);
+            // Kunci stint dipakai sesuai urutan tulisan game; jumlah stint
+            // AKTIF diambil dari field game "stints" (stint kelebihan = nonaktif).
+            const active = [];
+            for (const k of Object.keys(stintMap)) {
+                const s = stintMap[k] || {};
+                active.push({
+                    stint: k,
+                    tyre: (s.tyre == null || String(s.tyre) === '') ? null : String(s.tyre),
+                    laps: numOrNull(s.laps),
+                });
+                if (active.length >= activeCount) break;
+            }
+            let lapsTotal = 0;
+            let unknownLaps = 0;
+            for (const s of active) {
+                if (s.laps == null) unknownLaps++;
+                else lapsTotal += s.laps;
+            }
+            const tyres = active.map(s => s.tyre).filter(t => t != null);
+            const dry = tyres.filter(t => ['SS', 'S', 'M', 'H'].indexOf(t) !== -1);
+            const fuelNeed = (raceLaps != null && fpl != null)
+                ? Math.round(raceLaps * fpl * 10) / 10 : null;
+            const fuelBuffer = (fuelNeed != null && advFuel != null)
+                ? Math.round((advFuel - raceLaps * fpl) * 10) / 10 : null;
+            const bufferLaps = (fuelBuffer != null && fpl)
+                ? Math.round((fuelBuffer / fpl) * 10) / 10 : null;
+            return {
+                ok: true,
+                values: {
+                    stints: active,
+                    stintsCount: activeCount,
+                    pits: numOrNull(st.pits),
+                    risk: numOrNull(st.risk_level),
+                    autoFuel: numOrNull(st.auto_fuel),
+                    raceLaps: raceLaps,
+                    lapsTotal: lapsTotal,
+                    unknownLaps: unknownLaps,
+                    lapsShort: (raceLaps != null) ? Math.max(0, raceLaps - lapsTotal) : null,
+                    fuelPerLap: fpl,
+                    advancedFuel: advFuel,
+                    fuelNeed: fuelNeed,
+                    fuelBuffer: fuelBuffer,
+                    bufferLaps: bufferLaps,
+                    tyres: tyres,
+                    dryUnique: Array.from(new Set(dry)),
+                    twoTyreOk: (p && p.ruleTwoTyres === true)
+                        ? (dry.length > 0 && new Set(dry).size >= 2) : null,
+                    refuelling: !!(p && p.ruleRefuelling === true),
+                },
             };
         },
     });
@@ -963,6 +1078,134 @@
     };
 
     /**
+     * Adapter tab Setup halaman PRA-BALAPAN (v0.7.3, permintaan user) —
+     * read-only. Dipetakan dari capture live DOM (fixture
+     * test/fixtures/race.html). Gate: #pageId='race' DAN wadah #setup ada.
+     * Membaca field yang memang dirender game: cuaca (span waterLevelText +
+     * teks °C di badge), slider setup per driver (nilai input + bar ideal
+     * via atribut style — bar setebal track = ideal belum dipelajari, TIDAK
+     * dikarang), kondisi mobil (health/condition/engine), komentar engineer,
+     * dan jumlah baris lap practice. Tab RACE LIVE (div id="race") tidak
+     * pernah dibaca atau diubah — disiplin live-race tetap absolut.
+     */
+    const IgpRaceSetupAdapter = {
+        id: 'race-setup-data',
+        desc: 'tab Setup pra-balapan: slider + bar ideal + kondisi mobil (estimasi)',
+        captures(doc) {
+            const pid = doc.getElementById('pageId');
+            if (!pid || pid.value !== 'race') return null;
+            const wrap = doc.getElementById('setup');
+            if (!wrap) return null;
+            const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+            // Nama driver game menyisipkan <br> (mis. "Andi<br>Pratama"); textContent
+            // mentah melahap pemisah itu — ganti <br> jadi spasi dulu.
+            const nameOf = el => el
+                ? clean(String(el.innerHTML).replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, ' '))
+                : null;
+            const numOrNull = v =>
+                ((v != null && String(v) !== '' && Number.isFinite(Number(v))) ? Number(v) : null);
+            const badge = wrap.querySelector('.raceWeatherBadge') || doc.querySelector('.raceWeatherBadge');
+            const rainText = badge && badge.querySelector('.waterLevelText')
+                ? badge.querySelector('.waterLevelText').textContent : null;
+            const tempText = badge
+                ? (badge.textContent.match(/-?\d+(?:\.\d+)?\s*°C/) || [null])[0] : null;
+            const drivers = [];
+            for (const n of [1, 2]) {
+                const comments = doc.getElementById('d' + n + 'SetupComments');
+                const nameEl = doc.querySelector(
+                    '#beginner-d' + n + 'Comments .choiceDivInclude.driver' + n + 'Include .driverName');
+                const sliders = [];
+                for (const el of wrap.querySelectorAll('.setupSliderWrap[id^="d' + n + '"]')) {
+                    const idm = String(el.id || '').match(/^d\d(.+)$/);
+                    const input = el.querySelector('input');
+                    const valEl = el.querySelector('.setupSlider-value');
+                    const irange = el.querySelector('.setupSlider-idealRange');
+                    sliders.push({
+                        key: idm ? idm[1].toLowerCase() : null,
+                        label: clean(el.querySelector('.setupSlider-label')
+                            ? el.querySelector('.setupSlider-label').textContent : null),
+                        value: numOrNull(input ? input.getAttribute('value')
+                            : (valEl ? valEl.textContent : null)),
+                        ideal: IGPCore.parseSliderIdeal(irange ? irange.getAttribute('style') : null),
+                    });
+                }
+                if (!sliders.length) continue;
+                const textVal = sel => {
+                    const el = comments ? comments.querySelector(sel) : null;
+                    return numOrNull(el ? el.textContent : null);
+                };
+                let practiceLaps = 0;
+                for (const tr of doc.querySelectorAll('#d' + n + 'Laps tbody tr')) {
+                    if (tr.querySelectorAll('td').length >= 4) practiceLaps++;
+                }
+                drivers.push({
+                    num: n,
+                    name: nameOf(nameEl),
+                    sliders: sliders,
+                    health: textVal('span[id$="HealthVal"]'),
+                    condition: textVal('span[id$="ConditionVal"]'),
+                    engine: textVal('span[id$="EngineVal"]'),
+                    engineerComment: comments && comments.querySelector('.shrinkText')
+                        ? clean(comments.querySelector('.shrinkText').textContent) : null,
+                    practiceLaps: practiceLaps,
+                });
+            }
+            if (!drivers.length) return null;
+            return {
+                weather: { rainText: clean(rainText), tempText: clean(tempText) },
+                drivers: drivers,
+            };
+        },
+    };
+
+    /**
+     * Adapter tab Strategy halaman PRA-BALAPAN (v0.7.3, permintaan user) —
+     * read-only. Dipetakan dari capture live DOM (fixture
+     * test/fixtures/race.html). Gate: #pageId='race' DAN wadah #strategy ada.
+     * Membaca field yang memang game-render: #raceLaps, span #rules (JSON
+     * aturan liga: refuelling/two_tyres/dll), blok data inerten
+     * type="application/json" #dN-StrategyJson (BENER-BENER data JSON game —
+     * bukan kode, tidak dieksekusi siapa pun), #dN-FuelPrediction, input
+     * bensin opsi lanjutan #dN-AdvancedFuel (atribut value), dan total laps
+     * versi game #dN-TotalLaps. Perhitungan ada di IGPCore.summarizeStrategy.
+     */
+    const IgpRaceStrategyAdapter = {
+        id: 'race-strategy-data',
+        desc: 'tab Strategy pra-balapan: stint/fuel/two-tyre (estimasi)',
+        captures(doc) {
+            const pid = doc.getElementById('pageId');
+            if (!pid || pid.value !== 'race') return null;
+            if (!doc.getElementById('strategy')) return null;
+            const numOrNull = v =>
+                ((v != null && String(v) !== '' && Number.isFinite(Number(v))) ? Number(v) : null);
+            const textOf = id => {
+                const el = doc.getElementById(id);
+                return el ? el.textContent : null;
+            };
+            const attrOf = (id, a) => {
+                const el = doc.getElementById(id);
+                return el ? el.getAttribute(a) : null;
+            };
+            const jsonOf = id => {
+                const el = doc.getElementById(id);
+                if (!el) return null;
+                try { return JSON.parse(el.textContent || ''); } catch (e) { return null; }
+            };
+            return {
+                raceLaps: numOrNull(textOf('raceLaps')),
+                rules: jsonOf('rules'),
+                drivers: [1, 2].map(n => ({
+                    num: n,
+                    strategy: jsonOf('d' + n + 'StrategyJson'),
+                    fuelPerLap: numOrNull(textOf('d' + n + 'FuelPrediction')),
+                    advancedFuel: numOrNull(attrOf('d' + n + 'AdvancedFuel', 'value')),
+                    totalLapsGame: numOrNull(textOf('d' + n + 'TotalLaps')),
+                })),
+            };
+        },
+    };
+
+    /**
      * Registry adapter data. Status dipublikasikan apa adanya: ':ready' = adapter
      * read-only terpasang; ':menunggu-map' = pemetaan DOM halaman belum dilakukan.
      */
@@ -974,6 +1217,8 @@
             { id: 'manufacturer-data', adapter: IgpManufacturersAdapter },
             { id: 'staff-data', adapter: IgpStaffAdapter },
             { id: 'transfers-data', adapter: IgpTransfersAdapter },
+            { id: 'race-setup-data', adapter: IgpRaceSetupAdapter },
+            { id: 'race-strategy-data', adapter: IgpRaceStrategyAdapter },
             { id: 'race-strategy', desc: 'strategi balapan (input manual, selalu)' },
         ],
         capture(kind, doc) {
@@ -1573,8 +1818,11 @@
      *  - HANYA MENAMBAH elemen milik sendiri (id/class prefiks igpas-adv-);
      *    tidak pernah mengubah/menghapus elemen game, tidak mengklik, tidak
      *    submit, tidak fetch/XHR, tidak mengirim packet mailbox apa pun.
-     *  - Aktif hanya di #pageId 'cars' (termasuk dialog Supply terbuka) dan
-     *    'manufacturers'. Tidak pernah menempel di halaman balapan/strategi.
+     *  - Aktif di #pageId 'cars' (termasuk dialog Supply terbuka),
+     *    'manufacturers', 'staff', 'transfers' — dan, sejak v0.7.3 (permintaan
+     *    eksplisit user), halaman PRA-BALAPAN #pageId 'race' hanya di tab
+     *    Setup & Strategy (panel estimasi read-only). TAB RACE LIVE (#race)
+     *    TETAP TANPA UI APA PUN; tanpa klik/submit elemen game, di mana pun.
      *  - Re-render dipicu aksi user (klik/navigasi) — BUKAN polling DOM.
      *  - Semua angka = pembacaan DOM yang memang tampil + heuristik eksplisit
      *    IGPCore, berlabel "estimasi — bukan rumus game".
@@ -1910,15 +2158,178 @@
             }
         }
 
+        /* Tab Setup halaman pra-balapan (v0.7.3): slider vs bar ideal + kondisi. */
+        function mountRaceSetup() {
+            const id = PREFIX + '-rsetup';
+            const idWrap = PREFIX + '-rsetup-wrap';
+            if (pageId() !== 'race') { removeIfAny([id, idWrap]); return; }
+            const anchor = document.getElementById('setup');
+            if (!anchor) { removeIfAny([id, idWrap]); return; }
+            const data = IgpRaceSetupAdapter.captures(document);
+            let body = '';
+            let note = '';
+            if (!data) {
+                note = 'Tab Setup tidak terbaca (varian DOM baru?). Tidak ada estimasi — jangan dianggap data.';
+            } else {
+                const rows = [];
+                for (const d of data.drivers) {
+                    for (const s of d.sliders) {
+                        const ar = IGPCore.setupAdvice({ ideal: s.ideal, current: s.value });
+                        const idealTxt = ar.learned ? ('≈ ' + ar.mid) : 'belum dipelajari';
+                        const deltaTxt = ar.learned
+                            ? (ar.delta == null ? '—' : ((ar.delta > 0 ? '+' : '') + ar.delta))
+                            : '—';
+                        rows.push('<tr>' +
+                            '<td>' + esc(d.name || ('Driver ' + d.num)) + '</td>' +
+                            '<td>' + esc(s.label || s.key || '?') + '</td>' +
+                            '<td>' + (s.value == null ? '—' : esc(s.value)) + '</td>' +
+                            '<td>' + esc(idealTxt) + '</td>' +
+                            '<td>' + esc(deltaTxt) + '</td></tr>');
+                    }
+                }
+                if (rows.length) {
+                    body += '<table><thead><tr><th>Driver</th><th>Pengaturan</th><th>Sekarang</th>' +
+                        '<th>Ideal (bar game)</th><th>Selisih</th></tr></thead><tbody>' +
+                        rows.join('') + '</tbody></table>';
+                }
+                const cond = data.drivers.map(d => {
+                    if (d.health == null && d.condition == null && d.engine == null) return '';
+                    const low = (d.health != null && d.health < 30);
+                    return '<tr' + (low ? ' class="igpas-adv-best"' : '') + '>' +
+                        '<td>' + esc(d.name || ('Driver ' + d.num)) +
+                        (low ? '<span class="igpas-adv-tag">kritis — repair dulu</span>' : '') + '</td>' +
+                        '<td>' + (d.health == null ? '—' : esc(d.health) + '%') + '</td>' +
+                        '<td>' + (d.condition == null ? '—' : esc(d.condition) + '%') + '</td>' +
+                        '<td>' + (d.engine == null ? '—' : esc(d.engine) + '%') + '</td></tr>';
+                }).join('');
+                if (cond) {
+                    body += '<table><thead><tr><th>Kondisi mobil</th><th>Health</th><th>Condition</th>' +
+                        '<th>Engine</th></tr></thead><tbody>' + cond + '</tbody></table>';
+                }
+                const rain = data.weather.rainText || '—';
+                const wet = /^[1-9]/.test(String(data.weather.rainText || '').trim());
+                note = 'Cuaca: ' + esc(rain) + ' hujan · ' + esc(data.weather.tempText || '—') +
+                    (wet ? ' — lintasan basah.' : ' — kering.');
+                for (const d of data.drivers) {
+                    note += ' ' + esc(d.name || ('Driver ' + d.num)) + ': ' + d.practiceLaps +
+                        ' lap practice tercatat' +
+                        (d.practiceLaps === 0 ? ' — jalankan practice untuk mempersempit ideal.' : '.') +
+                        (d.engineerComment ? ' Engineer (kata game): “' + esc(d.engineerComment) + '”.' : '');
+                }
+                note += ' Ideal dibaca dari BAR ideal slider game (makin sempit, makin bisa dipercaya; ' +
+                    'bar penuh = belum dipelajari — bukan nol); selisih = sekarang − tengah bar, ' +
+                    'arah semata. <strong>Estimasi — bukan rumus game</strong>.';
+            }
+            let wrapEl = document.getElementById(idWrap);
+            if (!wrapEl) {
+                wrapEl = document.createElement('div');
+                wrapEl.id = idWrap;
+                wrapEl.style.clear = 'both'; // aman di bawah kolom float tab setup
+            }
+            wrapEl.appendChild(panelEl(id, 'I.G.P.A.S · race setup', 'Estimasi ideal setup (tab Setup)', body, note));
+            anchor.appendChild(wrapEl);
+        }
+
+        /* Tab Strategy halaman pra-balapan (v0.7.3): ringkas stint/fuel/two-tyre. */
+        function mountRaceStrategy() {
+            const id = PREFIX + '-rstrategy';
+            const idWrap = PREFIX + '-rstrategy-wrap';
+            if (pageId() !== 'race') { removeIfAny([id, idWrap]); return; }
+            const anchor = document.getElementById('strategy');
+            if (!anchor) { removeIfAny([id, idWrap]); return; }
+            const m = IgpRaceStrategyAdapter.captures(document);
+            let body = '';
+            let note = '';
+            if (!m) {
+                note = 'Tab Strategy tidak terbaca (varian DOM baru?). Tidak ada estimasi — jangan dianggap data.';
+            } else {
+                const rules = m.rules || {};
+                const rows = [];
+                for (const d of m.drivers) {
+                    const res = IGPCore.summarizeStrategy({
+                        strategy: d.strategy,
+                        raceLaps: m.raceLaps,
+                        fuelPerLap: d.fuelPerLap,
+                        advancedFuel: d.advancedFuel,
+                        ruleTwoTyres: rules.two_tyres === '1' || rules.two_tyres === 1,
+                        ruleRefuelling: rules.refuelling === '1' || rules.refuelling === 1,
+                    });
+                    let cell;
+                    if (!res.ok) {
+                        cell = '<span class="igpas-adv-tag">' + esc(res.error) + '</span>';
+                    } else {
+                        const v = res.values;
+                        const lapsTxt = (v.raceLaps == null) ? '—' :
+                            (v.lapsTotal + '/' + v.raceLaps + ' lap' +
+                                (v.lapsShort > 0 ? ' (kurang ' + v.lapsShort + '!)' : ''));
+                        const tyresTxt = (v.tyres.length ? v.tyres.join(', ') : '—') +
+                            ' (' + v.dryUnique.length + ' compound kering' +
+                            (v.twoTyreOk == null ? ')' : (v.twoTyreOk ? ' ✓)' : ' ✗ dua compound wajib)'));
+                        const fuelTxt = (v.fuelNeed == null)
+                            ? '—'
+                            : (v.advancedFuel == null
+                                ? 'butuh ±' + v.fuelNeed + ' L'
+                                : v.advancedFuel + ' L vs ±' + v.fuelNeed + ' L → sisa ' +
+                                    v.fuelBuffer + ' L (≈' + v.bufferLaps + ' lap)');
+                        cell = 'Lap ' + esc(lapsTxt) + ' · Ban ' + esc(tyresTxt) +
+                            ' · Bensin ' + esc(fuelTxt) +
+                            ' · pit ' + (v.pits == null ? '—' : esc(v.pits)) +
+                            ' · risiko ' + (v.risk == null ? '—' : esc(v.risk)) +
+                            (v.unknownLaps ? ' · ' + v.unknownLaps + ' lap stint tak terbaca' : '');
+                    }
+                    rows.push('<tr><td>' + esc(d.num === 1 ? 'Driver utama' : 'Driver ' + d.num) +
+                        '</td><td>' + cell + '</td></tr>');
+                }
+                body += '<table><thead><tr><th>Driver</th><th>Ringkasan alokasi (estimasi)</th></tr>' +
+                    '</thead><tbody>' + rows.join('') + '</tbody></table>';
+                note = 'Aritmetika atas angka yang tampil di tab ini (laps × fuel/lap dari game). ' +
+                    'Aturan liga span #rules: refuelling ' +
+                    esc(rules.refuelling == null ? '—' : rules.refuelling) + ', two_tyres ' +
+                    esc(rules.two_tyres == null ? '—' : rules.two_tyres) + '. ' +
+                    'Panel = snapshot halaman saat dimuat/di-render ulang; jika Anda mengubah stint, ' +
+                    'buka ulang tab agar perhitungan ikut baru. <strong>Estimasi — bukan rumus game</strong>.';
+            }
+            let wrapEl = document.getElementById(idWrap);
+            if (!wrapEl) {
+                wrapEl = document.createElement('div');
+                wrapEl.id = idWrap;
+                wrapEl.style.clear = 'both';
+            }
+            wrapEl.appendChild(panelEl(id, 'I.G.P.A.S · race strategy', 'Ringkasan strategi (tab Strategy)', body, note));
+            anchor.appendChild(wrapEl);
+        }
+
         function renderAll() {
             if (typeof document === 'undefined' || !document.body) return;
             const pid = pageId();
-            if (['cars', 'manufacturers', 'staff', 'transfers'].indexOf(pid) === -1) {
-                // Halaman lain (termasuk balapan/strategi): tanpa jejak UI apa pun.
-                removeIfAny([PREFIX + '-toggle', PREFIX + '-design', PREFIX + '-supply', PREFIX + '-mfg-engine', PREFIX + '-mfg-chassis', PREFIX + '-team', PREFIX + '-tx-driver', PREFIX + '-tx-staff']);
+            if (['cars', 'manufacturers', 'staff', 'transfers', 'race'].indexOf(pid) === -1) {
+                // Halaman lain: tanpa jejak UI apa pun (disiplin study-only).
+                removeIfAny([PREFIX + '-toggle', PREFIX + '-design', PREFIX + '-supply',
+                    PREFIX + '-mfg-engine', PREFIX + '-mfg-chassis', PREFIX + '-team',
+                    PREFIX + '-tx-driver', PREFIX + '-tx-staff',
+                    PREFIX + '-rsetup', PREFIX + '-rsetup-wrap',
+                    PREFIX + '-rstrategy', PREFIX + '-rstrategy-wrap']);
                 return;
             }
             styleEnsure();
+            try {
+                mountDesign();
+                mountSupply();
+                mountManufacturers();
+                mountTeam();
+                mountTransfers();
+                mountRaceSetup();
+                mountRaceStrategy();
+            } catch (e) {
+                if (typeof console !== 'undefined') console.warn('IGPAS advisor', e); // jangan pernah merusak halaman game
+            }
+            // Toggle hanya tampil bila ada panel sungguhan — halaman race TANPA
+            // wadah tab Setup/Strategy (mis. konteks race live) dibiarkan 100%
+            // tanpa jejak UI, termasuk tanpa tombol advisor.
+            if (!document.querySelector('.igpas-adv-panel')) {
+                removeIfAny([PREFIX + '-toggle']);
+                return;
+            }
             if (!document.getElementById(PREFIX + '-toggle')) {
                 const btn = document.createElement('button');
                 btn.id = PREFIX + '-toggle';
@@ -1933,15 +2344,6 @@
                 document.body.appendChild(btn);
             }
             applyHidden();
-            try {
-                mountDesign();
-                mountSupply();
-                mountManufacturers();
-                mountTeam();
-                mountTransfers();
-            } catch (e) {
-                if (typeof console !== 'undefined') console.warn('IGPAS advisor', e); // jangan pernah merusak halaman game
-            }
         }
 
         function applyHidden() {
@@ -2023,8 +2425,9 @@
 
         const startUi = () => {
             // v0.7.0: tab iGP tetap sensor mailbox + MENAMBAH advisor in-page read-only
-            // (hanya elemen milik sendiri, halaman studi Cars/Manufacturers — tidak
-            // pernah di halaman balapan; elemen game tidak disentuh).
+            // (hanya elemen milik sendiri — halaman studi Cars/Manufacturers; sejak
+            // v0.7.2 Team/Transfers; sejak v0.7.3 (permintaan user) tab Setup/Strategy
+            // pra-balapan dengan estimasi. Tab Race live & elemen game tidak disentuh).
             if (ROLE === 'sensor' && typeof Advisor !== 'undefined') Advisor.start();
             if (ROLE === 'gui' && typeof GuiMaster !== 'undefined') GuiMaster.mount();
             // v0.7.1: menu Tampermonkey utk salin capture DOM (redaksi PII) — tanpa UI halaman.

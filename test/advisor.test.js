@@ -12,7 +12,7 @@ const { JSDOM } = require('jsdom');
 const load = fixtureFile =>
     fs.readFileSync(path.join(__dirname, 'fixtures', fixtureFile), 'utf8');
 
-function bootOn(html, url) {
+function bootOn(html, url, snapshotIds) {
     const store = new Map();
     const dom = new JSDOM(html, { url, runScripts: 'outside-only', pretendToBeVisual: true });
     const win = dom.window;
@@ -23,9 +23,15 @@ function bootOn(html, url) {
     win.GM_setClipboard = () => {};            // stub; test override utk capture
     win.GM_registerMenuCommand = (label, fn) => { win.__igpasMenuHandler = fn; };
     win.GM_notification = () => {};
+    // Snapshot innerHTML SEBELUM userscript jalan (untuk uji "dokumen tak berubah").
+    const before = {};
+    for (const id of (snapshotIds || [])) {
+        const el = win.document.getElementById(id);
+        before[id] = el ? el.innerHTML : null;
+    }
     win.eval(fs.readFileSync(path.join(__dirname, '../src/igpas.user.js'), 'utf8'));
     win.document.dispatchEvent(new win.Event('DOMContentLoaded')); // idempoten di sisi userscript
-    return { win, doc: win.document, store, close: () => win.close() };
+    return { win, doc: win.document, store, before, close: () => win.close() };
 }
 
 function assert(ok, msg) { if (!ok) throw new Error(msg); }
@@ -98,12 +104,15 @@ t('Manufacturers advisor: ranking engine & chassis di halaman manufacturers', ()
     s.close();
 });
 
-t('Keamanan: halaman lain (race/unknown) tidak mendapat UI advisor sedikit pun', () => {
+t('Keamanan: halaman lain (race tanpa wadah tab/unknown) tidak mendapat UI advisor sedikit pun', () => {
     const s = bootOn('<!doctype html><html><body><input id="pageId" value="race"></body></html>',
         'https://www.igpmanager.com/app/index.php?page=raceStrategy');
-    for (const id of ['igpas-adv-toggle', 'igpas-adv-design', 'igpas-adv-supply', 'igpas-adv-mfg-engine', 'igpas-adv-mfg-chassis']) {
+    for (const id of ['igpas-adv-toggle', 'igpas-adv-design', 'igpas-adv-supply', 'igpas-adv-mfg-engine', 'igpas-adv-mfg-chassis',
+        'igpas-adv-team', 'igpas-adv-tx-driver', 'igpas-adv-tx-staff',
+        'igpas-adv-rsetup', 'igpas-adv-rsetup-wrap', 'igpas-adv-rstrategy', 'igpas-adv-rstrategy-wrap']) {
         assert(!s.doc.getElementById(id), 'elemen advisor bocor di halaman race: ' + id);
     }
+    assert(!s.doc.querySelector('.igpas-adv-panel'), 'panel advisor bocor di race tanpa wadah tab');
     s.close();
 });
 
@@ -204,6 +213,75 @@ t('Transfers advisor: panel staff pasar per peran (CD/TD/DR + spesialisasi hijau
         'trait hijau/merah CD terbaik tidak tampil');
     assert(txt.indexOf('Kerekes') === -1, 'data yang tidak ada di fixture tidak boleh muncul');
     assert(/heuristik estimasi/i.test(txt), 'label heuristik tidak tampil');
+    s.close();
+});
+
+/* ---------- Race (v0.7.3, permintaan user): estimasi Setup & Strategy ---------- */
+
+const URL_RACE = 'https://www.igpmanager.com/app/index.php?page=race&tab=race';
+
+t('Race: panel estimasi setup melekat di #setup (bar ideal belum dipelajari = tanpa angka karangan)', () => {
+    const s = bootOn(load('race.html'), URL_RACE);
+    const panel = s.doc.getElementById('igpas-adv-rsetup');
+    assert(panel, 'panel setup race tidak ada');
+    assert(panel.closest('#setup'), 'panel setup tidak berada di dalam #setup');
+    const wrap = s.doc.getElementById('igpas-adv-rsetup-wrap');
+    assert(wrap && wrap.contains(panel) && wrap.parentNode === s.doc.getElementById('setup'),
+        'wrapper setup race salah tempat');
+    const txt = panel.textContent;
+    assert(txt.indexOf('Estimasi ideal setup') >= 0, 'judul panel setup tidak ada');
+    assert(txt.indexOf('belum dipelajari') >= 0, 'ideal bar penuh harus tampil "belum dipelajari", bukan angka');
+    assert(txt.indexOf('Andi Pratama') >= 0 && txt.indexOf('Budi Santoso') >= 0, 'nama driver generik tidak terbaca');
+    assert(txt.indexOf('kritis — repair dulu') >= 0, 'health 9% harus ditandai kritis');
+    assert(txt.indexOf('9%') >= 0 && txt.indexOf('8%') >= 0, 'nilai health tidak tampil');
+    assert(txt.indexOf('bad shape') >= 0, 'komentar engineer (game) tidak dikutip');
+    assert(txt.indexOf('kering') >= 0 && txt.indexOf('0mm') >= 0, 'cuaca kering tidak terbaca');
+    assert(txt.indexOf('lap practice tercatat') >= 0, 'jumlah lap practice tidak tampil');
+    assert(/Estimasi — bukan rumus game/.test(txt), 'label estimasi tidak ada');
+    assert(txt.indexOf('≈ 50') === -1, 'tidak boleh ada angka ideal karangan saat bar penuh');
+    s.close();
+});
+
+t('Race: panel ringkasan strategi di #strategy (aritmetika laps × fuel/lap + two-tyre)', () => {
+    const s = bootOn(load('race.html'), URL_RACE);
+    const panel = s.doc.getElementById('igpas-adv-rstrategy');
+    assert(panel, 'panel strategi race tidak ada');
+    assert(panel.closest('#strategy'), 'panel strategi tidak berada di dalam #strategy');
+    const txt = panel.textContent;
+    assert(txt.indexOf('Ringkasan strategi') >= 0, 'judul panel strategi tidak ada');
+    assert(txt.indexOf('64/63 lap') >= 0, 'alokasi lap 4 stint (64) vs laps balapan (63) salah');
+    assert(txt.indexOf('174 L vs ±157.5 L') >= 0, 'perhitungan bensin (63 × 2.5 = 157.5) tidak sesuai');
+    assert(txt.indexOf('16.5 L') >= 0 && txt.indexOf('6.6 lap') >= 0, 'buffer bensin salah hitung');
+    assert(txt.indexOf('M, M, M, S') >= 0, 'susunan ban stint tidak terbaca dari JSON game');
+    assert(txt.indexOf('2 compound kering ✓') >= 0, 'cek dua-compound (two_tyres=1) gagal');
+    assert(txt.indexOf('risiko 60') >= 0, 'risk_level game tidak ditampilkan');
+    assert(txt.indexOf('Driver utama') >= 0, 'label driver utama tidak ada');
+    assert(txt.indexOf('snapshot') >= 0, 'catatan snapshot (data bisa berubah) tidak ada');
+    s.close();
+});
+
+t('Race: tab Race LIVE tetap 100% bersih — tanpa node advisor & elemen game tak berubah', () => {
+    const s = bootOn(load('race.html'), URL_RACE, ['race']);
+    const liveTab = s.doc.getElementById('race');
+    assert(liveTab, 'tab #race hilang dari fixture');
+    assert(s.before.race === liveTab.innerHTML,
+        'innerHTML tab Race LIVE berubah setelah boot — pelanggaran read-only');
+    assert(!s.doc.querySelector('#race .igpas-adv-panel, #race [id^="igpas-adv"]'),
+        'ada elemen advisor di dalam tab #race');
+    assert(s.doc.getElementById('igpas-adv-rsetup') && s.doc.getElementById('igpas-adv-rstrategy'),
+        'panel race harusnya tetap terpasang di #setup/#strategy (bukan dihapus seluruhnya)');
+    s.close();
+});
+
+t('Race: zero panel lain + mailbox tetap senyap di halaman race', () => {
+    const s = bootOn(load('race.html'), URL_RACE);
+    for (const id of ['igpas-adv-design', 'igpas-adv-supply', 'igpas-adv-mfg-engine',
+        'igpas-adv-mfg-chassis', 'igpas-adv-team', 'igpas-adv-tx-driver', 'igpas-adv-tx-staff']) {
+        assert(!s.doc.getElementById(id), 'panel halaman studi bocor ke race: ' + id);
+    }
+    assert(s.doc.getElementById('igpas-adv-toggle'), 'toggle advisor harus ada saat panel race tampil');
+    const sent = [...s.store.keys()].filter(k => k.indexOf('igpas:mb:collect-') === 0);
+    assert(!sent.length, 'advisor race mengirim collect-request: ' + sent.join(','));
     s.close();
 });
 

@@ -26,10 +26,15 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
    perubahan penting: sejak v0.7.0 userscript menambahkan **Advisor in-page** di halaman
    studi iGP (Cars + dialog Supply, Manufacturers) — **elemen milik sendiri** yang
    dilekatkan (bukan modifikasi elemen game), read-only, tanpa klik/submit/jaringan,
-   tanpa request mailbox, dan **tidak pernah tampil di halaman balapan/strategi**
-   (gate `#pageId`). Pembacaan DOM game tetap hanya saat ada permintaan eksplisit
-   (read-once, tanpa polling). Rekomendasi berlabel *estimasi — bukan rumus game*.
-   Tetap menyisakan risiko *letter* § V.J (tak terhindarkan bagi *semua* userscript).
+   tanpa request mailbox (gate `#pageId`). Pembacaan DOM game tetap hanya saat ada
+   permintaan eksplisit (read-once, tanpa polling). Rekomendasi berlabel
+   *estimasi — bukan rumus game*. **Pembatasan scope v0.7.3**: atas permintaan
+   eksplisit user (dengan capture halamannya), panel estimasi read-only juga
+   melekat di halaman **pra-balapan** — HANYA di tab Setup & Strategy, TANPA
+   pernah menyentuh tab Race live (`#race` tetap 100% bersih, diverifikasi test
+   snapshot innerHTML pre/post boot), tanpa klik/submit elemen game, dan toggle
+   advisor sendiri pun tidak muncul bila wadah tab tidak ada. Tetap menyisakan
+   risiko *letter* § V.J (tak terhindarkan bagi *semua* userscript).
    Keputusan gunakan/tidak = milik user; kepatuhan mutlak tetap bisa via mode 1.
    Catatan v0.7.1: menu **capture DOM** hanya entri menu userscript (bukan UI
    halaman), 100% dipicu user, hasil disalin ke clipboard dengan redaksi PII
@@ -37,7 +42,10 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
 3. **Selama balapan live** — DILARANG secara kebijakan proyek ini (di luar ToS eksplisit
    juga: § V.H unfair advantage). Jangan pernah aktifkan di race view saat sesi berjalan.
    Catatan v0.7.0: gate `#pageId` membuat advisor in-page tidak merender apa pun di
-   halaman balapan/strategi (diverifikasi test jsdom). Catatan v0.5.1: autoload membaca
+   halaman balapan/strategi (diverifikasi test jsdom). **Catatan v0.7.3**: scope
+   diperluas atas permintaan user ke tab Setup/Strategy halaman PRA-BALAPAN saja —
+   tab Race live tetap tidak merender apa pun (test snapshot innerHTML + test
+   halaman race tanpa wadah tab = zero UI termasuk toggle). Catatan v0.5.1: autoload membaca
    halaman yang sedang terbuka di tab iGP; tidak ada adapter untuk data race
    (lap/posisi/fuel race), jadi paling banyak hanya header akun global (sama di semua
    halaman). Untuk kepatuhan ketat: jangan buka Command Center selama sesi.
@@ -73,9 +81,21 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
       tetap tanpa angka; pasar ditandai sebagai snapshot yang bisa berubah sendiri
       (refresh lelang game). Tanpa klik/submit/apapun pada tabel pasar — bid tidak
       dibuat, dibaca, atau dipicu userscript.
+    - **v0.7.3 - estimasi pra-balapan (permintaan user)**: panel read-only di tab
+      Setup/Strategy halaman pra-balapan. Sumber data hanya field yang dirender
+      game untuk user biasa: slider + **bar ideal milik game** (stylenya — bar
+      penuh = ideal belum dipelajari, dinyatakan jujur, bukan dikarang), kondisi
+      health/condition/engine, JSON strategi yang game tulis sendiri di blok data
+      inerten `#dN-StrategyJson` (BCHAN kode, tidak dieksekusi), `#raceLaps`,
+      `#dN-FuelPrediction`, bensin opsi lanjutan `#dN-AdvancedFuel`, aturan liga
+      span `#rules`. Perhitungan = aritmetika tampil (laps × fuel/lap, buffer,
+      cek dua-compound) berlabel estimasi. **Wadah `#race` (tab Race live) tidak
+      dibaca, tidak ditulis, tidak diubah**; tidak ada klik/submit pada slider,
+      stint, tombol save, ataupun elemen game mana pun.
     - Tanpa distribusi ulang data orang lain; snapshot hanya di storage browser user.
-    - Bukan: background polling halaman game, server-side scraping, atau adapter
-      untuk data balapan (tidak ada lap/posisi/fuel race yang dibaca, kapan pun).
+    - Bukan: background polling halaman game, server-side scraping, atau pembacaan
+      data race LIVE (lap/posisi/fuel saat sesi berjalan, kapan pun) — panel race
+      v0.7.3 hanya membaca tab pra-balapan yang statis.
     - SEBELUM perluas cakupan (mis. halaman Supply/Chassis): tanyakan iGP Support
       (routes S-XIV) bila ingin kepastian tertulis.
 
@@ -85,13 +105,13 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
   `@require` **0**; `unsafeWindow` **0** (`node test`, `node --check`, audit 2026-10-17).
 - Mailbox polling hanya membaca **GM storage kita sendiri** (`igpas:mb:*`) di browser
   user — bukan trafik/menuju server iGP.
-- Adapter v0.4.0–v0.6.2: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
+- Adapter v0.4.0–v0.7.3: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
   tanpa `fetch`, tanpa XHR, tanpa akses `unsafeWindow`. Fixture pengujian dari DOM
-  halaman nyata yang disanitasi (`test/fixtures/*.html`); suite: 32 core + 24 snapshot
-  (akun, mobil, supply, manufacturers) + 6 mailbox + 8 GUI (jsdom) = 70.
-- Version: userscript kini 0.6.2 (adapter manufacturer-data engine/chassis + deteksi
-  berbasis DOM utk semua varian URL tab + korelasi hasil mailbox + autoload snapshot
-  + deteksi sensor);
+  halaman nyata yang disanitasi (`test/fixtures/*.html`); suite: 51 core + 24 snapshot
+  (akun, mobil, supply, manufacturers, staff, transfers, race setup/strategy) +
+  6 mailbox + 8 GUI + 16 advisor (jsdom) = **105**.
+- Version: userscript kini 0.7.3 (estimasi setup & strategi pra-balapan di tab
+  Setup/Strategy — tab Race live tetap tanpa UI; zero automation & network);
   landing/etika disclaimer diperbarui pada commit terkait.
 
 ## Rekomendasi yang belum dilakukan (kembali ke user)

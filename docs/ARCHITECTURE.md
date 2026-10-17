@@ -52,7 +52,8 @@ pembacaan langsung artefak.
 │          snapshot akun/mobil + strategy + data lab  │
 │          + ADVISOR IN-PAGE di halaman studi iGP     │
 │          (v0.7.0: dialog Cars/Manufacturers/Supply; │
-│          halaman balapan tetap tanpa UI)            │
+│          v0.7.3: + tab Setup/Strategy pra-balapan;  │
+│          tab Race live tetap tanpa UI)              │
 │ v0.3.0: tab igpmanager = sensor senyap              │
 │ v0.4.0: adapter read-only + snapshot mailbox        │
 │ v0.5.0: + supply-data (dialog Supply engine/fuel/   │
@@ -66,11 +67,13 @@ pembacaan langsung artefak.
 │ v0.7.1: + menu capture DOM teredaksi-PII (fixture)  │
 │ v0.7.2: + advisor staff/driver (Team) + pasar        │
 │          Transfers (driver & staff CD/TD/DR)          │
+│ v0.7.3: + estimasi setup/strategi pra-balapan        │
+│          (tab Setup/Strategy; tab Race live bersih)  │
 ├─────────────────────────────────────────────────────┤
 │ AdapterRegistry (account/car/supply/manufacturers/   │
-│   staff/transfers ':ready'; race-strategy            │
-│   ':menunggu-map' — sengaja manual, tanpa selector   │
-│   fiktif)                                            │
+│   staff/transfers/race-setup/race-strategy-data      │
+│   ':ready'; race-strategy ':menunggu-map' — sengaja  │
+│   manual, tanpa selector fiktif)                     │
 │          | Boot (mount sesuai peran ROLE)           │
 └─────────────────────────────────────────────────────┘
 ```
@@ -110,6 +113,7 @@ Ini meniadakan risiko "invented data" dan membuat inti bisa di-unit-test.
 | v0.7.0 | **Advisor in-page** di tab iGP (arah baru dari user): panel rekomendasi read-only melekat di halaman studi — dialog Supply (Σ bonus, biaya, nilai/1M, tanda terbaik/termurah), Manufacturers (ranking engine/chassis dari pager aktif), Cars (prioritas alokasi DP = gap vs max rival liga `leagueDesignData`, usulan % porsi). Semua heuristik berlabel "estimasi — bukan rumus game". Gate ketat `#pageId` cars/manufacturers — race pages tanpa UI (test). Hanya elemen sendiri (`igpas-adv-*`), game untouched, tanpa mailbox request; toggle tersimpan lokal. Helper murni: designPriority, rankSuppliers, rankManufacturerItems + 11 test core; 6 test advisor jsdom | ✅ |
 | v0.7.1 | **Menu capture DOM** (GM_registerMenuCommand): salin `documentElement` teredaksi PII (nama/saldo/token/rank) ke clipboard via GM_setClipboard — tanpa UI halaman (race pages tetap bersih), dipicu user sepenuhnya, untuk pemetaan fixture halaman baru (mis. Develop/Design). Test: PageCapture redaksi end-to-end + panel supply fuel/tyre (9 test advisor) | ✅ |
 | v0.7.2 | **Advisor staff & driver** (permintaan user): halaman **Drivers & Staff** (`#pageId=staff`) — panel kondisi tim (ability/mental/health driver + estimasi pemulihan per jam, gaji/kontrak staff aktif, catatan pit crew terkunci; **tanpa angka rating fiktif** karena kartu staff hanya bintang). Halaman **Transfers** (`#pageId=transfers`) — panel pasar driver (overall/fee dari `data-overall`/`data-sort` kolom tabel, Overall/1M, special ability) + panel pasar staff per peran CD/TD/DR (top-2, trait hijau/merah dari `data-append`, nilai = overall per 1M fee). Helper murni `parseTraits` (block-green/block-red/specialA*); fixture `staff.html` + `transfers.html` dari capture DOM; 3 test advisor baru + test `parseTraits` (44 core, 12 advisor) | ✅ |
+| v0.7.3 | **Estimasi setup & strategi pra-balapan** (permintaan user, capture tab `p=race` Race/Setup/Strategy): halaman pra-balapan (`#pageId=race`) kini mendapat panel READ-ONLY **hanya** di tab **Setup** (slider vs bar ideal game `setupSlider-idealRange` — bar penuh = ideal belum dipelajari, ditulis jujur; kondisi health/condition/engine `<30%` ditandai; cuaca; lap practice; kutipan komentar engineer) dan tab **Strategy** (ringkasan per driver: total lap stint vs `#raceLaps`, bensin `#dN-AdvancedFuel` vs kebutuhan laps × `#dN-FuelPrediction` + buffer liter/lap, ban per stint dari blok data JSON `#dN-StrategyJson` + cek dua-compound aturan `#rules`, pit & risk_level). **Tab Race live (`#race`) tetap 100% bersih** — test snapshot innerHTML pre/post boot + gate tanpa wadah tab. Helper murni `parseSliderIdeal`, `setupAdvice`, `summarizeStrategy` (guards `Number(null)===0`); adapter `race-setup-data`/`race-strategy-data` + fixture sanitasi `race.html`; toggle hanya muncul saat ada panel (26 test snapshot, 16 test advisor) | ✅ |
 | — | race-strategy: sengaja manual selamanya | ⏳ |
 | v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0–v0.6.2 — account + cars + supply + manufacturers + autoload) |
 | v0.4 | Kalibrasi lap-time dari catatan user (tabel input sendiri, bukan scrape) | 🔜 |
@@ -128,6 +132,8 @@ Pemetaan selektor berasal dari **live DOM halaman iGP asli** (capture `document
 | `manufacturer-data` | halaman Manufacturers (`#pageId=manufacturers`) — kedua tabel selalu di DOM, tab aktif hanya display | `#engine-table` / `#chassis-table` → `tbody tr[data-nationality]`; nama: teks sel-1 (link `a[href*=id=]`, `<img>` flag tanpa teks); rating: sel-2 `.tooltip[data-tip="Rating: N%"]`; cost: `td.currency` ('500k'/'1m'); stats: `use[href$=#ios-eye]` (terlihat) vs `#ios-eye-off` (disembunyikan); customers: sel terakhir; total halaman: `.pager-last[rel]` |
 | `staff-data` | halaman Drivers & Staff (`#pageId=staff`) | driver: `#d1Pic`/`#d2Pic` `.driverName` (`<br>`→spasi) + href `id=definition`; `#driverStatsTable` per baris label (`Ability`/`Mental`/`Contract`/`Salary`) → kolom td per driver; health: `.trainingPreviewValue[data-val]` + `.trainingPreviewRate` (estimasi pemulihan/jam); CSV `data-driver` di `.hoverData`; staff aktif: `#staff .c-wrap` (`.c-head` peran, `.driverName` nama, gaji = angka pertama kartu, kontrak `span[id^=nStaffC]`); pit crew: `.pc-main-div[data-tip]` (terkunci); reserve: `#reserveStaff tbody tr` (hitung) |
 | `transfers-data` | halaman Transfers (`#pageId=transfers`) — kedua tabel selalu di DOM (tab aktif hanya display), isi bisa refresh otomatis (lelang) | `#driver-table`/`#staff-table` → `tbody tr[id*=_]`; nama `data-name`; overall `data-overall`; age/role: `td[2] data-sort` (angka / kode CD-TD-DR); fee/wage: `td[4]`/`td[5] data-sort`; trait: `td.hoverData[data-append]` (block-green/block-red utk staff, specialA* utk driver); countdown: `#cdTransfersRefresh` |
+| `race-setup-data` | tab Setup halaman pra-balapan (`#pageId=race` + wadah `#setup`; v0.7.3) | badge cuaca `.raceWeatherBadge` (`.waterLevelText` hujan + regex `°C`), slider: `.setupSliderWrap[id^=dN]` → label `.setupSlider-label`, value `input[type=range][value]`, bar ideal `.setupSlider-idealRange` via **atribut style** (`calc(X% ± Npx)` → `parseSliderIdeal`); nama `.driverName` (`<br>`→spasi); kondisi: `#dN-SetupComments span[id$=HealthVal/ConditionVal/EngineVal]`; engineer: `.shrinkText`; lap practice: `#dN-Laps tbody tr` ≥4 td |
+| `race-strategy-data` | tab Strategy halaman pra-balapan (`#pageId=race` + wadah `#strategy`; v0.7.3) | `#raceLaps`; aturan liga: span `#rules` (JSON `refuelling`/`two_tyres`); strategi per driver: blok data **inerten** `script[type=application/json]#dN-StrategyJson` (stint/tyre/laps + `stints`=jumlah aktif, `pits`, `risk_level`); bensin: `#dN-FuelPrediction` (L/lap) + input `#dN-AdvancedFuel` (atribut value); total versi game `#dN-TotalLaps`. Rekap punya game `#dN-SetupImpactHistory` masih kosong pra-practice — TIDAK dipakai v0.7.3 |
 
 Aturan main adapter (bake-in, bukan kebijakan terpisah):
 
@@ -139,7 +145,10 @@ Aturan main adapter (bake-in, bukan kebijakan terpisah):
    dibaca hanya saat ada permintaan. Tanpa polling halaman game.
 3. **pageId gate** — adapter mobil hanya aktif di halaman Cars; adapter
    manufacturers hanya aktif di halaman Manufacturers (`#pageId=manufacturers`);
-   tidak ada jalur baca ke halaman balapan/strategi.
+   adapter race-setup/race-strategy hanya aktif di halaman pra-balapan
+   (`#pageId=race`) dan hanya membaca wadah tab `#setup`/`#strategy` — wadah
+   `#race` (tab Race live) tidak pernah dibaca/diolah, dan halaman tanpa
+   wadah tersebut benar-benar tanpa jejak.
 4. **Kegagalan jujur** — halaman tak cocok → `collect-result {ok:false,error}`,
    ditampilkan di Command Center, bukan angka salah.
 5. **dialog gate (supply)** — adapter supply hanya aktif bila dialog Supply
@@ -158,9 +167,11 @@ Semua halaman yang direncanakan sudah dipetakan (v0.6.2): **Manufacturers**
 `manufacturers-chassis.html`) kini terpasang sebagai adapter
 `manufacturer-data`; **Supply** via gate dialog (juga URL-independent). Selektor
 di atas dapat berubah bila iGP meredesign — jika capture gagal, pesan error
-muncul jelas di GUI. Fixture: `supply-*.html`, `manufacturers-*.html`
-(24 test jsdom snapshot). Race-strategy tetap **manual selamanya** (bukan
-adapter).
+muncul jelas di GUI. Fixture: `supply-*.html`, `manufacturers-*.html`,
+`staff.html`, `transfers.html`, `race.html` (24 test jsdom snapshot). Input
+strategi tetap **manual selalu** — advisor race v0.7.3 hanya MENAMBAHKAN
+panel estimasi read-only di tab Setup/Strategy pra-balapan, tidak pernah
+mengubah strategi/tabrakan dengan input game.
 
 ## 5. Etika & batasan
 

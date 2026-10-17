@@ -403,4 +403,102 @@ t('parseTraits: block-green/block-red dan specialA1 terbaca, None dibuang', () =
     assert.deepStrictEqual(IGPCore.parseTraits(null), { boost: [], weaken: [], special: [] });
 });
 
+/* ---------- parseSliderIdeal / setupAdvice (v0.7.3) ---------- */
+
+t('parseSliderIdeal: style bar ideal game → {left,width}', () => {
+    const r = IGPCore.parseSliderIdeal('left:calc(0% + 2px);width:calc(100% - 4px)');
+    assert.deepStrictEqual(r, { left: 0, width: 100 });
+    const n = IGPCore.parseSliderIdeal('left:calc(20% + 2px);width:calc(40% - 4px)');
+    assert.deepStrictEqual(n, { left: 20, width: 40 });
+    assert.strictEqual(IGPCore.parseSliderIdeal('width:40px'), null);
+    assert.strictEqual(IGPCore.parseSliderIdeal(null), null);
+    assert.strictEqual(IGPCore.parseSliderIdeal(''), null);
+});
+
+t('setupAdvice: bar setebal track (width 100%) = ideal belum dipelajari', () => {
+    const r = IGPCore.setupAdvice({ ideal: { left: 0, width: 100 }, current: 50 });
+    assert.strictEqual(r.learned, false);
+    assert.strictEqual(r.current, 50);
+    assert.strictEqual(r.mid, undefined);
+    assert.strictEqual(IGPCore.setupAdvice({ ideal: null, current: 50 }).learned, false);
+});
+
+t('setupAdvice: bar menyempit → tengah ideal + selisih arah saja', () => {
+    const r = IGPCore.setupAdvice({ ideal: { left: 20, width: 40 }, current: 50 });
+    assert.strictEqual(r.learned, true);
+    assert.strictEqual(r.mid, 40);          // 20 + 40/2
+    assert.strictEqual(r.delta, 10);        // 50 - 40
+    const quarter = IGPCore.setupAdvice({ ideal: { left: 10, width: 25 }, current: 30 });
+    assert.strictEqual(quarter.mid, 22.5);  // 10 + 12.5
+    assert.strictEqual(quarter.delta, 7.5);
+    const noCur = IGPCore.setupAdvice({ ideal: { left: 20, width: 40 }, current: null });
+    assert.strictEqual(noCur.delta, null);
+});
+
+/* ---------- summarizeStrategy (v0.7.3) ---------- */
+
+t('summarizeStrategy: kasus fixture race (63 lap, 2.5 L/lap, bensin 174 L)', () => {
+    const st = { stint: {
+        1: { tyre: 'M', fuel: 174, laps: 16 },
+        2: { tyre: 'M', fuel: 1, laps: 16 },
+        3: { tyre: 'M', fuel: 1, laps: 16 },
+        4: { tyre: 'S', fuel: 1, laps: 16 },
+        5: { tyre: 'S', fuel: 1, laps: 1 },
+    }, isDefault: 1, auto_fuel: 0, pits: 3, stints: 4, risk_level: 60 };
+    const r = IGPCore.summarizeStrategy({
+        strategy: st, raceLaps: 63, fuelPerLap: 2.5, advancedFuel: 174,
+        ruleTwoTyres: true, ruleRefuelling: false,
+    });
+    assert.strictEqual(r.ok, true);
+    const v = r.values;
+    assert.strictEqual(v.stints.length, 4);        // stints:4 — stint ke-5 nonaktif
+    assert.strictEqual(v.lapsTotal, 64);
+    assert.strictEqual(v.lapsShort, 0);
+    assert.strictEqual(v.fuelNeed, 157.5);         // 63 * 2.5
+    assert.strictEqual(v.fuelBuffer, 16.5);
+    assert.strictEqual(v.bufferLaps, 6.6);
+    assert.deepStrictEqual(v.tyres, ['M', 'M', 'M', 'S']);
+    assert.deepStrictEqual(v.dryUnique, ['M', 'S']);
+    assert.strictEqual(v.twoTyreOk, true);
+    assert.strictEqual(v.pits, 3);
+    assert.strictEqual(v.risk, 60);
+    assert.strictEqual(v.refuelling, false);
+});
+
+t('summarizeStrategy: dua-compound wajib tapi hanya 1 compound kering → gagal', () => {
+    const st = { stint: { 1: { tyre: 'M', laps: 30 }, 2: { tyre: 'M', laps: 30 } }, stints: 2, pits: 1 };
+    const r = IGPCore.summarizeStrategy({ strategy: st, raceLaps: 60, fuelPerLap: 2, ruleTwoTyres: true });
+    assert.strictEqual(r.values.twoTyreOk, false);
+    const na = IGPCore.summarizeStrategy({ strategy: st, raceLaps: 60, fuelPerLap: 2, ruleTwoTyres: false });
+    assert.strictEqual(na.values.twoTyreOk, null); // aturan tidak berlaku → n/a
+});
+
+t('summarizeStrategy: data tak tampil → null (bukan nol karangan; Number(null)===0)', () => {
+    const st = { stint: { 1: { tyre: 'M', laps: 10 } }, stints: 1 };
+    const r = IGPCore.summarizeStrategy({
+        strategy: st, raceLaps: '', fuelPerLap: null, advancedFuel: undefined,
+        ruleTwoTyres: true,
+    });
+    const v = r.values;
+    assert.strictEqual(v.raceLaps, null);
+    assert.strictEqual(v.fuelPerLap, null);
+    assert.strictEqual(v.fuelNeed, null);
+    assert.strictEqual(v.fuelBuffer, null);
+    assert.strictEqual(v.bufferLaps, null);
+    assert.strictEqual(v.lapsShort, null);
+    assert.strictEqual(v.advancedFuel, null);
+    assert.strictEqual(v.pits, null);
+    assert.strictEqual(v.risk, null);
+    assert.strictEqual(v.twoTyreOk, false); // aturan wajib, hanya M di stint aktif
+});
+
+t('summarizeStrategy: strategi rusak / struktur tak dikenal → ok:false jujur', () => {
+    assert.strictEqual(IGPCore.summarizeStrategy({ strategy: null }).ok, false);
+    assert.strictEqual(IGPCore.summarizeStrategy({ strategy: {} }).ok, false);
+    assert.strictEqual(IGPCore.summarizeStrategy({ strategy: { stint: {} } }).ok, false);
+    const r = IGPCore.summarizeStrategy({});
+    assert.strictEqual(r.ok, false);
+    assert.ok(r.error && r.error.length > 3);
+});
+
 console.log('\nSemua ' + n + ' test lulus ✔');

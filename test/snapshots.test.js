@@ -193,7 +193,7 @@ t('adapter belum ada -> pesan error jujur', () => {
 
 t('status registry jujur (ready vs menunggu-map)', () => {
     eq(AdapterRegistry.status(),
-        'account-data:ready, car-data:ready, supply-data:ready, manufacturer-data:ready, staff-data:ready, transfers-data:ready, race-strategy:menunggu-map');
+        'account-data:ready, car-data:ready, supply-data:ready, manufacturer-data:ready, staff-data:ready, transfers-data:ready, race-setup-data:ready, race-strategy-data:ready, race-strategy:menunggu-map');
 });
 
 t('Storage: snapshot simpan/baca/hapus', () => {
