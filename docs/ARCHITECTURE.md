@@ -77,5 +77,5 @@ studi sebelumnya.
 - Peringatan ToS iGP Manager tetap berlaku untuk *fitur apapun yang aktif saat
   balapan*. Kerangka ini dengan sengaja dibuat tidak mampu berinteraksi
   dengan elemen game saat balapan.
-- Lisensi GPL-3.0 mengikuti semangat A.C.A.S; kode dari A.C.A.S **tidak
+- Lisensi GPL-3.0-or-later mengikuti semangat A.C.A.S; kode dari A.C.A.S **tidak
   disalin** — hanya pola arsitektur (dari analisis, bukan dari copy kode).

@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
-// @namespace    IGPAS
-// @version      0.1.0
+// @namespace    https://github.com/Cnagnn/igpas
+// @version      0.1.1
 // @description  Race strategy study calculators for iGP Manager (fuel, tyres, pit window, stints). Manual input — study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint). Input manual — alat studi, bukan bantuan saat balapan, tanpa otomasi.
-// @license      GPL-3.0
+// @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
 // @supportURL   https://github.com/Cnagnn/igpas/issues
 // @match        https://igpmanager.com/*
@@ -19,7 +19,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.1.0';
+    const VERSION = '0.1.1';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).

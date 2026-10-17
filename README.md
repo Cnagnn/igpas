@@ -46,4 +46,4 @@ node test/core.test.js
 
 ## Lisensi
 
-GPL-3.0.
+GPL-3.0-or-later (SPDX).
