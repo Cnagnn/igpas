@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.3.0
+// @version      0.4.0
 // @description  Race strategy study calculators for iGP Manager (fuel, tyres, pit window, stints). Manual input — study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint). Input manual — alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
@@ -21,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.3.0';
+    const VERSION = '0.4.0';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -306,6 +306,7 @@
 
     const Keys = Object.freeze({
         profiles: 'igpas:profiles',   // { [name]: { fieldId: value } }
+        snapshots: 'igpas:snapshots', // { [kind]: { data, ts } } — hasil Capture
     });
 
     const Storage = {
@@ -319,6 +320,18 @@
             const all = Storage.getProfiles();
             delete all[name];
             gm.set(Keys.profiles, all);
+        },
+        getSnapshot(kind) {
+            const all = gm.get(Keys.snapshots, {}) || {};
+            return all[kind] || null;
+        },
+        saveSnapshot(kind, data) {
+            const all = gm.get(Keys.snapshots, {}) || {};
+            all[kind] = { data, ts: Date.now() };
+            gm.set(Keys.snapshots, all);
+        },
+        clearSnapshots() {
+            gm.del(Keys.snapshots);
         },
     };
 
@@ -391,18 +404,105 @@
     };
 
     /**
-     * Registry adapter data (mobil, manufaktur, strategi). Status dipublikasikan
-     * apa adanya: 'selectors-tbd' = kerangka siap, pemetaan DOM belum dilakukan
-     * (butuh sesi validasi halaman nyata). Tidak ada selector fiktif.
+     * Adapter read-only halaman iGP (Fase 3 — dipetakan dari DOM halaman nyata).
+     * Aturan main (ToS § V.F/V.J):
+     *  - HANYA membaca; tidak pernah menulis, mengklik, atau mengirim form.
+     *  - Berjalan HANYA saat GUI meminta (read-once per klik Capture), tanpa polling.
+     *  - pageId gate: adapter mobil hanya aktif di halaman Cars (p=cars) — bukan
+     *    halaman balapan/strategi. Adapter akun membaca header global saja.
+     */
+    const IgpAccountAdapter = {
+        id: 'account-data',
+        desc: 'snapshot akun (header global iGP)',
+        captures(doc) {
+            const $ = s => doc.querySelector(s);
+            const name = $('#myProfileName'), rankVal = $('#managerRankValue');
+            if (!name && !rankVal) return null; // bukan halaman iGP yang sudah login
+            const icon = $('#managerRankIcon');
+            const tier = icon ? (icon.getAttribute('src') || '').match(/rank\/([a-z0-9-]+)-\d+\.webp/i) : null;
+            const level = $('.myProfileStatsStack .teal');
+            return {
+                manager: name ? name.textContent.trim() : null,
+                level: level ? level.textContent.trim() : null,
+                rank: rankVal ? rankVal.textContent.trim() : null,
+                rankTier: tier ? tier[1] : null,
+                balance: $('#balanceText') ? $('#balanceText').textContent.trim() : null,
+                tokens: $('#tokens-total') ? $('#tokens-total').textContent.trim() : null,
+            };
+        },
+    };
+
+    const IgpCarsAdapter = {
+        id: 'car-data',
+        desc: 'atribut mobil + supplier + DP + bonus (halaman Cars)',
+        captures(doc) {
+            const pid = doc.getElementById('pageId');
+            if (!pid || pid.value !== 'cars') return null; // gate: halaman Cars saja
+            const txt = (root, sel) => {
+                const el = root.querySelector(sel);
+                return el ? el.textContent.trim() : null;
+            };
+            const attrs = {};
+            for (const row of doc.querySelectorAll('#carAttributesDisplay .attribute-row')) {
+                const key = (row.id || '').replace(/^wrap-/, '');
+                if (!key) continue; // baris form edit tidak punya id wrap-*
+                attrs[key] = {
+                    label: txt(row, '.attribute-rating-header span:not(.ratingVal)'),
+                    val: Number(txt(row, '.ratingVal')),
+                };
+            }
+            if (!Object.keys(attrs).length) return null;
+            const dpEl = doc.querySelector('#carsDesignPoints');
+            const host = doc.querySelector('#carAttributes');
+            let best = {};
+            try { best = JSON.parse(txt(doc, '#leagueDesignData') || '{}') || {}; } catch (e) { best = {}; }
+            const bonuses = [];
+            for (const s of doc.querySelectorAll('#carAttributesBonuses .tooltip')) {
+                const m = (s.getAttribute('data-tip') || '').match(/^([A-Za-z ]+):\s*([+-]?\d+)$/);
+                if (m) bonuses.push({ key: m[1], bonus: parseInt(m[2], 10) });
+            }
+            const suppliers = [];
+            for (const w of doc.querySelectorAll('.carsSuppliers .c-wrap')) {
+                const img = w.querySelector('img[src*="/supply/"]');
+                const m = img ? (img.getAttribute('src') || '').match(/\/supply\/(?:light\/)?(\d+)\.png/) : null;
+                const kind = (w.textContent || '').match(/\b(Engines|Fuel|Tyres)\b/);
+                if (m) suppliers.push({ kind: kind ? kind[1].toLowerCase() : null, id: m[1] });
+            }
+            return {
+                carType: txt(host, '.c-head h2 span'),
+                dmax: host ? parseInt(host.getAttribute('data-dmax'), 10) || null : null,
+                designPoints: dpEl ? parseInt(dpEl.getAttribute('data-dp'), 10) || null : null,
+                attrs, best, bonuses, suppliers,
+            };
+        },
+    };
+
+    /**
+     * Registry adapter data. Status dipublikasikan apa adanya: ':ready' = adapter
+     * read-only terpasang; ':menunggu-map' = pemetaan DOM halaman belum dilakukan.
      */
     const AdapterRegistry = {
         defs: [
-            { id: 'car-data', desc: 'data mobil' },
-            { id: 'manufacturer-data', desc: 'data manufaktur' },
-            { id: 'race-strategy', desc: 'strategi balapan (v0.2: input manual)' },
+            { id: 'account-data', adapter: IgpAccountAdapter },
+            { id: 'car-data', adapter: IgpCarsAdapter },
+            { id: 'manufacturer-data', desc: 'pemilihan manufaktur (menunggu capture halaman Supply)' },
+            { id: 'race-strategy', desc: 'strategi balapan (input manual, selalu)' },
         ],
+        capture(kind, doc) {
+            const d = AdapterRegistry.defs.find(x => x.id === kind);
+            if (!d || !d.adapter) return { ok: false, error: 'adapter belum tersedia: ' + kind };
+            const target = doc || (typeof document !== 'undefined' ? document : null);
+            if (!target) return { ok: false, error: 'dokumen tidak tersedia' };
+            try {
+                const data = d.adapter.captures(target);
+                if (!data) return { ok: false, error: 'halaman tidak cocok untuk ' + kind };
+                return { ok: true, data };
+            } catch (e) {
+                return { ok: false, error: String(e && e.message || e) };
+            }
+        },
         status() {
-            return AdapterRegistry.defs.map(d => d.id + ':selectors-tbd').join(', ');
+            return AdapterRegistry.defs.map(d => d.id + (d.adapter ? ':ready' : ':menunggu-map')).join(', ');
         },
     };
 
@@ -704,6 +804,55 @@
                 esc(r.values.best) + '</strong> · * = rating belum lengkap · skor = Σ(rating×bobot)/Σbobot (0–10)</div>';
         }
 
+        function snapRow(k, v) {
+            return '<div class="row"><span>' + esc(k) + '</span><span>' +
+                esc(v === null || v === undefined || v === '' ? '—' : String(v)) + '</span></div>';
+        }
+
+        function renderSnapshots() {
+            const badge = $('igpas-snap-badge');
+            const acc = $('igpas-snap-account-body');
+            const car = $('igpas-snap-car-body');
+            if (!acc || !car) return;
+            const a = Storage.getSnapshot('account-data');
+            const c = Storage.getSnapshot('car-data');
+            if (badge) badge.textContent =
+                (a ? 'akun ✓' : 'akun –') + ' · ' + (c ? 'mobil ✓' : 'mobil –');
+
+            if (a) {
+                acc.innerHTML =
+                    snapRow('Manager', a.data.manager) +
+                    snapRow('Level', a.data.level) +
+                    snapRow('Rank', (a.data.rank || '') + (a.data.rankTier ? ' (' + a.data.rankTier + ')' : '')) +
+                    snapRow('Saldo', a.data.balance) +
+                    snapRow('Token', a.data.tokens) +
+                    '<div class="hint">tangkap ' + esc(new Date(a.ts).toLocaleTimeString()) + '</div>';
+            } else {
+                acc.innerHTML = '<span class="hint">belum ada — klik Capture (tab iGP mana pun yang sudah login)</span>';
+            }
+
+            if (c) {
+                const d = c.data;
+                const attrs = Object.keys(d.attrs || {}).map(k =>
+                    '<tr><td>' + esc(d.attrs[k].label || k) + '</td><td class="num">' +
+                    esc(d.attrs[k].val) + '</td></tr>').join('');
+                const bonuses = (d.bonuses || []).map(b =>
+                    esc(b.key + ' ' + (b.bonus > 0 ? '+' : '') + b.bonus)).join(' · ') || '—';
+                const sup = (d.suppliers || []).map(s =>
+                    esc((s.kind || '?') + ' #' + s.id)).join(' · ') || '—';
+                car.innerHTML =
+                    snapRow('Tipe mobil', d.carType) +
+                    snapRow('Design points', d.designPoints) +
+                    snapRow('Skala maks (dmax)', d.dmax) +
+                    '<table><tr><th>Atribut</th><th>Nilai</th></tr>' + attrs + '</table>' +
+                    '<div class="hint">Bonus supplier: ' + bonuses + '</div>' +
+                    '<div class="hint">Supplier: ' + sup + '</div>' +
+                    '<div class="hint">tangkap ' + esc(new Date(c.ts).toLocaleTimeString()) + '</div>';
+            } else {
+                car.innerHTML = '<span class="hint">belum ada — buka halaman <em>Cars</em> di tab iGP, lalu klik Capture</span>';
+            }
+        }
+
         function mount() {
             // Kalkulator & profil (dipindah dari panel floating lama)
             const calcShell = $('igpas-calc-panel');
@@ -722,6 +871,33 @@
             const ll = $('ig-lab-load');   if (ll) ll.addEventListener('click', () => labLoad(false));
             const le = $('ig-lab-example'); if (le) le.addEventListener('click', labExample);
             const lr = $('ig-lab-rank');   if (lr) lr.addEventListener('click', labRank);
+
+            // Snapshot akun & mobil (Fase 3 — baca-saja, read-once per klik)
+            const cap = $('igpas-snap-capture');
+            if (cap) cap.addEventListener('click', () => {
+                const st = $('igpas-snap-status');
+                if (st) st.textContent = 'permintaan dikirim ke tab iGP… (baca-saja, sekali per klik)';
+                Mailbox.send('collect-request', { kinds: ['account-data', 'car-data'] });
+            });
+            const clr = $('igpas-snap-clear');
+            if (clr) clr.addEventListener('click', () => {
+                Storage.clearSnapshots();
+                const st = $('igpas-snap-status');
+                if (st) st.textContent = 'snapshot dihapus.';
+                renderSnapshots();
+            });
+
+            Mailbox.on('collect-result', p => {
+                const pay = (p && p.payload) || {};
+                const st = $('igpas-snap-status');
+                if (pay.ok && pay.data) {
+                    Storage.saveSnapshot(pay.kind, pay.data);
+                    if (st) st.textContent = pay.kind + ' tersimpan (' + new Date().toLocaleTimeString() + ').';
+                } else if (st) {
+                    st.textContent = '✗ ' + pay.kind + ': ' + (pay.error || 'tidak ada data');
+                }
+                renderSnapshots();
+            });
 
             Mailbox.on('report', p => {
                 reports.set(p.from, {
@@ -775,6 +951,22 @@
                     profiles: Object.keys(Storage.getProfiles()).length,
                 });
             });
+
+            Mailbox.on('collect-request', p => {
+                // Baca-saja: jalankan adapter atas halaman yang SEDANG terbuka,
+                // sekali per permintaan — tanpa polling, tanpa sentuhan elemen game.
+                const kinds = (p && p.payload && p.payload.kinds) || ['account-data', 'car-data'];
+                for (const kind of kinds) {
+                    const res = AdapterRegistry.capture(kind);
+                    Mailbox.send('collect-result', {
+                        kind,
+                        ok: res.ok,
+                        data: res.data || null,
+                        error: res.error || null,
+                        pageUrl: (typeof location !== 'undefined') ? location.href : '?',
+                    });
+                }
+            });
         }
     }
 
@@ -782,6 +974,6 @@
 
     // Ekspor untuk pengujian Node — tanpa efek di browser (module tak terdefinisi).
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { IGPCore };
+        module.exports = { IGPCore, AdapterRegistry, Storage };
     }
 })();

@@ -27,14 +27,18 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
    bagi *semua* userscript). Keputusan gunakan/tidak = milik user.
 3. **Selama balapan live** — DILARANG secara kebijakan proyek ini (di luar ToS eksplisit
    juga: § V.H unfair advantage). Jangan pernah aktifkan di race view saat sesi berjalan.
-4. **Fase 3 (adapter data otomatis)** — area GRAY terbesar:
-   - Wajib: data *yang memang ditampilkan* ke user biasa di halaman studi (bukan
-     tersembunyi/undocumented); *read-on-request* manual (tanpa polling latar di
-     halaman game); tanpa distribusi ulang data orang lain.
-   - Bukan: backgroud polling halaman game, capture saat race live, server-side
-     scraping.
-   - SEBELUM implement: tanyakan iGP Support (routes § XIV) bila ingin kepastian
-     tertulis.
+4. **Fase 3 (adapter data otomatis, v0.4.0 TERLAKSANA)** - desain kepatuhan:
+    - Hanya membaca data *yang memang ditampilkan* ke user biasa di halaman studi
+      (Cars, header akun) - bukan tersembunyi/undocumented.
+    - **Read-on-request manual**: adapter hanya berjalan saat user klik *Capture* di
+      Command Center (sekali per klik, tanpa polling latar di halaman game).
+    - **pageId gate**: adapter mobil hanya aktif di halaman Cars - tak ada jalur baca
+      ke halaman balapan/strategi.
+    - Tanpa distribusi ulang data orang lain; snapshot hanya di storage browser user.
+    - Bukan: background polling halaman game, capture saat race live, server-side
+      scraping.
+    - SEBELUM perluas cakupan (mis. halaman Supply/Chassis): tanyakan iGP Support
+      (routes S-XIV) bila ingin kepastian tertulis.
 
 ## Fakta teknis pendukung (bukti audit internal)
 
@@ -42,6 +46,9 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
   `@require` **0**; `unsafeWindow` **0** (`node test`, `node --check`, audit 2026-10-17).
 - Mailbox polling hanya membaca **GM storage kita sendiri** (`igpas:mb:*`) di browser
   user — bukan trafik/menuju server iGP.
+- Adapter v0.4.0: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
+  tanpa `fetch`, tanpa XHR, tanpa akses `unsafeWindow`. Fixture pengujian dari DOM
+  halaman nyata yang disanitasi (`test/fixtures/*.html`, 11 test jsdom).
 - Version: landing/etika disclaimer ditambahkan commit terkait; userscript tak berubah.
 
 ## Rekomendasi yang belum dilakukan (kembali ke user)

@@ -48,8 +48,10 @@ pembacaan langsung artefak.
 │          packet TTL 30s; heartbeat 'igpas:gui:*')   │
 ├─────────────────────────────────────────────────────┤
 │ UI       HANYA di Command Center (peran gui):       │
-│          kalkulator tersemat + strategy + data lab  │
-│          v0.3.0: tab igpmanager = sensor senyap     │
+│          kalkulator + snapshot akun/mobil +         │
+│          strategy + data lab                        │
+│ v0.3.0: tab igpmanager = sensor senyap              │
+│ v0.4.0: adapter read-only + snapshot mailbox        │
 ├─────────────────────────────────────────────────────┤
 │ AdapterRegistry (mobil/manufaktur/strategi — status │
 │          jujur 'selectors-tbd', tanpa selector      │
@@ -79,18 +81,35 @@ Ini meniadakan risiko "invented data" dan membuat inti bisa di-unit-test.
 | v0.1 | Kerangka + 4 kalkulator + profil + UI | ✅ |
 | v0.2 | Dual-tab GUI (mailbox bridge) + engine rekomendasi (strategyRecommendation, rankOptions) + data lab + AdapterRegistry 'selectors-tbd' | ✅ |
 | v0.3.0 | Panel floating dihapus — tab iGP sensor senyap; kalkulator+profil pindah ke Command Center; landing & GUI neobrutalism semi-rounded | ✅ |
-| v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | 🔜 |
+| v0.4.0 | Fase 3 (relaunch): adapter **account-data** (header global) & **car-data** (halaman Cars) read-only, read-once per klik Capture dari GUI; snapshot tersimpan lokal; fixture DOM nyata + jsdom | ✅ |
+| — | manufacturer-data: menunggu capture halaman Supply/Chassis; race-strategy: sengaja manual selamanya | ⏳ |
+| v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0 — account + cars) |
 | v0.4 | Kalibrasi lap-time dari catatan user (tabel input sendiri, bukan scrape) | 🔜 |
 
-## 4b. Rencana Fase 3 — Adapter DOM (detail penerapan pola A.C.A.S)
+## 4b. Fase 3 (v0.4.0) — Adapter DOM read-only (TERLAKSANA)
 
-Mengikuti jejak `getSiteData`/`addSupportedChessSite` A.C.A.S, adapter v0.3
-harus: (1) daftar page-type → daftar kandidat selector, (2) `probe()` dengan
-`MutationObserver` + timeout, (3) kegagalan dinyatakan eksplisit di panel
-(bukan diam-diam menampilkan angka salah), (4) tidak pernah membaca saat flag
-"live race" aktif. Pemetaan DOM nyata nantinya divalidasi lewat
-`analyze_web_bundle` (REA) pada halaman yang dibuka user — lihat laporan
-studi sebelumnya.
+Pemetaan selektor berasal dari **live DOM halaman iGP asli** (capture `document
+.documentElement.outerHTML` oleh pengguna, disanitasi lalu dijadikan fixture
+`test/fixtures/*.html`). Adapter aktif:
+
+| Adapter | Sumber | Selektor kunci |
+|---|---|---|
+| `account-data` | header global (semua halaman login) | `#myProfileName`, `#managerRankValue`, `#managerRankIcon[src*=rank]`, `#balanceText`, `#tokens-total`, `.myProfileStatsStack .teal` |
+| `car-data` | halaman Cars (`#pageId=cars`) | `#carAttributes[data-dmax]`, `#carAttributesDisplay .attribute-row` (`#wrap-{key}`, `.ratingVal`), `#carsDesignPoints[data-dp]`, `#carAttributesBonuses .tooltip[data-tip]`, `#leagueDesignData` (JSON best rival), `.carsSuppliers .c-wrap img[src*=/supply/]` |
+
+Aturan main adapter (bake-in, bukan kebijakan terpisah):
+
+1. **Baca-saja total** — tidak pernah klik/submit/tulis apa pun di halaman game.
+2. **Read-once per klik** — berjalan hanya saat GUI mengirim `collect-request`
+   lewat mailbox; sensor menjawab `collect-result` lalu selesai. Tanpa polling.
+3. **pageId gate** — adapter mobil menolak halaman selain Cars; tidak ada jalur
+   baca ke halaman balapan/strategi.
+4. **Kegagalan jujur** — halaman tak cocok → `collect-result {ok:false,error}`,
+   ditampilkan di Command Center, bukan angka salah.
+
+Menunggu capture: halaman **Supply/Chassis** (pemilihan manufaktur) →
+adapter `manufacturer-data`. Selektor di atas dapat berubah bila iGP
+meredesign — jika capture gagal, pesan error muncul jelas di GUI.
 
 ## 5. Etika & batasan
 

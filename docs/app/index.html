@@ -72,6 +72,15 @@
     #igpas-prof { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
     .igpas-foot { text-align: center; color: var(--muted); font-size: 11px; font-weight: 700; margin-top: 6px; }
 
+    /* Snapshot akun & mobil (Fase 3) */
+    .igpas-snap-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 0 0 14px; }
+    .snapcard { background: var(--card, #fff); border: 2px solid var(--ink); border-radius: 10px;
+        padding: 12px; box-shadow: 3px 3px 0 var(--ink); }
+    .snapcard h3 { margin: 0 0 8px; font-size: 14px; }
+    .snapcard .row { display: flex; justify-content: space-between; gap: 10px; margin: 3px 0; font-size: 13px; }
+    .snapcard .row span:first-child { color: var(--muted); font-weight: 600; }
+    .snapcard .row span:last-child { font-weight: 800; }
+
     .rec { padding: 10px 12px; border: 2px solid var(--ink); border-radius: 10px;
            background: #EAF3FF; box-shadow: 3px 3px 0 var(--ink); margin: 8px 0; }
     .rec .why { color: #37414d; font-size: 12.5px; }
@@ -118,6 +127,29 @@
            lokal via GM storage). Konten dirender oleh userscript saat badge atas jadi "live".</p>
         <div id="igpas-calc-panel"><span class="hint">⚠ Userscript belum aktif di tab ini —
            pastikan sudah terpasang lalu muat ulang halaman.</span></div>
+    </section>
+
+    <section id="igpas-snap">
+        <h2>📥 Account &amp; Car Snapshot <span class="badge" id="igpas-snap-badge">—</span></h2>
+        <p class="hint">Autoload read-only: klik <strong>Capture</strong> → tab iGP yang terbuka
+           membaca halamannya <strong>sekali per klik</strong> (tidak ada polling, tidak menyentuh
+           elemen game) dan mengirim snapshot ke sini. Untuk snapshot mobil, buka halaman
+           <em>Cars</em> di tab iGP dulu. Snapshot tersimpan lokal di browser Anda.</p>
+        <div class="igpas-snap-actions">
+            <button id="igpas-snap-capture">📥 Capture now (request ke tab iGP)</button>
+            <button id="igpas-snap-clear">🗑️ Hapus snapshot</button>
+            <span class="hint" id="igpas-snap-status" style="margin:0"></span>
+        </div>
+        <div class="grid2">
+            <div class="snapcard">
+                <h3>👤 Account</h3>
+                <div id="igpas-snap-account-body"><span class="hint">belum ada</span></div>
+            </div>
+            <div class="snapcard">
+                <h3>🏎️ Car</h3>
+                <div id="igpas-snap-car-body"><span class="hint">belum ada</span></div>
+            </div>
+        </div>
     </section>
 
     <section id="igpas-strategy">

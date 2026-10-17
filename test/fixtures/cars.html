@@ -1,0 +1,38 @@
+<!DOCTYPE html><html><head><title>Cars</title></head><body>
+<div id="myProfileContainer" style="display:none;"><div id="myProfile">
+  <a href="p=manager" id="mManager"><span id="myProfilePic"><img src="/img/pic.png" class="pic-t"></span>
+    <div id="myProfileName">Tester</div>
+    <div class="myProfileStatsStack"><span class="teal">L7</span><span><img src="/img/rank.svg" alt="R"><span>1200</span></span></div>
+  </a></div></div>
+<div id="headerBg"><div id="header">
+  <div id="head-r">
+    <a href="p=progress" id="managerRank"><img id="managerRankIcon" src="/img/rank/challenger-i-256.webp" alt="R"><span id="managerRankValue">1200</span></a>
+    <a href="p=finances" id="balance"><span id="balanceText"><img src="/img/cash.png">8.4m</span></a>
+    <a href="d=tokens" id="tokens"><span id="tokens-total">12</span></a>
+  </div>
+</div></div>
+<div id="page-wrap"><div id="page-content"><span id="page-title-text">Cars</span>
+<input type="hidden" id="pageId" value="cars">
+<div id="carsDesignPoints" class="tooltip" data-dp="200"><span id="designPointsTotal">200</span> <span>DP</span></div>
+<div id="carAttributes" data-dmax="300">
+  <div class="c-head"><h2><span>Sprint car</span></h2></div>
+  <div id="carAttributesDisplay">
+    <div class="attribute-row" id="wrap-acceleration"><div class="attribute-rating"><div class="attribute-rating-header"><span>Acceleration</span><span class="ratingVal red">53</span></div><div class="ratingBar"><div style="width:18%" class="red"></div></div></div></div>
+    <div class="attribute-row" id="wrap-braking"><div class="attribute-rating"><div class="attribute-rating-header"><span>Braking</span><span class="ratingVal red">65</span></div><div class="ratingBar"><div style="width:22%" class="red"></div></div></div></div>
+    <div class="attribute-row" id="wrap-cooling"><div class="attribute-rating"><div class="attribute-rating-header"><span>Cooling</span><span class="ratingVal red">50</span></div><div class="ratingBar"><div style="width:17%" class="red"></div></div></div></div>
+    <div class="attribute-row" id="wrap-downforce"><div class="attribute-rating"><div class="attribute-rating-header"><span>Downforce</span><span class="ratingVal red">50</span></div><div class="ratingBar"><div style="width:17%" class="red"></div></div></div></div>
+    <div class="attribute-row" id="wrap-fuel_economy"><div class="attribute-rating"><div class="attribute-rating-header"><span>Fuel economy</span><span class="ratingVal red">43</span></div><div class="ratingBar"><div style="width:15%" class="red"></div></div></div></div>
+    <div class="attribute-row" id="wrap-handling"><div class="attribute-rating"><div class="attribute-rating-header"><span>Handling</span><span class="ratingVal red">50</span></div><div class="ratingBar"><div style="width:17%" class="red"></div></div></div></div>
+    <div class="attribute-row" id="wrap-reliability"><div class="attribute-rating"><div class="attribute-rating-header"><span>Reliability</span><span class="ratingVal red">50</span></div><div class="ratingBar"><div style="width:17%" class="red"></div></div></div></div>
+    <div class="attribute-row" id="wrap-tyre_economy"><div class="attribute-rating"><div class="attribute-rating-header"><span>Tyre economy</span><span class="ratingVal red">47</span></div><div class="ratingBar"><div style="width:16%" class="red"></div></div></div></div>
+  </div>
+  <div id="carAttributesBonuses"><span class="tooltip" data-tip="Braking: +15">+15</span><span class="tooltip" data-tip="Fuel economy: -7">-7</span><span class="tooltip" data-tip="Acceleration: +3">+3</span><span class="tooltip" data-tip="Tyre economy: -3">-3</span><span class="tooltip" data-tip="Cooling: 0">0</span><span class="tooltip" data-tip="Downforce: 0">0</span><span class="tooltip" data-tip="Handling: 0">0</span><span class="tooltip" data-tip="Reliability: 0">0</span></div>
+</div>
+<textarea id="leagueDesignData" hidden readonly class="igpJsonPayload">{"acceleration":{"max":300},"braking":{"max":300},"cooling":{"max":300},"downforce":{"max":300},"fuel_economy":{"max":300},"handling":{"max":300},"reliability":{"max":300},"tyre_economy":{"max":300}}</textarea>
+<div class="carsSuppliers">
+  <div class="c-wrap"><a href="d=supply&amp;type=engine"></a><svg></svg> Engines<div class="bgSupplyLogo"><img src="/supply/light/2.png"></div></div>
+  <div class="c-wrap"><a href="d=supply&amp;type=fuel"></a><svg></svg> Fuel<div><img src="/supply/8.png"></div></div>
+  <div class="c-wrap"><a href="d=supply&amp;type=tyre"></a><svg></svg> Tyres<div><img src="/supply/light/13.png"></div></div>
+</div>
+</div></div>
+</body></html>

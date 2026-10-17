@@ -24,6 +24,14 @@ Profil setup per sirkuit tersimpan lokal (GM storage) dan dirender langsung
 di **Command Center** (v0.3.0: userscript tidak lagi menampilkan panel apapun
 di igpmanager.com — tab permainan = sensor senyap).
 
+**Autoload akun & mobil (v0.4.0)** — di Command Center, seksi
+**Account & Car Snapshot**: klik *Capture now* → tab iGP yang terbaca membaca
+halamannya **baca-saja, sekali per klik** (header akun = semua halaman; atribut
+mobil = halaman *Cars* saja) dan mengirim snapshot: nama/level/rank/saldo/token,
+8 atribut mobil, design points, bonus supplier, id supplier engine/fuel/tyre.
+Snapshot tersimpan lokal (GM storage). Tanpa polling, tanpa aksi apa pun pada
+elemen game, dan halaman balapan tidak pernah dibaca.
+
 ## Dual-Tab Command Center (v0.2)
 
 Struktur ala A.C.A.S: **tab 1** GUI Command Center (ter-host GitHub Pages),
@@ -38,16 +46,18 @@ Struktur ala A.C.A.S: **tab 1** GUI Command Center (ter-host GitHub Pages),
    **Connection** tab 1 setelah **Request data from tabs** diklik.
 3. Di GUI: **Request data from tabs** → menerima laporan adapter/profil dari
    tab igpmanager; panel **Strategy Recommendations** dan **Data Lab**
-   (ranking mobil & manufaktur) siap dipakai.
+   (ranking mobil & manufaktur) siap dipakai. Untuk data otomatis: seksi
+   **Account & Car Snapshot** → **Capture now** (v0.4.0).
 
 Fallback dev lokal (opsional):
 ```bash
 python3 -m http.server 8787 -d docs   # lalu buka http://localhost:8787/ (landing) atau /app/
 ```
 
-> Sumber data v0.2 tetap **manual**. Adapter DOM (mobil/manufaktur otomatis)
-> berstatus `selectors-tbd` — framework siap, pemetaan halaman nyata belum
-> dilakukan (lihat `docs/ARCHITECTURE.md` § Fase 3). Tidak ada selector fiktif.
+> Data akun & mobil (v0.4.0) kini bisa di-**autoload** dari halaman iGP
+> (read-only, sekali per klik Capture — lihat seksi di atas). Data
+> manufaktur (halaman Supply/Chassis) masih menunggu mapping; Data Lab
+> tetap menerima input manual/JSON. Tidak ada selector fiktif.
 
 Semua angka berasal dari **input Anda sendiri** — tidak ada asumsi data game.
 
@@ -55,21 +65,26 @@ Semua angka berasal dari **input Anda sendiri** — tidak ada asumsi data game.
 
 1. Pasang Tampermonkey/Violentmonkey.
 2. Dashboard → Create new script → tempel isi `src/igpas.user.js`.
-3. Buka igpmanager.com → klik tombol **📊 IGPAS** kanan-bawah.
+3. Buka igpmanager.com — **tidak ada UI yang muncul** (sensor senyap).
+4. Buka <https://cnagnn.github.io/igpas/app/> — seluruh antarmuka ada di sini.
 
 ## Pengembangan
 
 ```
-src/igpas.user.js   userscript (tanpa build step)
-test/core.test.js   unit test inti (Node)
-docs/ARCHITECTURE.md blueprint + peta pola A.C.A.S → I.G.P.A.S
+src/igpas.user.js        userscript (tanpa build step)
+test/core.test.js        unit test inti (Node)
+test/snapshots.test.js   adapter akun+mobil vs fixture DOM nyata (jsdom)
+test/fixtures/*.html     DOM halaman iGP yang disanitasi (tanpa data pribadi)
+docs/ARCHITECTURE.md     blueprint + peta pola A.C.A.S → I.G.P.A.S
 ```
 
 Jalankan verifikasi:
 
 ```bash
+npm install        # dev deps (jsdom)
 node --check src/igpas.user.js
 node test/core.test.js
+node test/snapshots.test.js
 ```
 
 ## Lisensi
