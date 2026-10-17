@@ -638,7 +638,7 @@
 
     /* =====================================================================
      * 3.5) GUI MASTER — widget untuk tab Command Center (peran 'gui').
-     *      Me-render ke elemen shell di docs/gui/index.html.
+     *      Me-render ke elemen shell di docs/app/index.html.
      * ===================================================================== */
 
     const GuiMaster = (() => {

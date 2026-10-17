@@ -29,7 +29,8 @@ Struktur ala A.C.A.S: **tab 1** GUI Command Center (ter-host GitHub Pages),
 **tab 2** igpmanager.com (sensor), tersambung via **mailbox GM-storage**
 (polling, read-once — pola CommLink).
 
-1. Buka **tab 1**: <https://cnagnn.github.io/igpas/gui/>
+1. Buka **tab 1**: <https://cnagnn.github.io/igpas/> (landing) → klik
+   **Open Command Center** (atau langsung <https://cnagnn.github.io/igpas/app/>)
    → badge "● live (userscript aktif)" (butuh userscript terpasang).
 2. Buka **tab 2**: igpmanager.com → panel floating menampilkan status
    `GUI: ● terhubung`.
@@ -39,9 +40,8 @@ Struktur ala A.C.A.S: **tab 1** GUI Command Center (ter-host GitHub Pages),
 
 Fallback dev lokal (opsional):
 ```bash
-python3 -m http.server 8787 -d docs/gui   # lalu buka http://localhost:8787/gui/
+python3 -m http.server 8787 -d docs   # lalu buka http://localhost:8787/ (landing) atau /app/
 ```
-(Saat GUI di-serve dari subfolder, gunakan `/gui/` di akhir URL.)
 
 > Sumber data v0.2 tetap **manual**. Adapter DOM (mobil/manufaktur otomatis)
 > berstatus `selectors-tbd` — framework siap, pemetaan halaman nyata belum

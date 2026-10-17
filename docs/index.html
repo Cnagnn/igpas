@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>I.G.P.A.S — Race Strategy Study for iGP Manager</title>
+<meta name="description" content="Open-source study tool for iGP Manager: fuel, tyre, pit-window and stint calculators with a dual-tab command center. No automation.">
+<style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; margin: 0; }
+    body { background: #0d1420; color: #dbe6f5; font: 16px/1.6 system-ui, sans-serif; }
+    a { color: #9fd0ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* motif: sector stripes (restrained, satu zona saja) */
+    .stripes { height: 4px; background: linear-gradient(90deg,
+        #9fd0ff 0 33.3%, #e8eef7 33.3% 66.6%, #ffce6b 66.6% 100%); }
+
+    header { position: sticky; top: 0; z-index: 10; background: rgba(13,20,32,.92);
+        backdrop-filter: blur(6px); border-bottom: 1px solid #22314a; }
+    .nav { max-width: 1080px; margin: 0 auto; padding: 14px 22px;
+        display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+    .logo { font-weight: 800; letter-spacing: .5px; color: #eaf2ff; }
+    .logo span { color: #9fd0ff; }
+    .nav .spacer { flex: 1; }
+    .nav a { font-size: 14px; color: #a9b8cd; }
+    .nav a:hover { color: #eaf2ff; text-decoration: none; }
+
+    main { max-width: 1080px; margin: 0 auto; padding: 0 22px; }
+
+    .hero { padding: 72px 0 40px; text-align: center; }
+    .hero h1 { font-size: clamp(30px, 6vw, 46px); line-height: 1.15; color: #eaf2ff; }
+    .hero h1 em { font-style: normal; color: #9fd0ff; }
+    .hero p { max-width: 640px; margin: 16px auto 28px; color: #a9b8cd; }
+    .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn { display: inline-block; padding: 12px 22px; border-radius: 10px;
+        border: 1px solid #2b3b55; font-weight: 700; font-size: 15px; }
+    .btn:hover { text-decoration: none; transform: translateY(-1px); }
+    .btn.primary { background: #9fd0ff; color: #0d1420; border-color: #9fd0ff; }
+    .btn.ghost { color: #dbe6f5; }
+
+    .stats { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; padding: 8px 0 52px; }
+    .stat { background: #111b2c; border: 1px solid #22314a; border-radius: 12px;
+        padding: 14px 22px; min-width: 150px; text-align: center; }
+    .stat b { display: block; font-size: 22px; color: #eaf2ff; }
+    .stat span { font-size: 12px; color: #7b8ba1; }
+
+    section.h2 { padding: 42px 0 8px; }
+    section h2 { font-size: 26px; color: #eaf2ff; }
+    section .sub { color: #8fa1b8; margin: 6px 0 22px; }
+
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding-bottom: 30px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: #111b2c; border: 1px solid #22314a; border-radius: 12px;
+        padding: 18px; transition: border-color .15s ease; }
+    .card:hover { border-color: #3d5778; }
+    .card .ico { font-size: 24px; }
+    .card h3 { font-size: 15px; margin: 8px 0 6px; color: #9fd0ff; }
+    .card p { font-size: 13.5px; color: #a9b8cd; }
+    .card .chip { display: inline-block; margin-top: 10px; font-size: 11px;
+        color: #7ce38b; border: 1px solid #2c5a37; border-radius: 999px; padding: 2px 9px; }
+
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding-bottom: 26px; }
+    @media (max-width: 700px) { .steps { grid-template-columns: 1fr; } }
+    .step { border: 1px dashed #2b3b55; border-radius: 12px; padding: 16px; }
+    .step b { color: #9fd0ff; }
+    .step p { font-size: 13.5px; color: #a9b8cd; margin-top: 6px; }
+
+    .ethics { background: #241c10; border: 1px solid #5a442c; border-radius: 12px;
+        padding: 16px 18px; margin: 10px 0 46px; }
+    .ethics b { color: #ffce6b; }
+    .ethics p { font-size: 14px; color: #d8c9a9; margin-top: 4px; }
+
+    footer { border-top: 1px solid #1a2740; color: #6a788d; text-align: center;
+        font-size: 13px; padding: 22px; }
+</style>
+</head>
+<body>
+<div class="stripes"></div>
+
+<header>
+    <nav class="nav">
+        <div class="logo">I.G.P.<span>A.S</span></div>
+        <div class="spacer"></div>
+        <a href="https://cnagnn.github.io/igpas/app/">Command Center</a>
+        <a href="https://github.com/Cnagnn/igpas">GitHub</a>
+        <a href="https://github.com/Cnagnn/igpas/issues">Issues</a>
+    </nav>
+</header>
+
+<main>
+    <div class="hero">
+        <h1>Race strategy <em>study</em>,<br>without the black box.</h1>
+        <p>Fuel, tyre wear, pit window and stint calculators — plus a recommendation
+           engine that shows its arithmetic. Built as a userscript for
+           <strong>iGP Manager</strong>. Free, open source, and deliberately
+           <strong>not a race-aid</strong>.</p>
+        <div class="cta">
+            <a class="btn primary" href="https://cnagnn.github.io/igpas/app/">▶ Open Command Center</a>
+            <a class="btn ghost" href="https://raw.githubusercontent.com/Cnagnn/igpas/main/src/igpas.user.js">⬇ Install userscript</a>
+            <a class="btn ghost" href="https://github.com/Cnagnn/igpas">★ Source</a>
+        </div>
+    </div>
+
+    <div class="stats">
+        <div class="stat"><b>v0.2.0</b><span>current release</span></div>
+        <div class="stat"><b>7</b><span>study tools</span></div>
+        <div class="stat"><b>32</b><span>unit tests passing</span></div>
+        <div class="stat"><b>0</b><span>automation &amp; network calls</span></div>
+    </div>
+
+    <section class="h2">
+        <h2>Beyond move… er, <em>lap</em> suggestions.</h2>
+        <p class="sub">Every number is pure arithmetic on inputs <strong>you</strong> provide —
+           your practice data, your judgement. The tool never guesses game values.</p>
+        <div class="grid">
+            <div class="card"><div class="ico">⛽</div><h3>Fuel Planner</h3>
+                <p>Fuel to add, laps of coverage, reserve policy and over-tank warnings — before you commit.</p>
+                <span class="chip">live recompute</span></div>
+            <div class="card"><div class="ico">🛞</div><h3>Tyre Projection</h3>
+                <p>Lap-by-lap wear projection and thresholds from your own practice numbers.</p>
+                <span class="chip">cap at 100%</span></div>
+            <div class="card"><div class="ico">🅿️</div><h3>Pit Window</h3>
+                <p>Latest safe pit lap, fuel-limited vs tyre-limited, with a safety margin you control.</p>
+                <span class="chip">stale-guard</span></div>
+            <div class="card"><div class="ico">🧭</div><h3>Strategy Recommendation</h3>
+                <p>Deterministic pit decision — <em>plan</em>, <em>soon</em> or <em>now</em> — with the reasons on display.</p>
+                <span class="chip">no black box</span></div>
+            <div class="card"><div class="ico">🏎️</div><h3>Data Lab</h3>
+                <p>Rank manufacturers and cars by weighted criteria you pick. Incomplete data is flagged, not hidden.</p>
+                <span class="chip">transparent scoring</span></div>
+            <div class="card"><div class="ico">🖥️</div><h3>Dual-Tab Command Center</h3>
+                <p>Game in one tab, strategy desk in another — linked live over a storage mailbox. A.C.A.S-inspired architecture.</p>
+                <span class="chip">GUI ↔ sensor</span></div>
+        </div>
+    </section>
+
+    <section class="h2">
+        <h2>How it works</h2>
+        <p class="sub">Three steps. No build, no cloud, no accounts.</p>
+        <div class="steps">
+            <div class="step"><b>1 · Install</b><p>Install Tampermonkey, then the userscript from this site. Runs only on igpmanager.com and this GUI.</p></div>
+            <div class="step"><b>2 · Connect</b><p>Open the Command Center in one tab and iGP Manager in another — they link over a local storage mailbox.</p></div>
+            <div class="step"><b>3 · Study</b><p>Enter your numbers, read the projections and recommendations, save setups per circuit.</p></div>
+        </div>
+    </section>
+
+    <div class="ethics">
+        <b>⚠ A study tool, not a race aid.</b>
+        <p>I.G.P.A.S performs zero automation, makes zero network requests, and never
+           touches game elements during a race. Use it for analysis, practice and
+           post-race review — and please respect the iGP Manager Terms of Service.</p>
+    </div>
+</main>
+
+<footer>
+    GPL-3.0-or-later · by the community, for study ·
+    <a href="https://github.com/Cnagnn/igpas">source</a> ·
+    architecture inspired by open-source userscript assistants
+</footer>
+</body>
+</html>
