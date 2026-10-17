@@ -44,7 +44,7 @@ let autoReqId = null;
     }
 
     t('mount: badge versi + mode live (userscript aktif)', () => {
-        assert($('igpas-gui-version').textContent === 'GUI v0.6.2',
+        assert($('igpas-gui-version').textContent === 'GUI v0.7.0',
             'versi: ' + $('igpas-gui-version').textContent);
         assert(/live/.test($('igpas-gui-mode').textContent), 'mode tidak live');
     });

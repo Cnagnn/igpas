@@ -21,8 +21,9 @@ sebagai userscript. Terinspirasi arsitektur [A.C.A.S](https://psyyke.github.io/A
 | **Ranking mobil/manufaktur** (v0.2) | item + rating kriteria 0–10 + bobot | skor & juara, transparan Σ(rating×bobot)/Σbobot |
 
 Profil setup per sirkuit tersimpan lokal (GM storage) dan dirender langsung
-di **Command Center** (v0.3.0: userscript tidak lagi menampilkan panel apapun
-di igpmanager.com — tab permainan = sensor senyap).
+di **Command Center**. Sejak v0.7.0, tab iGP **tidak lagi 100% senyap**:
+userscript menambahkan **Advisor in-page** di halaman studi (lihat di bawah)
+— elemen milik sendiri, melekat di halaman, tanpa menyentuh elemen game.
 
 **Autoload akun, mobil & supply (v0.4.0 → v0.6.2)** — snapshot dimuat **otomatis
 setiap Command Center dibuka** (dan saat kembali ke tab itu dengan jeda ≥30 dtk):
@@ -78,18 +79,43 @@ python3 -m http.server 8787 -d docs   # lalu buka http://localhost:8787/ (landin
 
 Semua angka berasal dari **input Anda sendiri** — tidak ada asumsi data game.
 
+## Advisor in-page (v0.7.0)
+
+Userscript kini menempel **panel rekomendasi langsung di halaman iGP** yang
+Anda buka — hanya di halaman **studi** (`#pageId` `cars` dan `manufacturers`,
+termasuk dialog Supply terbuka); halaman balapan/strategi **tidak pernah**
+mendapat UI. Sifatnya:
+
+- **Supply (dialog Engine/Fuel/Tyres terbuka)** — membandingkan supplier aktif
+  dengan alternatif di dialog: Σ bonus stat, biaya per balapan, dan
+  nilai/biaya (bonus per 1jt). Supplier terbaik nilai & termurah ditandai.
+- **Manufacturers** — ranking engine (rating, biaya, rating per 1jt) dan
+  chassis (rating) dari baris yang tampil di pager halaman itu.
+- **Design points (halaman Cars)** — prioritas alokasi DP per atribut: gap
+  nilai atribut Anda terhadap **max rival liga** (`leagueDesignData`), dengan
+  usulan % porsi DP proporsional gap terbesar.
+
+Semua panel berlabel **"estimasi — bukan rumus game"**: heuristik transparan
+atas angka yang memang tampil, bukan kepastian performa. Ada tombol
+**I.G.P.A.S advisor** di kiri-bawah untuk menyembunyikan/menampilkan panel
+(preferensi tersimpan lokal). Advisor hanya **membaca** DOM yang tampak:
+tanpa klik, tanpa submit, tanpa jaringan, tanpa request mailbox, dan elemen
+game tidak pernah diubah.
+
 ## Instal (dev)
 
 1. Pasang Tampermonkey/Violentmonkey.
 2. Dashboard → Create new script → tempel isi `src/igpas.user.js`.
-3. Buka igpmanager.com — **tidak ada UI yang muncul** (sensor senyap).
-4. Buka <https://cnagnn.github.io/igpas/app/> — seluruh antarmuka ada di sini.
+3. Buka igpmanager.com — halaman Cars/Manufacturers menampilkan panel
+   **I.G.P.A.S advisor** (bisa disembunyikan); halaman lain tetap senyap.
+4. Buka <https://cnagnn.github.io/igpas/app/> — Command Center & alur capture.
 
 ## Pengembangan
 
 ```
 src/igpas.user.js        userscript (tanpa build step)
-test/core.test.js        unit test inti (Node)
+test/core.test.js        unit test inti + heuristik advisor (Node)
+test/advisor.test.js     advisor in-page vs fixture DOM nyata (jsdom)
 test/snapshots.test.js   adapter akun+mobil+supply+manufacturers vs fixture DOM nyata (jsdom)
 test/mailbox.test.js     semantik mailbox dual-tab (read-once, TTL, konsumsi)
 test/gui.test.js         smoke GUI /app/ + alur autoload (jsdom + shell nyata)

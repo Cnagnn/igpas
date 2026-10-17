@@ -22,17 +22,22 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
 1. **GUI-only (nama kepatuhan) — RISIKO ~0**: Command Center berfungsi 100% tanpa
    userscript aktif di tab iGP (kalkulator, Data Lab, rekomendasi semua di tab GUI).
    User yang mau kepatuhan mutlak: cukup *disable* userscript saat membuka igpmanager.com.
-2. **Dual-tab study (v0.2.1, diperbarui v0.6.2)** — risiko praktis rendah: tanpa UI di
-   situs game (v0.3.0+), tanpa aksi ke situs, tanpa jaringan; pembacaan DOM hanya saat
-   ada permintaan eksplisit (read-once, tanpa polling halaman game). Menyisakan risiko
-   *letter* § V.J (tak terhindarkan bagi *semua* userscript). Keputusan gunakan/tidak =
-   milik user.
+2. **Dual-tab study (v0.2.1, diperbarui v0.7.0)** — risiko praktis rendah dengan satu
+   perubahan penting: sejak v0.7.0 userscript menambahkan **Advisor in-page** di halaman
+   studi iGP (Cars + dialog Supply, Manufacturers) — **elemen milik sendiri** yang
+   dilekatkan (bukan modifikasi elemen game), read-only, tanpa klik/submit/jaringan,
+   tanpa request mailbox, dan **tidak pernah tampil di halaman balapan/strategi**
+   (gate `#pageId`). Pembacaan DOM game tetap hanya saat ada permintaan eksplisit
+   (read-once, tanpa polling). Rekomendasi berlabel *estimasi — bukan rumus game*.
+   Tetap menyisakan risiko *letter* § V.J (tak terhindarkan bagi *semua* userscript).
+   Keputusan gunakan/tidak = milik user; kepatuhan mutlak tetap bisa via mode 1.
 3. **Selama balapan live** — DILARANG secara kebijakan proyek ini (di luar ToS eksplisit
    juga: § V.H unfair advantage). Jangan pernah aktifkan di race view saat sesi berjalan.
-   Catatan v0.5.1: autoload membaca halaman yang sedang terbuka di tab iGP; tidak ada
-   adapter untuk data race (lap/posisi/fuel race), jadi paling banyak hanya header akun
-   global (sama di semua halaman). Untuk kepatuhan ketat: jangan buka Command Center
-   selama sesi.
+   Catatan v0.7.0: gate `#pageId` membuat advisor in-page tidak merender apa pun di
+   halaman balapan/strategi (diverifikasi test jsdom). Catatan v0.5.1: autoload membaca
+   halaman yang sedang terbuka di tab iGP; tidak ada adapter untuk data race
+   (lap/posisi/fuel race), jadi paling banyak hanya header akun global (sama di semua
+   halaman). Untuk kepatuhan ketat: jangan buka Command Center selama sesi.
 4. **Fase 3 (adapter data otomatis, v0.4.0–v0.6.2 TERLAKSANA)** — desain kepatuhan:
     - Hanya membaca data *yang memang ditampilkan* ke user biasa di halaman studi
       (Cars, header akun) - bukan tersembunyi/undocumented.

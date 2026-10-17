@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.6.2
+// @version      0.7.0
 // @description  Race strategy study calculators + read-only snapshot autoload for iGP Manager (account, car, supply, manufacturers). Study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + autoload snapshot read-only (akun, mobil, supply, manufacturers). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
@@ -21,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.6.2';
+    const VERSION = '0.7.0';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -281,6 +281,137 @@
                 weightsUsed: w,
             };
         },
+
+        /**
+         * Prioritas alokasi design points (v0.7.0 Advisor).
+         * Eksplisit: heuristik selisih (gap) antara nilai atribut mobil dan max
+         * atribut rival liga (#leagueDesignData). BUKAN rumus game — porsi DP
+         * yang diusulkan = share gap terbesar, dan tetap harus diuji user.
+         * @param {object} p { attrs:{key:{label,val}}, best:{key:{max}}, designPoints }
+         */
+        designPriority(p) {
+            const attrs = (p && p.attrs && typeof p.attrs === 'object') ? p.attrs : null;
+            if (!attrs || !Object.keys(attrs).length) {
+                return { ok: false, error: 'Atribut mobil belum terbaca di halaman ini' };
+            }
+            const best = (p && p.best && typeof p.best === 'object') ? p.best : {};
+            const numOrNull = v => (v == null || v === '' || !Number.isFinite(Number(v))) ? null : Number(v);
+            const rows = [];
+            let totalGap = 0;
+            for (const key of Object.keys(attrs)) {
+                const a = attrs[key];
+                const val = a ? numOrNull(a.val) : null;
+                if (val == null) continue;
+                const maxEntry = best[key];
+                const max = maxEntry ? numOrNull(maxEntry.max) : null;
+                const effMax = (max != null) ? Math.max(max, val) : null;
+                const gap = (effMax != null) ? Math.max(0, effMax - val) : null;
+                if (gap != null) totalGap += gap;
+                rows.push({ key: key, label: a.label || key, val: val, max: effMax, gap: gap });
+            }
+            if (!rows.length) return { ok: false, error: 'Tidak ada atribut yang terbaca' };
+            if (totalGap <= 0) {
+                return { ok: false, error: 'Tidak ada gap terhadap max liga (sudah ≥ max, atau benchmark liga tidak tersedia)' };
+            }
+            const ranked = rows.filter(r => r.gap != null)
+                .sort((a, b) => (b.gap - a.gap) || String(a.key).localeCompare(String(b.key)));
+            for (const r of ranked) {
+                r.sharePct = Math.round((r.gap / totalGap) * 1000) / 10;
+            }
+            return {
+                ok: true,
+                values: {
+                    ranked: ranked,
+                    totalGap: totalGap,
+                    designPoints: (Number.isFinite(Number(p.designPoints))) ? Number(p.designPoints) : null,
+                    unbenchmarked: rows.filter(r => r.gap == null).length,
+                },
+            };
+        },
+
+        /**
+         * Urutkan supplier dari dialog Supply (v0.7.0 Advisor).
+         * Heuristik transparan: Σ bonus stat vs biaya per balapan; "nilai/biaya"
+         * = bonus per 1M. Stat berbeda tidak disetarakan rumus game — hasil tetap
+         * berupa perbandingan, bukan kepastian performa.
+         * @param {object} p { items:[{supplierId,eId,costPerRace,bonuses:[{stat,value}]}] }
+         */
+        rankSuppliers(p) {
+            const items = (p && Array.isArray(p.items)) ? p.items : null;
+            if (!items || !items.length) return { ok: false, error: 'Tidak ada supplier yang terbaca dari dialog' };
+            const rows = items.map(it => {
+                const costRaw = it ? it.costPerRace : null;
+                const cost = (costRaw != null && Number.isFinite(Number(costRaw))) ? Number(costRaw) : null;
+                const value = (it && Array.isArray(it.bonuses))
+                    ? it.bonuses.reduce((s, b) => s + (b && b.value != null && Number.isFinite(Number(b.value)) ? Number(b.value) : 0), 0)
+                    : (it && it.value != null && Number.isFinite(Number(it.value)) ? Number(it.value) : null);
+                return {
+                    id: it ? it.supplierId : null,
+                    eId: it ? it.eId : null,
+                    value: value,
+                    cost: cost,
+                    valuePerCost: (value != null && cost != null && cost > 0)
+                        ? Math.round((value / cost) * 1e6 * 100) / 100
+                        : null,
+                };
+            });
+            const ranked = rows.slice().sort((a, b) =>
+                (((b.valuePerCost == null) ? -Infinity : b.valuePerCost) - ((a.valuePerCost == null) ? -Infinity : a.valuePerCost)) ||
+                (((b.value == null) ? -Infinity : b.value) - ((a.value == null) ? -Infinity : a.value)) ||
+                String(a.id).localeCompare(String(b.id)));
+            const withCost = rows.filter(r => r.cost != null).sort((x, y) => x.cost - y.cost);
+            return {
+                ok: true,
+                values: {
+                    ranked: ranked,
+                    bestValueId: (ranked.find(r => r.valuePerCost != null) || ranked[0]).id,
+                    cheapestId: withCost.length ? withCost[0].id : null,
+                    withoutCost: rows.filter(r => r.cost == null).length,
+                },
+            };
+        },
+
+        /**
+         * Urutkan baris manufacturer (engine/chassis) berdasarkan rating (v0.7.0).
+         * Engine punya biaya: efisiensi = rating per 1M biaya. Chassis: rating saja.
+         * @param {object} p { items:[{id,name,ratingPct,costPerRace,customers}], withCost }
+         */
+        rankManufacturerItems(p) {
+            const items = (p && Array.isArray(p.items)) ? p.items : null;
+            if (!items || !items.length) return { ok: false, error: 'Tidak ada baris manufacturer yang terbaca' };
+            const withCost = !!p.withCost;
+            const rows = items.map(it => {
+                const ratingRaw = it ? it.ratingPct : null;
+                const costRaw = it ? it.costPerRace : null;
+                const rating = (ratingRaw != null && Number.isFinite(Number(ratingRaw))) ? Number(ratingRaw) : null;
+                const cost = (costRaw != null && Number.isFinite(Number(costRaw))) ? Number(costRaw) : null;
+                return {
+                    id: it ? it.id : null,
+                    name: it ? it.name : null,
+                    rating: rating,
+                    cost: cost,
+                    ratingPerCost: (withCost && rating != null && cost != null && cost > 0)
+                        ? Math.round((rating / cost) * 1e6 * 100) / 100
+                        : null,
+                };
+            });
+            const ranked = rows.filter(r => r.rating != null).sort((a, b) =>
+                (b.rating - a.rating) ||
+                (((b.ratingPerCost == null) ? -Infinity : b.ratingPerCost) - ((a.ratingPerCost == null) ? -Infinity : a.ratingPerCost)) ||
+                String(a.name).localeCompare(String(b.name)));
+            if (!ranked.length) return { ok: false, error: 'Rating manufacturer tidak terbaca' };
+            const byEff = withCost ? rows.filter(r => r.ratingPerCost != null)
+                .sort((x, y) => y.ratingPerCost - x.ratingPerCost) : [];
+            return {
+                ok: true,
+                values: {
+                    ranked: ranked,
+                    bestRatingId: ranked[0].id,
+                    bestValueId: byEff.length ? byEff[0].id : null,
+                    noData: rows.filter(r => r.rating == null).length,
+                },
+            };
+        },
     });
 
     // helper kecil (di luar freeze agar statis):
@@ -307,6 +438,7 @@
     const Keys = Object.freeze({
         profiles: 'igpas:profiles',   // { [name]: { fieldId: value } }
         snapshots: 'igpas:snapshots', // { [kind]: { data, ts } } — hasil Capture
+        advisor: 'igpas:advisor',     // { hidden: Boolean } — preferensi UI advisor in-page
     });
 
     const Storage = {
@@ -1243,15 +1375,292 @@
     })();
 
     /* =====================================================================
-     * 4) BOOT — hanya memasang panel. Tidak menyentuh elemen game.
+     * 3b) ADVISOR IN-PAGE (v0.7.0) — rekomendasi read-only di halaman STUDI iGP.
+     *  - HANYA MENAMBAH elemen milik sendiri (id/class prefiks igpas-adv-);
+     *    tidak pernah mengubah/menghapus elemen game, tidak mengklik, tidak
+     *    submit, tidak fetch/XHR, tidak mengirim packet mailbox apa pun.
+     *  - Aktif hanya di #pageId 'cars' (termasuk dialog Supply terbuka) dan
+     *    'manufacturers'. Tidak pernah menempel di halaman balapan/strategi.
+     *  - Re-render dipicu aksi user (klik/navigasi) — BUKAN polling DOM.
+     *  - Semua angka = pembacaan DOM yang memang tampil + heuristik eksplisit
+     *    IGPCore, berlabel "estimasi — bukan rumus game".
+     * ===================================================================== */
+    const Advisor = (() => {
+        const PREFIX = 'igpas-adv';
+        const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const fmtMoney = n => {
+            const v = Number(n);
+            if (n == null || !Number.isFinite(v)) return '—';
+            if (v >= 1e9) return (Math.round(v / 1e8) / 10) + ' M';
+            if (v >= 1e6) return (Math.round(v / 1e5) / 10) + ' jt';
+            if (v >= 1e3) return (Math.round(v / 1e2) / 10) + ' rb';
+            return String(v);
+        };
+        const pageId = () => {
+            const el = document.getElementById('pageId');
+            return el ? String(el.value || '').trim() : null;
+        };
+
+        const STYLE = [
+            '.igpas-adv-panel{margin:10px 0;padding:10px 12px;background:#0e2a30;color:#eaf6f3;',
+            'border:2px solid #0b262b;border-radius:11px;font:12px/1.5 Arial,Helvetica,sans-serif;',
+            'box-shadow:0 2px 8px rgba(0,0,0,.25);text-align:left;max-width:720px}',
+            '.igpas-adv-panel h3{margin:0 0 6px;font-size:13px}',
+            '.igpas-adv-kicker{display:block;margin:0 0 4px;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#8fd6c6}',
+            '.igpas-adv-panel table{width:100%;border-collapse:collapse;margin:6px 0}',
+            '.igpas-adv-panel th,.igpas-adv-panel td{padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.14);text-align:right;vertical-align:top}',
+            '.igpas-adv-panel th:first-child,.igpas-adv-panel td:first-child{text-align:left}',
+            '.igpas-adv-panel th{font-size:11px;color:#bcd8d2;text-transform:uppercase;letter-spacing:.05em}',
+            '.igpas-adv-note{margin:6px 0 0;font-size:11px;color:#bcd8d2}',
+            '.igpas-adv-tag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:8px;background:#8fd6c6;color:#0b262b;font-size:10px;font-weight:700}',
+            '.igpas-adv-panel tr.igpas-adv-best td{background:rgba(143,214,198,.16);font-weight:700}',
+            '#igpas-adv-toggle{position:fixed;left:12px;bottom:12px;z-index:2147483000;padding:8px 12px;',
+            'border:2px solid #0b262b;border-radius:20px;background:#0e2a30;color:#eaf6f3;',
+            'font:700 12px Arial,Helvetica,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3)}',
+            'body.igpas-adv-hide .igpas-adv-panel{display:none!important}',
+        ].join('');
+
+        function styleEnsure() {
+            if (document.getElementById(PREFIX + '-style')) return;
+            const st = document.createElement('style');
+            st.id = PREFIX + '-style';
+            st.textContent = STYLE;
+            document.head.appendChild(st);
+        }
+
+        function panelEl(id, kicker, title, bodyHtml, noteHtml) {
+            let el = document.getElementById(id);
+            if (!el) {
+                el = document.createElement('section');
+                el.id = id;
+                el.className = 'igpas-adv-panel';
+                el.setAttribute('role', 'complementary');
+                el.setAttribute('aria-label', 'I.G.P.A.S ' + title);
+            }
+            el.innerHTML = '<span class="igpas-adv-kicker">' + esc(kicker) + '</span>' +
+                '<h3>' + esc(title) + '</h3>' + bodyHtml +
+                (noteHtml ? '<p class="igpas-adv-note">' + noteHtml + '</p>' : '');
+            return el;
+        }
+
+        function removeIfAny(ids) {
+            for (const id of ids) {
+                const el = document.getElementById(id);
+                if (el) el.remove();
+            }
+        }
+
+        /* Halaman Cars: prioritas alokasi design points vs benchmark liga. */
+        function mountDesign() {
+            const id = PREFIX + '-design';
+            const anchor = (pageId() === 'cars') ? document.getElementById('carAttributesDisplay') : null;
+            if (!anchor) { removeIfAny([id]); return; }
+            const data = IgpCarsAdapter.captures(document);
+            const res = IGPCore.designPriority({
+                attrs: data && data.attrs,
+                best: data && data.best,
+                designPoints: data && data.designPoints,
+            });
+            let body = '';
+            let note = '';
+            if (res.ok) {
+                const rows = res.values.ranked.map(r => {
+                    const best = r === res.values.ranked[0];
+                    return '<tr' + (best ? ' class="igpas-adv-best"' : '') + '>' +
+                        '<td>' + esc(r.label) + '</td><td>' + esc(r.val) + '</td>' +
+                        '<td>' + (r.max == null ? '—' : esc(r.max)) + '</td>' +
+                        '<td>' + (r.gap == null ? '—' : esc(r.gap)) + '</td>' +
+                        '<td>' + (r.sharePct != null ? r.sharePct + '%' : '—') + '</td></tr>';
+                }).join('');
+                body = '<table><thead><tr><th>Atribut</th><th>Nilai</th><th>Max liga</th><th>Gap</th><th>Usulan DP</th></tr></thead><tbody>' +
+                    rows + '</tbody></table>';
+                note = 'Total DP: ' + (res.values.designPoints != null ? esc(res.values.designPoints) : '?') +
+                    ' · heuristik selisih terhadap max liga — <strong>estimasi, bukan rumus game</strong>; ' +
+                    'porsi % = share gap terbesar. Uji hasil alokasimu sendiri di race time non-kritis.' +
+                    (res.values.unbenchmarked ? ' · ' + res.values.unbenchmarked + ' atribut tanpa benchmark liga.' : '');
+            } else {
+                note = esc(res.error) + '.';
+            }
+            anchor.insertAdjacentElement('afterend', panelEl(id, 'I.G.P.A.S · design points', 'Prioritas alokasi DP (estimasi)', body, note));
+        }
+
+        /* Dialog Supply (engine/fuel/tyre): bandingkan supplier aktif vs alternatif. */
+        function mountSupply() {
+            const id = PREFIX + '-supply';
+            const dlg = document.querySelector('.supplyDialog');
+            if (!dlg) { removeIfAny([id]); return; }
+            const s = IgpSupplyAdapter.captures(document);
+            let body = '';
+            let note = '';
+            if (!s) {
+                note = 'Dialog Supply terbuka tapi tidak terbaca (varian DOM baru?). Tidak ada rekomendasi — jangan dianggap data.';
+            } else {
+                const cur = s.current || {};
+                const res = IGPCore.rankSuppliers({ items: s.alternatives });
+                if (res.ok) {
+                    const rows = res.values.ranked.map(r => {
+                        const isBest = r.valuePerCost != null && r.id === res.values.bestValueId;
+                        const isCheap = !isBest && res.values.cheapestId != null && r.id === res.values.cheapestId;
+                        return '<tr' + (isBest ? ' class="igpas-adv-best"' : '') + '>' +
+                            '<td>Supplier #' + esc(r.id != null ? r.id : '?') +
+                            (isBest ? '<span class="igpas-adv-tag">terbaik nilai</span>' : '') +
+                            (isCheap ? '<span class="igpas-adv-tag">termurah</span>' : '') + '</td>' +
+                            '<td>' + (r.value == null ? '—' : esc((r.value > 0 ? '+' : '') + r.value)) + '</td>' +
+                            '<td>' + fmtMoney(r.cost) + '</td>' +
+                            '<td>' + (r.valuePerCost == null ? '—' : esc(r.valuePerCost)) + '</td></tr>';
+                    }).join('');
+                    body = '<p class="igpas-adv-note">Aktif: supplier #' +
+                        esc(cur.supplierId != null ? cur.supplierId : '?') + ' · ' +
+                        fmtMoney(cur.costPerRace) + '/race — dibandingkan dengan alternatif di dialog ini:</p>' +
+                        '<table><thead><tr><th>Alternatif</th><th>Σ bonus</th><th>Biaya</th><th>Nilai/1M</th></tr></thead><tbody>' +
+                        rows + '</tbody></table>';
+                } else {
+                    note = esc(res.error) + '. Alternatif mungkin tidak tampil di dialog ini.';
+                }
+                note += (note ? ' ' : '') +
+                    'Σ bonus = jumlah nilai semua stat bonus (stat berbeda tidak disetarakan rumus game). ' +
+                    'Nilai/1M = bonus per 1jt biaya — heuristik estimasi; kombinasi terbaik tetap perlu Anda uji.';
+            }
+            dlg.appendChild(panelEl(id, 'I.G.P.A.S · supply' + (s ? ' · ' + s.type : ''), 'Rekomendasi supplier (estimasi)', body, note));
+        }
+
+        /* Halaman Manufacturers: ranking engine & chassis yang tampil di pager ini. */
+        function mountManufacturers() {
+            const idE = PREFIX + '-mfg-engine';
+            const idC = PREFIX + '-mfg-chassis';
+            if (pageId() !== 'manufacturers') { removeIfAny([idE, idC]); return; }
+            const m = IgpManufacturersAdapter.captures(document);
+            const pages = (m && m.totalPages) || {};
+            const pagerNote = (m && m.totalPages)
+                ? 'Baris yang tampil di pager ini saja' +
+                  (pages.engines != null ? ' · engine ' + pages.engines + ' hal.' : '') +
+                  (pages.chassis != null ? ' · chassis ' + pages.chassis + ' hal.' : '') + '.'
+                : 'Baris yang tampil di pager ini saja.';
+            // Engines: rating + biaya/race → rating per 1M.
+            const et = document.getElementById('engine-table');
+            if (et) {
+                const res = IGPCore.rankManufacturerItems({ items: m ? m.engines : [], withCost: true });
+                let body = '';
+                let note = pagerNote + ' Rating% dari tooltip tabel; rating/1M = heuristik estimasi — bukan rumus game.';
+                if (res.ok) {
+                    const rows = res.values.ranked.slice(0, 5).map((r, i) => {
+                        const tag =
+                            (res.values.bestRatingId === r.id ? '<span class="igpas-adv-tag">rating tertinggi</span>' : '') +
+                            (res.values.bestValueId === r.id ? '<span class="igpas-adv-tag">nilai terbaik</span>' : '');
+                        return '<tr' + (i === 0 ? ' class="igpas-adv-best"' : '') + '>' +
+                            '<td>' + (i + 1) + '. ' + esc(r.name) + tag + '</td>' +
+                            '<td>' + esc(r.rating) + '%</td><td>' + fmtMoney(r.cost) + '</td>' +
+                            '<td>' + (r.ratingPerCost == null ? '—' : esc(r.ratingPerCost)) + '</td></tr>';
+                    }).join('');
+                    body = '<table><thead><tr><th>Engine</th><th>Rating</th><th>Biaya</th><th>Rating/1M</th></tr></thead><tbody>' +
+                        rows + '</tbody></table>';
+                } else {
+                    body = '<p class="igpas-adv-note">' + esc(res.error) + '.</p>';
+                }
+                et.insertAdjacentElement('beforebegin',
+                    panelEl(idE, 'I.G.P.A.S · manufacturers', 'Ranking engine halaman ini (estimasi)', body, note));
+            } else {
+                removeIfAny([idE]);
+            }
+            // Chassis: rating (+customers) — tanpa biaya.
+            const ct = document.getElementById('chassis-table');
+            if (ct) {
+                const res = IGPCore.rankManufacturerItems({ items: m ? m.chassis : [], withCost: false });
+                let body = '';
+                if (res.ok) {
+                    const rows = res.values.ranked.slice(0, 5).map((r, i) => {
+                        const tag = res.values.bestRatingId === r.id ? '<span class="igpas-adv-tag">rating tertinggi</span>' : '';
+                        return '<tr' + (i === 0 ? ' class="igpas-adv-best"' : '') + '>' +
+                            '<td>' + (i + 1) + '. ' + esc(r.name) + tag + '</td>' +
+                            '<td>' + esc(r.rating) + '%</td></tr>';
+                    }).join('');
+                    body = '<table><thead><tr><th>Chassis</th><th>Rating</th></tr></thead><tbody>' + rows + '</tbody></table>';
+                } else {
+                    body = '<p class="igpas-adv-note">' + esc(res.error) + '.</p>';
+                }
+                const note = pagerNote + ' Heuristik estimasi — bukan rumus game.';
+                const rebuilt = panelEl(idC, 'I.G.P.A.S · manufacturers', 'Ranking chassis halaman ini (estimasi)', body, note);
+                ct.insertAdjacentElement('beforebegin', rebuilt);
+            } else {
+                removeIfAny([idC]);
+            }
+        }
+
+        function renderAll() {
+            if (typeof document === 'undefined' || !document.body) return;
+            const pid = pageId();
+            if (pid !== 'cars' && pid !== 'manufacturers') {
+                // Halaman lain (termasuk balapan/strategi): tanpa jejak UI apa pun.
+                removeIfAny([PREFIX + '-toggle', PREFIX + '-design', PREFIX + '-supply', PREFIX + '-mfg-engine', PREFIX + '-mfg-chassis']);
+                return;
+            }
+            styleEnsure();
+            if (!document.getElementById(PREFIX + '-toggle')) {
+                const btn = document.createElement('button');
+                btn.id = PREFIX + '-toggle';
+                btn.type = 'button';
+                btn.setAttribute('aria-pressed', 'false');
+                btn.setAttribute('aria-label', 'Tampilkan atau sembunyikan panel advisor I.G.P.A.S');
+                btn.addEventListener('click', () => {
+                    const pref = gm.get(Keys.advisor, null) || {};
+                    gm.set(Keys.advisor, { hidden: !pref.hidden });
+                    applyHidden();
+                });
+                document.body.appendChild(btn);
+            }
+            applyHidden();
+            try {
+                mountDesign();
+                mountSupply();
+                mountManufacturers();
+            } catch (e) {
+                if (typeof console !== 'undefined') console.warn('IGPAS advisor', e); // jangan pernah merusak halaman game
+            }
+        }
+
+        function applyHidden() {
+            const pref = gm.get(Keys.advisor, null);
+            const hidden = !!(pref && pref.hidden);
+            if (hidden) document.body.classList.add('igpas-adv-hide');
+            else document.body.classList.remove('igpas-adv-hide');
+            const btn = document.getElementById(PREFIX + '-toggle');
+            if (btn) {
+                btn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+                btn.textContent = (hidden ? '▸ ' : '▾ ') + 'I.G.P.A.S advisor';
+            }
+        }
+
+        function start() {
+            if (typeof document === 'undefined' || !document.body) return;
+            renderAll();
+            // Re-render dipicu aksi user (buka dialog Supply, ganti tab/pager, pindah halaman).
+            let pending = null;
+            const schedule = () => {
+                if (pending) clearTimeout(pending);
+                pending = setTimeout(() => { pending = null; renderAll(); }, 250);
+            };
+            document.addEventListener('click', schedule, true);
+            document.addEventListener('keydown', schedule, true);
+            window.addEventListener('popstate', schedule);
+            window.addEventListener('hashchange', schedule);
+        }
+
+        return { start: start, renderAll: renderAll };
+    })();
+
+    /* =====================================================================
+     * 4) BOOT — pasang UI read-only. Elemen game tidak pernah diubah.
      * ===================================================================== */
 
     function boot() {
         if (typeof document === 'undefined') return; // lingkungan non-browser (tes)
 
         const startUi = () => {
-            // v0.3.0: TIDAK ADA UI di tab igpmanager (sensor senyap).
-            // Seluruh antarmuka hanya di tab Command Center (peran 'gui').
+            // v0.7.0: tab iGP tetap sensor mailbox + MENAMBAH advisor in-page read-only
+            // (hanya elemen milik sendiri, halaman studi Cars/Manufacturers — tidak
+            // pernah di halaman balapan; elemen game tidak disentuh).
+            if (ROLE === 'sensor' && typeof Advisor !== 'undefined') Advisor.start();
             if (ROLE === 'gui' && typeof GuiMaster !== 'undefined') GuiMaster.mount();
         };
 
@@ -1299,6 +1708,6 @@
 
     // Ekspor untuk pengujian Node — tanpa efek di browser (module tak terdefinisi).
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { IGPCore, AdapterRegistry, Storage, Mailbox };
+        module.exports = { IGPCore, AdapterRegistry, Storage, Mailbox, Advisor };
     }
 })();

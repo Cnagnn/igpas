@@ -245,4 +245,141 @@ t('rankOptions: seri → urutan alfabetis', () => {
     assert.strictEqual(r.values.best, 'Alpha');
 });
 
+/* ---------- designPriority (v0.7.0 advisor heuristik) ---------- */
+
+t('designPriority: gap terbesar diprioritaskan, share % proporsional', () => {
+    const r = IGPCore.designPriority({
+        attrs: {
+            acceleration: { label: 'Acceleration', val: 120 },
+            handling: { label: 'Handling', val: 280 },
+            cooling: { label: 'Cooling', val: 250 },
+        },
+        best: {
+            acceleration: { max: 300 },   // gap 180
+            handling: { max: 300 },       // gap 20
+            cooling: { max: 260 },        // gap 10
+        },
+        designPoints: 200,
+    });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.values.ranked[0].key, 'acceleration');   // gap terbesar
+    assert.strictEqual(r.values.totalGap, 210);                   // 180 + 20 + 10
+    const shares = r.values.ranked.map(x => x.sharePct);
+    assert.strictEqual(r.values.ranked[0].sharePct, Math.round(180 / 210 * 1000) / 10);
+    assert.deepStrictEqual(shares, [85.7, 9.5, 4.8]);
+    assert.strictEqual(r.values.designPoints, 200);
+    assert.strictEqual(r.values.unbenchmarked, 0);
+});
+
+t('designPriority: atribut sudah >= max liga -> tanpa saran, ok:false jujur', () => {
+    const r = IGPCore.designPriority({
+        attrs: { a: { label: 'A', val: 320 } },
+        best: { a: { max: 300 } },
+    });
+    assert.strictEqual(r.ok, false);        // tidak ada gap: tidak ada yang diusulkan
+    assert.match(r.error, /gap/i);
+});
+
+t('designPriority: tanpa benchmark liga → gagal jujur', () => {
+    const r = IGPCore.designPriority({ attrs: { a: { label: 'A', val: 100 } }, best: {} });
+    assert.strictEqual(r.ok, false);
+    assert.match(r.error, /gap/i);
+});
+
+t('designPriority: atribut kosong → error', () => {
+    assert.strictEqual(IGPCore.designPriority({ attrs: {} }).ok, false);
+    assert.strictEqual(IGPCore.designPriority({}).ok, false);
+});
+
+t('designPriority: atribut tanpa max tetap tercantum sbg unbenchmarked', () => {
+    const r = IGPCore.designPriority({
+        attrs: {
+            a: { label: 'A', val: 100 },   // ada benchmark
+            b: { label: 'B', val: 50 },    // tanpa benchmark
+        },
+        best: { a: { max: 200 } },
+    });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.values.ranked.length, 1);       // hanya yang ada gap
+    assert.strictEqual(r.values.unbenchmarked, 1);
+    assert.strictEqual(r.values.ranked[0].sharePct, 100);
+});
+
+/* ---------- rankSuppliers (v0.7.0 advisor heuristik) ---------- */
+
+t('rankSuppliers: nilai/biaya (per 1M) menentukan urutan, bukan nilai mentah', () => {
+    const r = IGPCore.rankSuppliers({
+        items: [
+            { supplierId: 11, costPerRace: 1000000, bonuses: [{ stat: 'handling', value: 5 }] },   // 5/1M
+            { supplierId: 12, costPerRace: 500000, bonuses: [{ stat: 'handling', value: 3 }] },    // 6/1M
+        ],
+    });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.values.ranked[0].id, 12);       // 6 per 1M > 5 per 1M
+    assert.strictEqual(r.values.bestValueId, 12);
+    assert.strictEqual(r.values.cheapestId, 12);
+    assert.strictEqual(r.values.ranked[0].valuePerCost, 6);
+});
+
+t('rankSuppliers: bonus negatif menurunkan nilai; tanpa biaya tidak juara nilai', () => {
+    const r = IGPCore.rankSuppliers({
+        items: [
+            { supplierId: 21, costPerRace: 300000, bonuses: [{ stat: 'tyre', value: -2 }, { stat: 'power', value: 4 }] }, // Σ2 -> 6.67/1M
+            { supplierId: 22, costPerRace: null, bonuses: [{ stat: 'power', value: 9 }] },                                // tanpa biaya
+        ],
+    });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.values.withoutCost, 1);
+    // Supplier tanpa biaya tidak bisa dinilai "nilai/biaya" — jujur ditaruh setelah
+    // yang terukur, bukan juara hanya karena Σ bonus besar.
+    assert.strictEqual(r.values.ranked[0].id, 21);
+    assert.strictEqual(r.values.ranked[0].valuePerCost, 6.67);
+    const last = r.values.ranked[r.values.ranked.length - 1];
+    assert.strictEqual(last.id, 22);
+    assert.strictEqual(last.value, 9);
+    assert.strictEqual(last.valuePerCost, null);
+});
+
+t('rankSuppliers: kosong → error', () => {
+    assert.strictEqual(IGPCore.rankSuppliers({ items: [] }).ok, false);
+    assert.strictEqual(IGPCore.rankSuppliers({}).ok, false);
+});
+
+/* ---------- rankManufacturerItems (v0.7.0 advisor heuristik) ---------- */
+
+t('rankManufacturerItems: engine — rating menurun, efisiensi sbg tiebreak', () => {
+    const r = IGPCore.rankManufacturerItems({
+        items: [
+            { id: 1, name: 'A', ratingPct: 80, costPerRace: 1000000 },
+            { id: 2, name: 'B', ratingPct: 80, costPerRace: 500000 },
+            { id: 3, name: 'C', ratingPct: 90, costPerRace: 5000000 },
+        ],
+        withCost: true,
+    });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.values.bestRatingId, 3);
+    assert.strictEqual(r.values.ranked[0].id, 3);
+    assert.strictEqual(r.values.bestValueId, 2);         // 80% pada biaya separuh
+});
+
+t('rankManufacturerItems: chassis — rating saja, baris tanpa rating dihitung noData', () => {
+    const r = IGPCore.rankManufacturerItems({
+        items: [
+            { id: 5, name: 'X', ratingPct: 40 },
+            { id: 6, name: 'Y', ratingPct: null },
+            { id: 7, name: 'Z', ratingPct: 55 },
+        ],
+        withCost: false,
+    });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.values.ranked.length, 2);
+    assert.strictEqual(r.values.ranked[0].id, 7);
+    assert.strictEqual(r.values.noData, 1);
+});
+
+t('rankManufacturerItems: semua rating kosong → error jujur', () => {
+    const r = IGPCore.rankManufacturerItems({ items: [{ id: 1, name: 'A', ratingPct: null }], withCost: false });
+    assert.strictEqual(r.ok, false);
+});
+
 console.log('\nSemua ' + n + ' test lulus ✔');
