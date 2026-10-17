@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.6.1
+// @version      0.6.2
 // @description  Race strategy study calculators + read-only snapshot autoload for iGP Manager (account, car, supply, manufacturers). Study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + autoload snapshot read-only (akun, mobil, supply, manufacturers). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
@@ -21,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.6.1';
+    const VERSION = '0.6.2';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -1044,7 +1044,7 @@
         /** Satu permintaan read-once ke tab sensor + laporan deteksi. Tanpa polling DOM game. */
         function requestCollect(kinds, label, note) {
             const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-            activeReq = { id: id, label: label, kinds: kinds, got: {}, details: [] };
+            activeReq = { id: id, label: label, kinds: kinds, got: {}, details: [], claimedFrom: {} };
             lastReqAt = Date.now();
             Mailbox.send('collect-request', { kinds: kinds, reqId: id });
             Mailbox.send('report-request', {});
@@ -1162,17 +1162,31 @@
             Mailbox.on('collect-result', p => {
                 const pay = (p && p.payload) || {};
                 const st = $('igpas-snap-status');
-                if (pay.ok && pay.data) {
-                    if (pay.kind === 'supply-data') {
-                        Storage.mergeSnapshot('supply-data', { [pay.data.type]: pay.data });
-                    } else {
-                        Storage.saveSnapshot(pay.kind, pay.data);
+                const hasReqId = typeof pay.reqId === 'string' && pay.reqId.length > 0;
+                const matchesActive = hasReqId && activeReq && pay.reqId === activeReq.id;
+                const requestedKind = matchesActive && activeReq.kinds.indexOf(pay.kind) >= 0;
+                const priorState = requestedKind ? activeReq.got[pay.kind] : null;
+                // Error dari satu sensor tidak mengunci kind: sensor lain boleh
+                // memberi hasil sukses (penting saat beberapa tab sensor broadcast).
+                const firstOrSuccessAfterError = requestedKind &&
+                    (!priorState || (priorState === 'no' && pay.ok && pay.data));
+                const sender = (p && p.from) || 'unknown';
+                const claimedSender = requestedKind && activeReq.claimedFrom[pay.kind];
+                const senderAllowed = firstOrSuccessAfterError && (!claimedSender || claimedSender === sender);
+
+                if (senderAllowed) {
+                    // Authorization penyimpanan dipisahkan dari korelasi UI:
+                    // hanya request aktif, kind yang diminta, hasil pertama per kind,
+                    // dan sender pertama per kind yang boleh menulis snapshot.
+                    if (pay.ok && pay.data) activeReq.claimedFrom[pay.kind] = sender;
+                    if (pay.ok && pay.data) {
+                        if (pay.kind === 'supply-data') {
+                            Storage.mergeSnapshot('supply-data', { [pay.data.type]: pay.data });
+                        } else {
+                            Storage.saveSnapshot(pay.kind, pay.data);
+                        }
                     }
-                }
-                if (pay.reqId && activeReq && pay.reqId === activeReq.id) {
-                    // Ringkasan per-kind untuk permintaan yang sedang berjalan.
-                    if (pay.ok) activeReq.got[pay.kind] = 'ok';
-                    else activeReq.got[pay.kind] = activeReq.got[pay.kind] || 'no';
+                    activeReq.got[pay.kind] = pay.ok ? 'ok' : 'no';
                     if (!pay.ok && pay.error) activeReq.details.push(pay.kind + ': ' + pay.error);
                     if (st) {
                         const complete = activeReq.kinds.every(k => activeReq.got[k]);
@@ -1180,16 +1194,19 @@
                         st.textContent = activeReq.label + ': ' + reqSummary() +
                             (complete ? ' — selesai ' + new Date().toLocaleTimeString() : '');
                     }
-                } else if (st) {
-                    // Hasil tanpa reqId (mis. dari versi/sesi lain) — pesan tunggal.
+                    renderSnapshots();
+                } else if (!hasReqId && st) {
+                    // Legacy result tanpa reqId: tetap tampilkan status informatif,
+                    // tetapi TIDAK boleh mengotorisasi penulisan snapshot.
                     if (pay.ok && pay.data) {
-                        st.textContent = pay.kind + ' tersimpan (' + new Date().toLocaleTimeString() + ').';
+                        st.textContent = pay.kind + ' diterima tanpa reqId — tidak disimpan (' + new Date().toLocaleTimeString() + ').';
                     } else {
                         const extra = pay.kind === 'supply-data' ? ' — buka dialog Supply dulu di tab iGP' : '';
                         st.textContent = '✗ ' + pay.kind + ': ' + (pay.error || 'tidak ada data') + extra;
                     }
                 }
-                renderSnapshots();
+                // Result dengan reqId yang stale, duplikat, atau kind tak diminta
+                // sengaja diabaikan: tidak mengubah status dan tidak menimpa snapshot.
             });
 
             Mailbox.on('report', p => {

@@ -1,4 +1,4 @@
-// Test GUI Command Center (jsdom, shell nyata docs/app/index.html) — I.G.P.A.S v0.6.1.
+// Test GUI Command Center (jsdom, shell nyata docs/app/index.html) — I.G.P.A.S v0.6.2.
 // Menguji: mount wiring, autoload saat halaman "dibuka" (collect-request + report-request),
 // agregasi hasil per-kind (reqId), simpan snapshot, tombol Capture manual, dan
 // alur Capture manufacturers (request → hasil → snapshot + panel terisi).
@@ -44,7 +44,7 @@ let autoReqId = null;
     }
 
     t('mount: badge versi + mode live (userscript aktif)', () => {
-        assert($('igpas-gui-version').textContent === 'GUI v0.6.1',
+        assert($('igpas-gui-version').textContent === 'GUI v0.6.2',
             'versi: ' + $('igpas-gui-version').textContent);
         assert(/live/.test($('igpas-gui-mode').textContent), 'mode tidak live');
     });
@@ -94,6 +94,49 @@ let autoReqId = null;
             'status: ' + $('igpas-snap-status').textContent);
     });
 
+    const manualReqId = mbPackets().filter(p => p.type === 'collect-request').pop().payload.reqId;
+    store.set('igpas:mb:stale', {
+        id: 'stale', type: 'collect-result', to: '*', from: 'sensor:old', ts: Date.now(),
+        payload: { reqId: autoReqId, kind: 'account-data', ok: true,
+            data: { manager: 'STALE', level: 'L0', rank: '0', rankTier: null, balance: '0', tokens: '0' },
+            error: null, pageUrl: 'https://igpmanager.com/' } });
+    store.set('igpas:mb:unrequested', {
+        id: 'unrequested', type: 'collect-result', to: '*', from: 'sensor:other', ts: Date.now(),
+        payload: { reqId: manualReqId, kind: 'manufacturer-data', ok: true,
+            data: { engines: [{ id: 1 }], chassis: [], totalPages: {} }, error: null,
+            pageUrl: 'https://igpmanager.com/app/p=manufacturers' } });
+
+    await wait(900);
+
+    t('hasil stale/unrequested: tidak menimpa snapshot atau status request aktif', () => {
+        const snaps = store.get('igpas:snapshots') || {};
+        assert(snaps['account-data'] && snaps['account-data'].data.manager === 'Tester',
+            'respons stale menimpa snapshot akun');
+        assert(!snaps['manufacturer-data'], 'kind yang tidak diminta tersimpan');
+        assert($('igpas-snap-status').textContent.indexOf('Capture') === 0,
+            'status berubah oleh respons stale/unrequested: ' + $('igpas-snap-status').textContent);
+    });
+
+    // Dua sensor broadcast: error dari sensor pertama tidak boleh mengunci kind.
+    $('igpas-snap-capture').click();
+    const retryReqId = mbPackets().filter(p => p.type === 'collect-request').pop().payload.reqId;
+    store.set('igpas:mb:error-first', {
+        id: 'error-first', type: 'collect-result', to: '*', from: 'sensor:wrong-tab', ts: Date.now(),
+        payload: { reqId: retryReqId, kind: 'account-data', ok: false, data: null,
+            error: 'halaman tidak cocok untuk account-data', pageUrl: 'https://igpmanager.com/app/p=cars' } });
+    store.set('igpas:mb:success-after-error', {
+        id: 'success-after-error', type: 'collect-result', to: '*', from: 'sensor:right-tab', ts: Date.now(),
+        payload: { reqId: retryReqId, kind: 'account-data', ok: true,
+            data: { manager: 'Tester-2', level: 'L8', rank: '1300', rankTier: 'gold', balance: '9m', tokens: '13' },
+            error: null, pageUrl: 'https://igpmanager.com/' } });
+    await wait(900);
+
+    t('multi-sensor: sukses dari sensor kedua dapat menggantikan error pertama', () => {
+        const snaps = store.get('igpas:snapshots') || {};
+        assert(snaps['account-data'] && snaps['account-data'].data.manager === 'Tester-2',
+            'sukses sensor kedua tertolak setelah error sensor pertama');
+    });
+
     let mfrReqId = null;
     t('Capture manufacturers: klik → collect-request manufacturer-data + status', () => {
         $('igpas-snap-capture-manufacturers').click();
@@ -117,6 +160,20 @@ let autoReqId = null;
                 chassis: [{ id: 14263, name: 'Bibo Racing', nationality: 'GB', ratingPct: 38, customers: 10 }],
                 totalPages: { engines: 672, chassis: 204 },
             } } });
+    store.set('igpas:mb:res4', {
+        id: 'res4', type: 'collect-result', to: '*', from: 'sensor:other', ts: Date.now(),
+        payload: { reqId: mfrReqId, kind: 'manufacturer-data', ok: true, error: null,
+            pageUrl: 'https://igpmanager.com/app/p=manufacturers&tab=chassis',
+            data: {
+                engines: [{ id: 9999, name: 'DUPLICATE', nationality: 'XX', ratingPct: 99,
+                    costPerRace: 999, statsVisible: true, customers: 99 }],
+                chassis: [], totalPages: { engines: 1, chassis: 1 },
+            } } });
+    store.set('igpas:mb:legacy', {
+        id: 'legacy', type: 'collect-result', to: '*', from: 'sensor:legacy', ts: Date.now(),
+        payload: { reqId: null, kind: 'account-data', ok: true,
+            data: { manager: 'LEGACY', level: 'L0', rank: '0', rankTier: null, balance: '0', tokens: '0' },
+            error: null, pageUrl: 'https://igpmanager.com/' } });
 
     await wait(900);
 
@@ -124,6 +181,10 @@ let autoReqId = null;
         const snaps = store.get('igpas:snapshots') || {};
         assert(snaps['manufacturer-data'] && snaps['manufacturer-data'].data.engines.length === 1,
             'snapshot manufacturers tidak tersimpan');
+        assert(snaps['manufacturer-data'].data.engines[0].id === 5108,
+            'duplicate/sender lain menimpa snapshot manufacturers');
+        assert(snaps['account-data'].data.manager === 'Tester-2',
+            'legacy result menimpa snapshot akun');
         assert($('igpas-snap-manufacturer-body').textContent.indexOf('Akina SpeedStars') >= 0,
             'panel manufacturers tidak terisi');
         assert($('igpas-snap-badge').textContent.indexOf('mfr 2/2') >= 0,

@@ -74,8 +74,8 @@ pembacaan langsung artefak.
 | heartbeat (key `igpas:gui:heartbeat`) | gui → semua | timestamp (praktik: 1 key overwriten per 2s) |
 | `report-request` | gui → * | {} (broadcast) |
 | `report` | sensor → gui | {label, url, adapters, profiles} |
-| `collect-request` | gui → * | {kinds:[account-data, car-data, supply-data, manufacturer-data], reqId} (v0.4.0–v0.6.0) |
-| `collect-result` | sensor → gui | {reqId, kind, ok, data, error, pageUrl} (v0.4.0–v0.6.0) |
+| `collect-request` | gui → * | {kinds:[account-data, car-data, supply-data, manufacturer-data], reqId} (v0.4.0–v0.6.2) |
+| `collect-result` | sensor → gui | {reqId, kind, ok, data, error, pageUrl} (v0.4.0–v0.6.2) |
 
 Prinsip (menurun dari pola A.C.A.S): read-once delete **hanya setelah
 dikonsumsi penerima** (pengirim tidak menghapus pesannya sendiri — fix race
@@ -98,11 +98,12 @@ Ini meniadakan risiko "invented data" dan membuat inti bisa di-unit-test.
 | v0.5.1 | **Autoload** snapshot saat Command Center dibuka (+ auto-refresh kembali ke tab, jeda ≥30 dtk); deteksi sensor + pesan jujur bila tak ada respons; fix race mailbox (pesan dihapus hanya setelah dikonsumsi penerima) | ✅ |
 | v0.6.0 | Adapter **manufacturer-data** (halaman Manufacturers — tabel engine + chassis selalu di DOM; read-once dari tombol Capture) + fixture DOM nyata kedua tab + panel snapshot GUI | ✅ |
 | v0.6.1 | Deteksi varian URL dipastikan **berbasis DOM, bukan URL** (…`&tab=engines`/`&tab=chassis` sama-sama lolos utk manufacturers; supply via dialog) + pesan gagal menyebut halaman aktif + test regresi (24 snapshot) | ✅ |
+| v0.6.2 | Hardening korelasi hasil mailbox: hanya request aktif/kind diminta; hasil sukses pertama mengklaim sensor, error tidak mengunci sensor; stale/duplikat/legacy tidak menimpa data + regresi GUI (8 test GUI) | ✅ |
 | — | race-strategy: sengaja manual selamanya | ⏳ |
-| v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0–v0.6.0 — account + cars + supply + manufacturers + autoload) |
+| v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0–v0.6.2 — account + cars + supply + manufacturers + autoload) |
 | v0.4 | Kalibrasi lap-time dari catatan user (tabel input sendiri, bukan scrape) | 🔜 |
 
-## 4b. Fase 3 (v0.4.0–v0.6.0) — Adapter DOM read-only (TERLAKSANA)
+## 4b. Fase 3 (v0.4.0–v0.6.2) — Adapter DOM read-only (TERLAKSANA)
 
 Pemetaan selektor berasal dari **live DOM halaman iGP asli** (capture `document
 .documentElement.outerHTML` oleh pengguna, disanitasi lalu dijadikan fixture
@@ -138,7 +139,7 @@ Aturan main adapter (bake-in, bukan kebijakan terpisah):
    asal dialog terbuka). Pesan gagal menyebut halaman aktif
    (mis. `halaman aktif: cars`) — diagnostik jujur, tetap tanpa URL matching.
 
-Semua halaman yang direncanakan sudah dipetakan (v0.6.1): **Manufacturers**
+Semua halaman yang direncanakan sudah dipetakan (v0.6.2): **Manufacturers**
 (`p=manufacturers` — deteksi `#pageId`, semua varian `&tab=engines`/
 `&tab=chassis` bekerja; fixture `manufacturers-engines.html` &
 `manufacturers-chassis.html`) kini terpasang sebagai adapter
