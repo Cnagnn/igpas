@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.5.0
-// @description  Race strategy study calculators + read-only snapshots for iGP Manager (account, car, supply). Study tool only, no live-race assistance, no automation.
-// @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + snapshot read-only (akun, mobil, supply). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
+// @version      0.5.1
+// @description  Race strategy study calculators + read-only snapshot autoload for iGP Manager (account, car, supply). Study tool only, no live-race assistance, no automation.
+// @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + autoload snapshot read-only (akun, mobil, supply). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
 // @supportURL   https://github.com/Cnagnn/igpas/issues
@@ -21,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.5.0';
+    const VERSION = '0.5.1';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -346,6 +346,9 @@
      * 2.5) BRIDGE — struktur dual-tab (pola CommLink/A.C.A.S):
      *      mailbox GM-storage, polling & read-once. Peran tab:
      *      gui (localhost / github.io/igpas/) <-> sensor (igpmanager.com).
+     *      v0.5.1: pesan hanya dihapus setelah dikonsumsi penerima — pengirim
+     *      tidak menghapus pesannya sendiri (fix race 400 ms); paket basi
+     *      >30 dtk dibersihkan oleh poll mana pun.
      * ===================================================================== */
 
     const ROLE = (() => {
@@ -385,12 +388,13 @@
             for (const key of gm.keys()) {
                 if (typeof key !== 'string' || key.indexOf(Mailbox.PREFIX) !== 0) continue;
                 const packet = gm.get(key, null);
-                gm.del(key); // read-once: pesan dihapus begitu dibaca (pola A.C.A.S)
-                if (!packet || typeof packet !== 'object') continue;
-                if (now - (packet.ts || 0) > 30000) continue; // paket basi
-                if (packet.from === ROLE + ':' + INSTANCE_ID) continue; // pesan sendiri
-                if (packet.to && packet.to !== '*' && packet.to !== INSTANCE_ID) continue;
+                if (!packet || typeof packet !== 'object') { gm.del(key); continue; } // rusak → bersihkan
+                if (now - (packet.ts || 0) > 30000) { gm.del(key); continue; }        // basi → bersihkan (janitor)
+                if (packet.from === ROLE + ':' + INSTANCE_ID) continue;              // pesan sendiri: biarkan untuk tab lain
+                if (packet.to && packet.to !== '*' && packet.to !== INSTANCE_ID) continue; // bukan untuk kita: jangan hapus
                 const list = Mailbox.handlers[packet.type] || [];
+                if (!list.length) continue;                                          // tak ada handler di peran ini: biarkan untuk peran lain
+                gm.del(key); // read-once: hanya pesan yang benar-benar dikonsumsi yang dihapus (pola A.C.A.S)
                 for (const fn of list) {
                     try { fn(packet); } catch (e) { if (typeof console !== 'undefined') console.warn('IGPAS listener', e); }
                 }
@@ -771,12 +775,13 @@
         function refreshInstances() {
             const box = $('igpas-gui-instances');
             if (!box) return;
-            const hb = Mailbox.guiConnected()
-                ? '<span class="badge ok">● heartbeat live</span>'
-                : '<span class="badge off">○ heartbeat idle</span>';
+            const fresh = Array.from(reports.values()).some(r => Date.now() - (r.ts || 0) < 60000);
+            const hb = fresh
+                ? '<span class="badge ok">● sensor terdeteksi</span>'
+                : '<span class="badge off">○ sensor belum terdeteksi</span>';
             let html = hb;
             if (reports.size === 0) {
-                html += ' <span class="badge">no sensor tab yet</span>';
+                html += ' <span class="badge">buka tab iGP (userscript aktif)</span>';
             } else {
                 for (const [id, r] of reports) {
                     html += '<div class="rec"><div><strong>' + esc(r.label) + '</strong>' +
@@ -911,6 +916,35 @@
             return html;
         }
 
+        // ---- Autoload & deteksi (v0.5.1) ----
+        const KIND_LABEL = { 'account-data': 'akun', 'car-data': 'mobil', 'supply-data': 'supply' };
+        let activeReq = null;  // permintaan berjalan: { id, label, kinds, got, details }
+        let lastReqAt = 0;     // throttle auto-refresh (≥30 dtk)
+
+        /** Satu permintaan read-once ke tab sensor + laporan deteksi. Tanpa polling DOM game. */
+        function requestCollect(kinds, label, note) {
+            const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+            activeReq = { id: id, label: label, kinds: kinds, got: {}, details: [] };
+            lastReqAt = Date.now();
+            Mailbox.send('collect-request', { kinds: kinds, reqId: id });
+            Mailbox.send('report-request', {});
+            const st = $('igpas-snap-status');
+            if (st) {
+                st.title = '';
+                st.textContent = label + ': permintaan dikirim ke tab iGP (baca-saja, sekali per permintaan)' + (note || '');
+            }
+            setTimeout(() => {
+                if (!activeReq || activeReq.id !== id || Object.keys(activeReq.got).length) return;
+                const st2 = $('igpas-snap-status');
+                if (st2) st2.textContent = label + ': belum ada respons dari tab iGP — pastikan igpmanager.com terbuka dengan userscript aktif.';
+            }, 8000);
+        }
+
+        function reqSummary() {
+            return activeReq.kinds.map(k =>
+                (KIND_LABEL[k] || k) + ' ' + ({ ok: '✓', no: '✗' }[activeReq.got[k]] || '…')).join(' · ');
+        }
+
         function renderSnapshots() {
             const badge = $('igpas-snap-badge');
             const acc = $('igpas-snap-account-body');
@@ -961,7 +995,10 @@
             if (sup) sup.innerHTML = supplyHtml(s);
         }
 
+        let mounted = false;
         function mount() {
+            if (mounted) return; // idempoten — aman dari double DOMContentLoaded
+            mounted = true;
             // Kalkulator & profil (dipindah dari panel floating lama)
             const calcShell = $('igpas-calc-panel');
             if (calcShell && typeof UI !== 'undefined') UI.mountInto(calcShell);
@@ -980,19 +1017,12 @@
             const le = $('ig-lab-example'); if (le) le.addEventListener('click', labExample);
             const lr = $('ig-lab-rank');   if (lr) lr.addEventListener('click', labRank);
 
-            // Snapshot akun/mobil/supply (Fase 3 — baca-saja, read-once per klik)
+            // Snapshot akun/mobil/supply (Fase 3 — baca-saja, read-once per permintaan)
             const cap = $('igpas-snap-capture');
-            if (cap) cap.addEventListener('click', () => {
-                const st = $('igpas-snap-status');
-                if (st) st.textContent = 'permintaan dikirim ke tab iGP… (baca-saja, sekali per klik)';
-                Mailbox.send('collect-request', { kinds: ['account-data', 'car-data'] });
-            });
+            if (cap) cap.addEventListener('click', () => requestCollect(['account-data', 'car-data'], 'Capture'));
             const capSup = $('igpas-snap-capture-supply');
-            if (capSup) capSup.addEventListener('click', () => {
-                const st = $('igpas-snap-status');
-                if (st) st.textContent = 'permintaan supply dikirim… (dialog Supply harus terbuka di tab iGP)';
-                Mailbox.send('collect-request', { kinds: ['supply-data'] });
-            });
+            if (capSup) capSup.addEventListener('click', () =>
+                requestCollect(['supply-data'], 'Capture supply', ' — buka dialog Supply dulu di tab iGP'));
             const clr = $('igpas-snap-clear');
             if (clr) clr.addEventListener('click', () => {
                 Storage.clearSnapshots();
@@ -1010,10 +1040,26 @@
                     } else {
                         Storage.saveSnapshot(pay.kind, pay.data);
                     }
-                    if (st) st.textContent = pay.kind + ' tersimpan (' + new Date().toLocaleTimeString() + ').';
+                }
+                if (pay.reqId && activeReq && pay.reqId === activeReq.id) {
+                    // Ringkasan per-kind untuk permintaan yang sedang berjalan.
+                    if (pay.ok) activeReq.got[pay.kind] = 'ok';
+                    else activeReq.got[pay.kind] = activeReq.got[pay.kind] || 'no';
+                    if (!pay.ok && pay.error) activeReq.details.push(pay.kind + ': ' + pay.error);
+                    if (st) {
+                        const complete = activeReq.kinds.every(k => activeReq.got[k]);
+                        st.title = activeReq.details.join(' | ');
+                        st.textContent = activeReq.label + ': ' + reqSummary() +
+                            (complete ? ' — selesai ' + new Date().toLocaleTimeString() : '');
+                    }
                 } else if (st) {
-                    const extra = pay.kind === 'supply-data' ? ' — buka dialog Supply dulu di tab iGP' : '';
-                    st.textContent = '✗ ' + pay.kind + ': ' + (pay.error || 'tidak ada data') + extra;
+                    // Hasil tanpa reqId (mis. dari versi/sesi lain) — pesan tunggal.
+                    if (pay.ok && pay.data) {
+                        st.textContent = pay.kind + ' tersimpan (' + new Date().toLocaleTimeString() + ').';
+                    } else {
+                        const extra = pay.kind === 'supply-data' ? ' — buka dialog Supply dulu di tab iGP' : '';
+                        st.textContent = '✗ ' + pay.kind + ': ' + (pay.error || 'tidak ada data') + extra;
+                    }
                 }
                 renderSnapshots();
             });
@@ -1025,6 +1071,7 @@
                     adapters: p.payload && p.payload.adapters,
                     profiles: p.payload && p.payload.profiles,
                     t: new Date(p.ts).toLocaleTimeString(),
+                    ts: p.ts,
                 });
                 refreshInstances();
                 const ls = $('igpas-gui-last-sync');
@@ -1033,6 +1080,18 @@
 
             setInterval(refreshInstances, 2000);
             refreshInstances();
+
+            // Autoload (v0.5.1): satu permintaan read-once saat /app/ dibuka, plus saat
+            // kembali ke tab ini (jeda ≥30 dtk). Bukan polling DOM game — sensor hanya
+            // membaca halaman saat ada permintaan eksplisit dari GUI.
+            if ($('igpas-snap-capture')) {
+                requestCollect(['account-data', 'car-data'], 'autoload');
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'visible' && (Date.now() - lastReqAt) > 30000) {
+                        requestCollect(['account-data', 'car-data'], 'auto-refresh');
+                    }
+                });
+            }
         }
 
         return { mount: mount };
@@ -1074,10 +1133,12 @@
             Mailbox.on('collect-request', p => {
                 // Baca-saja: jalankan adapter atas halaman yang SEDANG terbuka,
                 // sekali per permintaan — tanpa polling, tanpa sentuhan elemen game.
-                const kinds = (p && p.payload && p.payload.kinds) || ['account-data', 'car-data'];
+                const pay = (p && p.payload) || {};
+                const kinds = pay.kinds || ['account-data', 'car-data'];
                 for (const kind of kinds) {
                     const res = AdapterRegistry.capture(kind);
                     Mailbox.send('collect-result', {
+                        reqId: pay.reqId || null,
                         kind,
                         ok: res.ok,
                         data: res.data || null,
@@ -1093,6 +1154,6 @@
 
     // Ekspor untuk pengujian Node — tanpa efek di browser (module tak terdefinisi).
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { IGPCore, AdapterRegistry, Storage };
+        module.exports = { IGPCore, AdapterRegistry, Storage, Mailbox };
     }
 })();

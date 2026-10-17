@@ -24,17 +24,19 @@ Profil setup per sirkuit tersimpan lokal (GM storage) dan dirender langsung
 di **Command Center** (v0.3.0: userscript tidak lagi menampilkan panel apapun
 di igpmanager.com — tab permainan = sensor senyap).
 
-**Autoload akun, mobil & supply (v0.4.0 → v0.5.0)** — di Command Center, seksi
-**Account & Car Snapshot**: klik *Capture now* → tab iGP yang terbaca membaca
-halamannya **baca-saja, sekali per klik** (header akun = semua halaman; atribut
-mobil = halaman *Cars* saja) dan mengirim snapshot: nama/level/rank/saldo/token,
-8 atribut mobil, design points, bonus supplier, id supplier engine/fuel/tyre.
-**Capture supply (v0.5.0)**: buka dialog Supply di halaman *Cars* (klik tile
-Engines/Fuel/Tyres — Anda yang membukanya) lalu klik *Capture supply* → snapshot
-supplier aktif + semua alternatif (bonus stat & biaya per balapan, id gambar +
-eId) untuk engine, fuel, dan tyres — tersimpan per tipe (merge). Snapshot
-tersimpan lokal (GM storage). Tanpa polling, tanpa aksi apa pun pada elemen
-game, dan halaman balapan tidak pernah dibaca.
+**Autoload akun, mobil & supply (v0.4.0 → v0.5.1)** — snapshot dimuat **otomatis
+setiap Command Center dibuka** (dan saat kembali ke tab itu dengan jeda ≥30 dtk):
+satu permintaan **baca-saja per aktivasi** ke tab iGP — bukan polling halaman
+game. Seksi **Account & Car Snapshot**: klik *Capture now* untuk menyegarkan
+kapan pun (header akun = semua halaman; atribut mobil = halaman *Cars* saja):
+nama/level/rank/saldo/token, 8 atribut mobil, design points, bonus supplier, id
+supplier engine/fuel/tyre. **Capture supply (v0.5.0)**: buka dialog Supply di
+halaman *Cars* (klik tile Engines/Fuel/Tyres — Anda yang membukanya) lalu klik
+*Capture supply* → snapshot supplier aktif + semua alternatif (bonus stat &
+biaya per balapan, id gambar + eId) untuk engine, fuel, dan tyres — tersimpan
+per tipe (merge). Snapshot tersimpan lokal (GM storage); bila tab iGP belum
+terbuka, status menampilkan pesan jujur (bukan data palsu). Tanpa aksi apa pun
+pada elemen game, dan halaman balapan tidak pernah dibaca.
 
 ## Dual-Tab Command Center (v0.2)
 
@@ -46,12 +48,12 @@ Struktur ala A.C.A.S: **tab 1** GUI Command Center (ter-host GitHub Pages),
    **Open Command Center** (atau langsung <https://cnagnn.github.io/igpas/app/>)
    → badge "● live (userscript aktif)" (butuh userscript terpasang).
 2. Buka **tab 2**: igpmanager.com (sensor **senyap** — v0.3.0 tidak meng-inject
-   UI apa pun ke halaman permainan). Status koneksi terlihat di panel
-   **Connection** tab 1 setelah **Request data from tabs** diklik.
-3. Di GUI: **Request data from tabs** → menerima laporan adapter/profil dari
-   tab igpmanager; panel **Strategy Recommendations** dan **Data Lab**
-   (ranking mobil & manufaktur) siap dipakai. Untuk data otomatis: seksi
-   **Account & Car Snapshot** → **Capture now** (v0.4.0).
+   UI apa pun ke halaman permainan). Deteksi sensor otomatis: panel
+   **Connection** tab 1 menampilkan badge sensor begitu tab iGP menjawab.
+3. Di GUI: panel **Strategy Recommendations** dan **Data Lab**
+   (ranking mobil & manufaktur) siap dipakai. Seksi **Account & Car Snapshot**
+   **autoload** saat halaman dibuka (v0.5.1); **Capture now** / *Request data
+   from tabs* tetap tersedia untuk menyegarkan manual.
 
 Fallback dev lokal (opsional):
 ```bash
@@ -59,7 +61,7 @@ python3 -m http.server 8787 -d docs   # lalu buka http://localhost:8787/ (landin
 ```
 
 > Data akun, mobil (v0.4.0) dan supply engine/fuel/tyre (v0.5.0) bisa
-> di-**autoload** dari halaman iGP (read-only, sekali per klik Capture).
+> di-**autoload** dari halaman iGP (read-only, satu permintaan per aktivasi GUI).
 > Halaman Manufacturers/Chassis masih menunggu mapping; Data Lab tetap
 > menerima input manual/JSON. Tidak ada selector fiktif.
 
@@ -78,6 +80,8 @@ Semua angka berasal dari **input Anda sendiri** — tidak ada asumsi data game.
 src/igpas.user.js        userscript (tanpa build step)
 test/core.test.js        unit test inti (Node)
 test/snapshots.test.js   adapter akun+mobil+supply vs fixture DOM nyata (jsdom)
+test/mailbox.test.js     semantik mailbox dual-tab (read-once, TTL, konsumsi)
+test/gui.test.js         smoke GUI /app/ + alur autoload (jsdom + shell nyata)
 test/fixtures/*.html     DOM halaman iGP yang disanitasi (tanpa data pribadi)
 docs/ARCHITECTURE.md     blueprint + peta pola A.C.A.S → I.G.P.A.S
 ```
@@ -86,9 +90,8 @@ Jalankan verifikasi:
 
 ```bash
 npm install        # dev deps (jsdom)
+npm test           # core + snapshots + mailbox + gui
 node --check src/igpas.user.js
-node test/core.test.js
-node test/snapshots.test.js
 ```
 
 ## Lisensi

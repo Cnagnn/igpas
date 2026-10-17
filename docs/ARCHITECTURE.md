@@ -44,8 +44,9 @@ pembacaan langsung artefak.
 │          agar bisa dites di Node)                   │
 ├─────────────────────────────────────────────────────┤
 │ Mailbox  (v0.2: bridge antar-tab pola CommLink —    │
-│          key 'igpas:mb:*', polling 400ms, read-once,│
-│          packet TTL 30s; heartbeat 'igpas:gui:*')   │
+│          key 'igpas:mb:*', polling 400ms, read-once │
+│          oleh penerima saja (v0.5.1); TTL 30s;      │
+│          heartbeat 'igpas:gui:*')                   │
 ├─────────────────────────────────────────────────────┤
 │ UI       HANYA di Command Center (peran gui):       │
 │          kalkulator + snapshot akun/mobil +         │
@@ -54,6 +55,8 @@ pembacaan langsung artefak.
 │ v0.4.0: adapter read-only + snapshot mailbox        │
 │ v0.5.0: + supply-data (dialog Supply engine/fuel/   │
 │          tyre — merge per tipe)                     │
+│ v0.5.1: autoload saat /app/ dibuka + deteksi       │
+│          sensor (fix race mailbox)                  │
 ├─────────────────────────────────────────────────────┤
 │ AdapterRegistry (mobil/manufaktur/strategi — status │
 │          jujur 'selectors-tbd', tanpa selector      │
@@ -68,9 +71,13 @@ pembacaan langsung artefak.
 | heartbeat (key `igpas:gui:heartbeat`) | gui → semua | timestamp (praktik: 1 key overwriten per 2s) |
 | `report-request` | gui → * | {} (broadcast) |
 | `report` | sensor → gui | {label, url, adapters, profiles} |
+| `collect-request` | gui → * | {kinds:[account-data, car-data, supply-data], reqId} (v0.4.0–v0.5.1) |
+| `collect-result` | sensor → gui | {reqId, kind, ok, data, error, pageUrl} (v0.4.0–v0.5.1) |
 
-Prinsip (menurun dari pola A.C.A.S): read-once delete, TTL anti-dead-mail,
-ignore-self, peran pakai `@match` localhost/github.io vs igpmanager.com.
+Prinsip (menurun dari pola A.C.A.S): read-once delete **hanya setelah
+dikonsumsi penerima** (pengirim tidak menghapus pesannya sendiri — fix race
+v0.5.1), TTL anti-dead-mail, ignore-self, peran pakai `@match`
+localhost/github.io vs igpmanager.com.
 
 Prinsip: **kalkulator = aritmetika murni atas input user**. Tidak ada data game
 yang diandaikan (wear rate, konsumsi fuel, dll. semuanya diisi pengguna).
@@ -85,11 +92,12 @@ Ini meniadakan risiko "invented data" dan membuat inti bisa di-unit-test.
 | v0.3.0 | Panel floating dihapus — tab iGP sensor senyap; kalkulator+profil pindah ke Command Center; landing & GUI neobrutalism semi-rounded | ✅ |
 | v0.4.0 | Fase 3 (relaunch): adapter **account-data** (header global) & **car-data** (halaman Cars) read-only, read-once per klik Capture dari GUI; snapshot tersimpan lokal; fixture DOM nyata + jsdom | ✅ |
 | v0.5.0 | Adapter **supply-data** (dialog Supply: engine/fuel/tyre) — supplier aktif + alternatif (bonus stat, cost/race, eId); merge per tipe di snapshot; fixture DOM nyata + test jsdom | ✅ |
+| v0.5.1 | **Autoload** snapshot saat Command Center dibuka (+ auto-refresh kembali ke tab, jeda ≥30 dtk); deteksi sensor + pesan jujur bila tak ada respons; fix race mailbox (pesan dihapus hanya setelah dikonsumsi penerima) | ✅ |
 | — | manufacturer-data (halaman Manufacturers/Chassis): menunggu capture; race-strategy: sengaja manual selamanya | ⏳ |
-| v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0–v0.5.0 — account + cars + supply) |
+| v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0–v0.5.1 — account + cars + supply + autoload) |
 | v0.4 | Kalibrasi lap-time dari catatan user (tabel input sendiri, bukan scrape) | 🔜 |
 
-## 4b. Fase 3 (v0.4.0) — Adapter DOM read-only (TERLAKSANA)
+## 4b. Fase 3 (v0.4.0–v0.5.1) — Adapter DOM read-only (TERLAKSANA)
 
 Pemetaan selektor berasal dari **live DOM halaman iGP asli** (capture `document
 .documentElement.outerHTML` oleh pengguna, disanitasi lalu dijadikan fixture
@@ -104,8 +112,11 @@ Pemetaan selektor berasal dari **live DOM halaman iGP asli** (capture `document
 Aturan main adapter (bake-in, bukan kebijakan terpisah):
 
 1. **Baca-saja total** — tidak pernah klik/submit/tulis apa pun di halaman game.
-2. **Read-once per klik** — berjalan hanya saat GUI mengirim `collect-request`
-   lewat mailbox; sensor menjawab `collect-result` lalu selesai. Tanpa polling.
+2. **Read-once per permintaan** — GUI mengirim satu `collect-request` saat
+   halaman dibuka (autoload v0.5.1), saat kembali ke tab (jeda ≥30 dtk), atau
+   saat tombol Capture diklik; sensor menjawab `collect-result` lalu selesai.
+   Polling hanya pada mailbox GM-storage lokal (400 ms); DOM halaman game
+   dibaca hanya saat ada permintaan. Tanpa polling halaman game.
 3. **pageId gate** — adapter mobil menolak halaman selain Cars; tidak ada jalur
    baca ke halaman balapan/strategi.
 4. **Kegagalan jujur** — halaman tak cocok → `collect-result {ok:false,error}`,

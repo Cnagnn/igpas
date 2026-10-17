@@ -9,7 +9,7 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
 
 | Klausul ToS | Isi inti | Our v0.2.1 | Penilaian |
 |---|---|---|---|
-| § V.J | Larang *third-party programs: mods, hacks, cheats, **scripts**, bots, automation* yang *berinteraksi dengan Software, intercept komunikasi, read Game memory* | Userscript hanya meng-inject panel mandiri + mailbox lokal; **0** intercept jaringan, **0** baca memory proses, **0** aksi/otomasi, **0** baca DOM game | ⚠ **Letter-risiko sisa**: makna literal "scripts that interact with the Software" bisa dibaca luas. Purposive reading (daftar: mods/hacks/bots + tujuan intercept/read-memory) menunjuk pada program yang memengaruhi gameplay — panel pasif tidak, tapi **tidak bisa di-nol-kan secara legal**. Risiko praktis: rendah; risiko literal: nonzero |
+| § V.J | Larang *third-party programs: mods, hacks, cheats, **scripts**, bots, automation* yang *berinteraksi dengan Software, intercept komunikasi, read Game memory* | 0 UI di situs game (v0.3.0+); adapter baca-saja hanya saat permintaan eksplisit (read-once, tanpa polling); **0** intercept jaringan, **0** baca memory proses, **0** aksi/otomasi | ⚠ **Letter-risiko sisa**: makna literal "scripts that interact with the Software" bisa dibaca luas. Purposive reading (daftar: mods/hacks/bots + tujuan intercept/read-memory) menunjuk pada program yang memengaruhi gameplay — panel pasif tidak, tapi **tidak bisa di-nol-kan secara legal**. Risiko praktis: rendah; risiko literal: nonzero |
 | § V.F | Larang "transmitting … **scrapers** or other harmful code" | 0 request keluar; tidak men-*transmit* apa pun ke situs | ✅ Non-transmisi; klantenya soal menyebarkan kode ke lingkungan iGP |
 | § V.H | Larang *exploit undocumented aspect for unfair advantage* | Semua angka = input manual; tidak ada aspek tersembunyi yang dieksploitasi | ✅ (jaga begitu di Fase 3: hanya data yang sama-tampaknya dilihat user biasa) |
 | § I & § IV.A | Non-komersial; larang *derive/copy/distribute* materi game; larang pakai *trademark/trade dress* tanpa lisensi | 0 aset/kode/art iGP di repo kita (arisita original); pixel "iGP" hanya referensi deskriptif | ⚠ Gunakan disclaimer non-afiliasi (sudah ditambahkan di landing); hindari logo/aset mereka |
@@ -22,25 +22,37 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
 1. **GUI-only (nama kepatuhan) — RISIKO ~0**: Command Center berfungsi 100% tanpa
    userscript aktif di tab iGP (kalkulator, Data Lab, rekomendasi semua di tab GUI).
    User yang mau kepatuhan mutlak: cukup *disable* userscript saat membuka igpmanager.com.
-2. **Dual-tab study (v0.2.1)** — risiko praktis rendah: panel pasif, tanpa aksi/tanpa
-   jaringan/tanpa membaca DOM game. Menyisakan risiko *letter* § V.J (tak terhindarkan
-   bagi *semua* userscript). Keputusan gunakan/tidak = milik user.
+2. **Dual-tab study (v0.2.1, diperbarui v0.5.1)** — risiko praktis rendah: tanpa UI di
+   situs game (v0.3.0+), tanpa aksi ke situs, tanpa jaringan; pembacaan DOM hanya saat
+   ada permintaan eksplisit (read-once, tanpa polling halaman game). Menyisakan risiko
+   *letter* § V.J (tak terhindarkan bagi *semua* userscript). Keputusan gunakan/tidak =
+   milik user.
 3. **Selama balapan live** — DILARANG secara kebijakan proyek ini (di luar ToS eksplisit
    juga: § V.H unfair advantage). Jangan pernah aktifkan di race view saat sesi berjalan.
-4. **Fase 3 (adapter data otomatis, v0.4.0 TERLAKSANA)** - desain kepatuhan:
+   Catatan v0.5.1: autoload membaca halaman yang sedang terbuka di tab iGP; tidak ada
+   adapter untuk data race (lap/posisi/fuel race), jadi paling banyak hanya header akun
+   global (sama di semua halaman). Untuk kepatuhan ketat: jangan buka Command Center
+   selama sesi.
+4. **Fase 3 (adapter data otomatis, v0.4.0–v0.5.1 TERLAKSANA)** — desain kepatuhan:
     - Hanya membaca data *yang memang ditampilkan* ke user biasa di halaman studi
       (Cars, header akun) - bukan tersembunyi/undocumented.
-    - **Read-on-request manual**: adapter hanya berjalan saat user klik *Capture* di
-      Command Center (sekali per klik, tanpa polling latar di halaman game).
+    - **Read-on-request**: adapter hanya berjalan saat ada permintaan dari Command
+      Center — saat halaman GUI dibuka (autoload v0.5.1), saat kembali ke tab (jeda
+      ≥30 dtk), atau saat user klik *Capture*; sekali per permintaan, tanpa polling
+      latar di halaman game.
     - **pageId gate**: adapter mobil hanya aktif di halaman Cars - tak ada jalur baca
       ke halaman balapan/strategi.
     - **v0.5.0 - dialog Supply**: hanya membaca dialog Supply yang **sudah dibuka user
       sendiri** (engine/fuel/tyre: supplier aktif + alternatif — bonus stat & biaya per
       balapan). Adapter tidak pernah membuka dialog atau mengklik tile game; gate
       `.supplyDialog` yang sudah ada di DOM user-driven oleh user.
+    - **v0.5.1 - autoload**: snapshot dimuat otomatis saat Command Center dibuka
+      (satu permintaan read-once per pembukaan; auto-refresh saat kembali ke tab,
+      jeda ≥30 dtk). Bukan loop latar: DOM game hanya dibaca saat ada permintaan;
+      mailbox hanya memindahkan permintaan/hasil antar-tab via storage lokal kita.
     - Tanpa distribusi ulang data orang lain; snapshot hanya di storage browser user.
-    - Bukan: background polling halaman game, capture saat race live, server-side
-      scraping.
+    - Bukan: background polling halaman game, server-side scraping, atau adapter
+      untuk data balapan (tidak ada lap/posisi/fuel race yang dibaca, kapan pun).
     - SEBELUM perluas cakupan (mis. halaman Supply/Chassis): tanyakan iGP Support
       (routes S-XIV) bila ingin kepastian tertulis.
 
@@ -50,12 +62,12 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
   `@require` **0**; `unsafeWindow` **0** (`node test`, `node --check`, audit 2026-10-17).
 - Mailbox polling hanya membaca **GM storage kita sendiri** (`igpas:mb:*`) di browser
   user — bukan trafik/menuju server iGP.
-- Adapter v0.4.0–v0.5.0: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
+- Adapter v0.4.0–v0.5.1: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
   tanpa `fetch`, tanpa XHR, tanpa akses `unsafeWindow`. Fixture pengujian dari DOM
-  halaman nyata yang disanitasi (`test/fixtures/*.html`, 17 test jsdom: akun, mobil,
-  supply engine/fuel/tyre).
-- Version: userscript kini 0.5.0 (adapter supply-data); landing/etika disclaimer
-  diperbarui pada commit terkait.
+  halaman nyata yang disanitasi (`test/fixtures/*.html`); suite: 32 core + 17 snapshot
+  (akun, mobil, supply) + 6 mailbox + 4 GUI (jsdom) = 59.
+- Version: userscript kini 0.5.1 (autoload snapshot + deteksi sensor); landing/etika
+  disclaimer diperbarui pada commit terkait.
 
 ## Rekomendasi yang belum dilakukan (kembali ke user)
 

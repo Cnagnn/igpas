@@ -1,1 +1,1 @@
-{"name":"igpas","version":"0.5.0","private":true,"scripts":{"test":"node test/core.test.js && node test/snapshots.test.js"},"devDependencies":{"jsdom":"^30.1.3"}}
+{"name":"igpas","version":"0.5.1","private":true,"scripts":{"test":"node test/core.test.js && node test/snapshots.test.js && node test/mailbox.test.js && node test/gui.test.js"},"devDependencies":{"jsdom":"^30.1.3"}}

@@ -113,9 +113,10 @@
 
     <section id="igpas-connection">
         <h2>🔗 Connection</h2>
-        <p class="hint">Kanal: GM-storage mailbox (parsing antar-tab, pola CommLink/A.C.A.S).
-           Pasang userscript lalu buka tab igpmanager.com — instance akan muncul di sini.</p>
-        <div id="igpas-gui-instances"><span class="badge">No sensor tab yet</span></div>
+        <p class="hint">Kanal: GM-storage mailbox (antar-tab, pola CommLink/A.C.A.S).
+           Pasang userscript lalu buka tab igpmanager.com — deteksi sensor otomatis
+           (badge + laporan di bawah).</p>
+        <div id="igpas-gui-instances"><span class="badge">Menunggu tab sensor…</span></div>
         <div class="row" style="margin-top:10px">
             <button id="igpas-gui-request-report">↩︎ Request data from tabs</button>
             <span class="hint" id="igpas-gui-last-sync" style="margin:0"></span>
@@ -132,12 +133,14 @@
 
     <section id="igpas-snap">
         <h2>📥 Account &amp; Car Snapshot <span class="badge" id="igpas-snap-badge">—</span></h2>
-        <p class="hint">Autoload read-only: klik <strong>Capture</strong> → tab iGP yang terbuka
-           membaca halamannya <strong>sekali per klik</strong> (tidak ada polling, tidak menyentuh
-           elemen game) dan mengirim snapshot ke sini. Untuk snapshot mobil, buka halaman
-           <em>Cars</em> di tab iGP dulu. Untuk snapshot <strong>supply</strong> (engine/fuel/tyres):
-           buka dialog Supply di halaman Cars (klik tile Engines/Fuel/Tyres) lalu klik
-           <em>Capture supply</em>. Snapshot tersimpan lokal di browser Anda.</p>
+        <p class="hint"><strong>Autoload:</strong> setiap halaman ini dibuka — dan saat kembali
+           ke tab ini (jeda ≥30 dtk) — Command Center otomatis meminta snapshot akun+mobil
+           dari tab iGP (<strong>satu permintaan baca-saja per aktivasi</strong>; bukan polling
+           halaman game). Klik <strong>Capture</strong> untuk menyegarkan lagi kapan pun;
+           snapshot mobil butuh tab iGP di halaman <em>Cars</em>. Untuk
+           <strong>supply</strong> (engine/fuel/tyres): buka dialog Supply di halaman Cars
+           (klik tile Engines/Fuel/Tyres) lalu klik <em>Capture supply</em>. Snapshot
+           tersimpan lokal di browser Anda.</p>
         <div class="igpas-snap-actions">
             <button id="igpas-snap-capture">📥 Capture now (request ke tab iGP)</button>
             <button id="igpas-snap-capture-supply">🏭 Capture supply (dialog Supply terbuka)</button>
