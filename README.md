@@ -25,20 +25,23 @@ buka/tutup panel.
 
 ## Dual-Tab Command Center (v0.2)
 
-Struktur ala A.C.A.S: **tab 1** igpmanager.com (sensor), **tab 2** GUI
-Command Center (jurik jarak jauh), tersambung via **mailbox GM-storage**
+Struktur ala A.C.A.S: **tab 1** GUI Command Center (ter-host GitHub Pages),
+**tab 2** igpmanager.com (sensor), tersambung via **mailbox GM-storage**
 (polling, read-once — pola CommLink).
 
-1. Jalankan server GUI lokal (repo masih private — GitHub Pages menyusul):
-   ```bash
-   cd /home/user/igpas && python3 -m http.server 8787 -d docs/gui
-   ```
-2. Buka **tab 1**: `http://localhost:8787` → badge "● live (userscript aktif)".
-3. Buka **tab 2**: igpmanager.com → panel floating menampilkan status
+1. Buka **tab 1**: <https://cnagnn.github.io/igpas/gui/>
+   → badge "● live (userscript aktif)" (butuh userscript terpasang).
+2. Buka **tab 2**: igpmanager.com → panel floating menampilkan status
    `GUI: ● terhubung`.
-4. Di GUI: **Request data from tabs** → menerima laporan adapter/profil dari
+3. Di GUI: **Request data from tabs** → menerima laporan adapter/profil dari
    tab igpmanager; panel **Strategy Recommendations** dan **Data Lab**
    (ranking mobil & manufaktur) siap dipakai.
+
+Fallback dev lokal (opsional):
+```bash
+python3 -m http.server 8787 -d docs/gui   # lalu buka http://localhost:8787/gui/
+```
+(Saat GUI di-serve dari subfolder, gunakan `/gui/` di akhir URL.)
 
 > Sumber data v0.2 tetap **manual**. Adapter DOM (mobil/manufaktur otomatis)
 > berstatus `selectors-tbd` — framework siap, pemetaan halaman nyata belum
