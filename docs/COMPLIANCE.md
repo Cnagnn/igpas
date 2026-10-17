@@ -55,6 +55,8 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
       DOM, tab aktif hanya soal display) pada halaman yang dibuka user sendiri —
       read-once dari tombol *Capture manufacturers*, tanpa klik apa pun (termasuk
       kontrol “Show hidden stats” dibiarkan apa adanya), tanpa membuka dialog.
+      Deteksi murni DOM (`#pageId`) — bukan URL matching; semua varian URL tab
+      (`…&tab=engines`/`…&tab=chassis`) diterima setara.
     - Tanpa distribusi ulang data orang lain; snapshot hanya di storage browser user.
     - Bukan: background polling halaman game, server-side scraping, atau adapter
       untuk data balapan (tidak ada lap/posisi/fuel race yang dibaca, kapan pun).
@@ -67,12 +69,13 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
   `@require` **0**; `unsafeWindow` **0** (`node test`, `node --check`, audit 2026-10-17).
 - Mailbox polling hanya membaca **GM storage kita sendiri** (`igpas:mb:*`) di browser
   user — bukan trafik/menuju server iGP.
-- Adapter v0.4.0–v0.6.0: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
+- Adapter v0.4.0–v0.6.1: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
   tanpa `fetch`, tanpa XHR, tanpa akses `unsafeWindow`. Fixture pengujian dari DOM
-  halaman nyata yang disanitasi (`test/fixtures/*.html`); suite: 32 core + 23 snapshot
-  (akun, mobil, supply, manufacturers) + 6 mailbox + 6 GUI (jsdom) = 67.
-- Version: userscript kini 0.6.0 (adapter manufacturer-data engine/chassis + autoload
-  snapshot + deteksi sensor); landing/etika disclaimer diperbarui pada commit terkait.
+  halaman nyata yang disanitasi (`test/fixtures/*.html`); suite: 32 core + 24 snapshot
+  (akun, mobil, supply, manufacturers) + 6 mailbox + 6 GUI (jsdom) = 68.
+- Version: userscript kini 0.6.1 (adapter manufacturer-data engine/chassis + deteksi
+  berbasis DOM utk semua varian URL tab + autoload snapshot + deteksi sensor);
+  landing/etika disclaimer diperbarui pada commit terkait.
 
 ## Rekomendasi yang belum dilakukan (kembali ke user)
 

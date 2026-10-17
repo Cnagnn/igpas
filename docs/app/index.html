@@ -142,8 +142,11 @@
            <strong>supply</strong> (engine/fuel/tyres): buka dialog Supply di halaman Cars
            (klik tile Engines/Fuel/Tyres) lalu klik <em>Capture supply</em>. Untuk
            <strong>manufacturers</strong> (engine + chassis): buka halaman
-           <em>Manufacturers</em> di tab iGP (tab mana pun) lalu klik
-           <em>Capture manufacturers</em>. Snapshot tersimpan lokal di browser Anda.</p>
+           <em>Manufacturers</em> di tab iGP — URL bentuk apa pun (<code>p=manufacturers</code>,
+           <code>&amp;tab=engines</code>, <code>&amp;tab=chassis</code>; deteksi dari DOM
+           <code>#pageId</code>, bukan URL) — lalu klik <em>Capture manufacturers</em>.
+           Gate <strong>supply</strong> = dialog terbuka, juga tidak bergantung URL.
+           Snapshot tersimpan lokal di browser Anda.</p>
         <div class="igpas-snap-actions">
             <button id="igpas-snap-capture">📥 Capture now (request ke tab iGP)</button>
             <button id="igpas-snap-capture-supply">🏭 Capture supply (dialog Supply terbuka)</button>

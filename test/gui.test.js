@@ -1,4 +1,4 @@
-// Test GUI Command Center (jsdom, shell nyata docs/app/index.html) — I.G.P.A.S v0.6.0.
+// Test GUI Command Center (jsdom, shell nyata docs/app/index.html) — I.G.P.A.S v0.6.1.
 // Menguji: mount wiring, autoload saat halaman "dibuka" (collect-request + report-request),
 // agregasi hasil per-kind (reqId), simpan snapshot, tombol Capture manual, dan
 // alur Capture manufacturers (request → hasil → snapshot + panel terisi).
@@ -44,7 +44,7 @@ let autoReqId = null;
     }
 
     t('mount: badge versi + mode live (userscript aktif)', () => {
-        assert($('igpas-gui-version').textContent === 'GUI v0.6.0',
+        assert($('igpas-gui-version').textContent === 'GUI v0.6.1',
             'versi: ' + $('igpas-gui-version').textContent);
         assert(/live/.test($('igpas-gui-mode').textContent), 'mode tidak live');
     });

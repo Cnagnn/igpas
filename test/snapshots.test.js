@@ -105,6 +105,14 @@ t('supply-data: tyre — bonus negatif terbaca', () => {
     eq(r.data.alternatives.find(a => a.eId === 14).bonuses.find(b => b.stat === 'Handling').value, -1);
 });
 
+t('supply-data: gate dialog saja — tak bergantung pageId/URL (hal serupa manufacturers)', () => {
+    const doc = new JSDOM(fs.readFileSync(path.join(__dirname, 'fixtures/supply-engine.html'), 'utf8')).window.document;
+    doc.getElementById('pageId').remove(); // seolah halaman/URL lain — gate tetap hanya `.supplyDialog`
+    const r = AdapterRegistry.capture('supply-data', doc);
+    eq(r.ok, true);
+    eq(r.data.current.supplierId, 2);
+});
+
 t('account-data: header akun terbaca penuh', () => {
     const r = AdapterRegistry.capture('account-data', accDoc);
     eq(r.ok, true);
@@ -125,9 +133,11 @@ t('account-data: valid di halaman Cars (header global)', () => {
     eq(r.data.balance, '8.4m');
 });
 
-t('manufacturer-data: gate pageId — halaman lain ditolak', () => {
+t('manufacturer-data: gate pageId — halaman lain ditolak (error sebut halaman aktif)', () => {
     eq(AdapterRegistry.capture('manufacturer-data', blankDoc).ok, false);
-    eq(AdapterRegistry.capture('manufacturer-data', carsDoc).ok, false);
+    const r = AdapterRegistry.capture('manufacturer-data', carsDoc);
+    eq(r.ok, false);
+    if (!/halaman aktif: cars/.test(r.error)) throw new Error(r.error);
 });
 
 t('manufacturer-data: engine — 20 baris, bentuk data lengkap (baris pertama)', () => {
@@ -162,12 +172,12 @@ t('manufacturer-data: chassis — kolom tanpa cost/stats + edge case', () => {
     }
 });
 
-t('manufacturer-data: kedua tab capture (engines/chassis) -> data identik', () => {
-    const a = AdapterRegistry.capture('manufacturer-data', mfrEngDoc);
-    const b = AdapterRegistry.capture('manufacturer-data', mfrChsDoc);
+t('manufacturer-data: kedua varian URL (…&tab=engines vs …&tab=chassis) -> data identik', () => {
+    const a = AdapterRegistry.capture('manufacturer-data', mfrEngDoc); // fixture = capture URL …&tab=engines
+    const b = AdapterRegistry.capture('manufacturer-data', mfrChsDoc); // fixture = capture URL …&tab=chassis
     eq(a.ok, true);
     eq(b.ok, true);
-    eq(b.data, a.data); // kedua tabel selalu ada di DOM — tab aktif hanya soal display
+    eq(b.data, a.data); // deteksi berbasis DOM (#pageId), bukan URL — kedua varian lolos & hasil sama
 });
 
 t('manufacturer-data: total halaman pager (engine 672 / chassis 204)', () => {

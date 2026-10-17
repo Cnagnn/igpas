@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.6.0
+// @version      0.6.1
 // @description  Race strategy study calculators + read-only snapshot autoload for iGP Manager (account, car, supply, manufacturers). Study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + autoload snapshot read-only (akun, mobil, supply, manufacturers). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
@@ -21,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.6.0';
+    const VERSION = '0.6.1';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -493,7 +493,8 @@
      * live DOM (fixture test/fixtures/supply-*.html). Dialog dibuka OLEH USER di
      * halaman Cars (klik tile Engines/Fuel/Tyres); adapter tidak pernah membuka
      * dialog, tidak mengklik, tidak submit — hanya membaca DOM yang tampak.
-     * Gate: `.supplyDialog` harus ada (dialog terbuka) + judul h2 menentukan tipe.
+     * Gate: `.supplyDialog` harus ada (dialog terbuka) + judul h2 menentukan tipe —
+     * berbasis DOM, BUKAN URL (halaman/varian URL apa pun asal dialog terbuka).
      */
     const IgpSupplyAdapter = {
         id: 'supply-data',
@@ -556,11 +557,12 @@
     };
 
     /**
-     * Adapter halaman Manufacturers (p=manufacturers) — read-only. Dipetakan dari
-     * capture live DOM kedua tab (fixture test/fixtures/manufacturers-engines.html
-     * & manufacturers-chassis.html). Fakta halaman: KEDUA tabel (engine + chassis)
+     * Adapter halaman Manufacturers — read-only. Dipetakan dari capture live DOM
+     * kedua tab (fixture test/fixtures/manufacturers-engines.html &
+     * manufacturers-chassis.html). Fakta halaman: KEDUA tabel (engine + chassis)
      * selalu ada di DOM; tab aktif hanya soal display — jadi satu capture membaca
-     * keduanya, dari tab mana pun. Gate: #pageId = 'manufacturers'.
+     * keduanya. Gate: #pageId = 'manufacturers' — berbasis DOM, BUKAN URL:
+     * varian /app/p=manufacturers, …&tab=engines, dan …&tab=chassis sama-sama lolos.
      * Hanya membaca; tidak pernah klik (termasuk kontrol “Show hidden stats”),
      * tidak submit, tidak membuka dialog.
      */
@@ -655,7 +657,16 @@
             if (!target) return { ok: false, error: 'dokumen tidak tersedia' };
             try {
                 const data = d.adapter.captures(target);
-                if (!data) return { ok: false, error: 'halaman tidak cocok untuk ' + kind };
+                if (!data) {
+                    // Gagal jujur + konteks: sebut halaman yang SEDANG aktif (dari #pageId DOM,
+                    // bukan URL) agar user tahu kenapa tidak cocok.
+                    let where = '';
+                    try {
+                        const pid = target.getElementById ? target.getElementById('pageId') : null;
+                        if (pid && pid.value) where = ' (halaman aktif: ' + pid.value + ')';
+                    } catch (e2) { /* biarkan tanpa konteks */ }
+                    return { ok: false, error: 'halaman tidak cocok untuk ' + kind + where };
+                }
                 return { ok: true, data };
             } catch (e) {
                 return { ok: false, error: String(e && e.message || e) };

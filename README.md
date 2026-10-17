@@ -34,14 +34,19 @@ supplier engine/fuel/tyre. **Capture supply (v0.5.0)**: buka dialog Supply di
 halaman *Cars* (klik tile Engines/Fuel/Tyres — Anda yang membukanya) lalu klik
 *Capture supply* → snapshot supplier aktif + semua alternatif (bonus stat &
 biaya per balapan, id gambar + eId) untuk engine, fuel, dan tyres — tersimpan
-per tipe (merge). **Capture manufacturers (v0.6.0)**: buka halaman
+per tipe (merge). Gate-nya **dialog terbuka** (`.supplyDialog`), bukan URL —
+asal dialog Supply tampil di tab iGP, capture bekerja dari halaman/varian URL
+mana pun. **Capture manufacturers (v0.6.0)**: buka halaman
 *Manufacturers* (`p=manufacturers`) di tab iGP — tab **engines** atau
 **chassis**, keduanya selalu terbaca karena kedua tabel ada di DOM — lalu klik
 *Capture manufacturers* → snapshot daftar engine (name, rating, biaya/balapan,
 stats terlihat/disembunyikan, customers) & chassis (name, rating, customers)
-plus total halaman pager. Snapshot tersimpan lokal (GM storage); bila tab iGP
-belum terbuka, status menampilkan pesan jujur (bukan data palsu). Tanpa aksi
-apa pun pada elemen game, dan halaman balapan tidak pernah dibaca.
+plus total halaman pager. **Deteksi berbasis DOM, bukan URL** — ketiga bentuk
+URL bekerja sama: `…/app/p=manufacturers`, `…&tab=engines`, dan `…&tab=chassis`
+(gate `#pageId=manufacturers`; kedua tabel selalu ada di DOM). Snapshot
+tersimpan lokal (GM storage); bila tab iGP belum terbuka, status menampilkan
+pesan jujur (bukan data palsu). Tanpa aksi apa pun pada elemen game, dan
+halaman balapan tidak pernah dibaca.
 
 ## Dual-Tab Command Center (v0.2)
 

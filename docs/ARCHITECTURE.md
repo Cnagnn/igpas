@@ -97,6 +97,7 @@ Ini meniadakan risiko "invented data" dan membuat inti bisa di-unit-test.
 | v0.5.0 | Adapter **supply-data** (dialog Supply: engine/fuel/tyre) — supplier aktif + alternatif (bonus stat, cost/race, eId); merge per tipe di snapshot; fixture DOM nyata + test jsdom | ✅ |
 | v0.5.1 | **Autoload** snapshot saat Command Center dibuka (+ auto-refresh kembali ke tab, jeda ≥30 dtk); deteksi sensor + pesan jujur bila tak ada respons; fix race mailbox (pesan dihapus hanya setelah dikonsumsi penerima) | ✅ |
 | v0.6.0 | Adapter **manufacturer-data** (halaman Manufacturers — tabel engine + chassis selalu di DOM; read-once dari tombol Capture) + fixture DOM nyata kedua tab + panel snapshot GUI | ✅ |
+| v0.6.1 | Deteksi varian URL dipastikan **berbasis DOM, bukan URL** (…`&tab=engines`/`&tab=chassis` sama-sama lolos utk manufacturers; supply via dialog) + pesan gagal menyebut halaman aktif + test regresi (24 snapshot) | ✅ |
 | — | race-strategy: sengaja manual selamanya | ⏳ |
 | v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0–v0.6.0 — account + cars + supply + manufacturers + autoload) |
 | v0.4 | Kalibrasi lap-time dari catatan user (tabel input sendiri, bukan scrape) | 🔜 |
@@ -130,14 +131,22 @@ Aturan main adapter (bake-in, bukan kebijakan terpisah):
 5. **dialog gate (supply)** — adapter supply hanya aktif bila dialog Supply
    sedang terbuka (dibuka user sendiri); adapter tidak pernah membuka dialog,
    mengklik tile, atau menyentuh elemen game.
+6. **Deteksi berbasis DOM, bukan URL** — manufacturers dicek via
+   `#pageId=manufacturers` (semua varian URL: `…/p=manufacturers`,
+   `…&tab=engines`, `…&tab=chassis` — kedua fixture manufacturers adalah dua
+   varian tab tersebut); supply via `.supplyDialog` (halaman/varian URL apa pun
+   asal dialog terbuka). Pesan gagal menyebut halaman aktif
+   (mis. `halaman aktif: cars`) — diagnostik jujur, tetap tanpa URL matching.
 
-Semua halaman yang direncanakan sudah dipetakan (v0.6.0): **Manufacturers**
-(`p=manufacturers`, tab engines & chassis — fixture `manufacturers-engines.html`
-& `manufacturers-chassis.html`) kini terpasang sebagai adapter
-`manufacturer-data`. Selektor di atas dapat berubah bila iGP meredesign — jika
-capture gagal, pesan error muncul jelas di GUI. Fixture: `supply-*.html`,
-`manufacturers-*.html` (23 test jsdom snapshot). Race-strategy tetap **manual
-selamanya** (bukan adapter).
+Semua halaman yang direncanakan sudah dipetakan (v0.6.1): **Manufacturers**
+(`p=manufacturers` — deteksi `#pageId`, semua varian `&tab=engines`/
+`&tab=chassis` bekerja; fixture `manufacturers-engines.html` &
+`manufacturers-chassis.html`) kini terpasang sebagai adapter
+`manufacturer-data`; **Supply** via gate dialog (juga URL-independent). Selektor
+di atas dapat berubah bila iGP meredesign — jika capture gagal, pesan error
+muncul jelas di GUI. Fixture: `supply-*.html`, `manufacturers-*.html`
+(24 test jsdom snapshot). Race-strategy tetap **manual selamanya** (bukan
+adapter).
 
 ## 5. Etika & batasan
 
