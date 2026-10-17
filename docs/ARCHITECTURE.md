@@ -48,9 +48,11 @@ pembacaan langsung artefak.
 │          oleh penerima saja (v0.5.1); TTL 30s;      │
 │          heartbeat 'igpas:gui:*')                   │
 ├─────────────────────────────────────────────────────┤
-│ UI       HANYA di Command Center (peran gui):       │
-│          kalkulator + snapshot akun/mobil +         │
-│          strategy + data lab                        │
+│ UI       Command Center (peran gui): kalkulator +   │
+│          snapshot akun/mobil + strategy + data lab  │
+│          + ADVISOR IN-PAGE di halaman studi iGP     │
+│          (v0.7.0: dialog Cars/Manufacturers/Supply; │
+│          halaman balapan tetap tanpa UI)            │
 │ v0.3.0: tab igpmanager = sensor senyap              │
 │ v0.4.0: adapter read-only + snapshot mailbox        │
 │ v0.5.0: + supply-data (dialog Supply engine/fuel/   │
@@ -59,6 +61,9 @@ pembacaan langsung artefak.
 │          sensor (fix race mailbox)                 │
 │ v0.6.0: + manufacturer-data (halaman               │
 │          Manufacturers engine+chassis)              │
+│ v0.7.0: + advisor in-page (prioritas DP, supply,    │
+│          ranking manufacturer) + helper heuristik   │
+│ v0.7.1: + menu capture DOM teredaksi-PII (fixture)  │
 ├─────────────────────────────────────────────────────┤
 │ AdapterRegistry (account/car/supply/manufacturers   │
 │          ':ready'; race-strategy ':menunggu-map' —  │
@@ -92,7 +97,8 @@ Ini meniadakan risiko "invented data" dan membuat inti bisa di-unit-test.
 |---|---|---|
 | v0.1 | Kerangka + 4 kalkulator + profil + UI | ✅ |
 | v0.2 | Dual-tab GUI (mailbox bridge) + engine rekomendasi (strategyRecommendation, rankOptions) + data lab + AdapterRegistry 'selectors-tbd' | ✅ |
-| v0.3.0 | Panel floating dihapus — tab iGP sensor senyap; kalkulator+profil pindah ke Command Center; landing & GUI neobrutalism semi-rounded | ✅ || v0.4.0 | Fase 3 (relaunch): adapter **account-data** (header global) & **car-data** (halaman Cars) read-only, read-once per klik Capture dari GUI; snapshot tersimpan lokal; fixture DOM nyata + jsdom | ✅ |
+| v0.3.0 | Panel floating dihapus — tab iGP sensor senyap; kalkulator+profil pindah ke Command Center; landing & GUI neobrutalism semi-rounded | ✅ |
+| v0.4.0 | Fase 3 (relaunch): adapter **account-data** (header global) & **car-data** (halaman Cars) read-only, read-once per klik Capture dari GUI; snapshot tersimpan lokal; fixture DOM nyata + jsdom | ✅ |
 | v0.5.0 | Adapter **supply-data** (dialog Supply: engine/fuel/tyre) — supplier aktif + alternatif (bonus stat, cost/race, eId); merge per tipe di snapshot; fixture DOM nyata + test jsdom | ✅ |
 | v0.5.1 | **Autoload** snapshot saat Command Center dibuka (+ auto-refresh kembali ke tab, jeda ≥30 dtk); deteksi sensor + pesan jujur bila tak ada respons; fix race mailbox (pesan dihapus hanya setelah dikonsumsi penerima) | ✅ |
 | v0.6.0 | Adapter **manufacturer-data** (halaman Manufacturers — tabel engine + chassis selalu di DOM; read-once dari tombol Capture) + fixture DOM nyata kedua tab + panel snapshot GUI | ✅ |
