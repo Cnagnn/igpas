@@ -79,12 +79,12 @@ python3 -m http.server 8787 -d docs   # lalu buka http://localhost:8787/ (landin
 
 Semua angka berasal dari **input Anda sendiri** — tidak ada asumsi data game.
 
-## Advisor in-page (v0.7.0)
+## Advisor in-page (v0.7.0, diperluas v0.7.2)
 
 Userscript kini menempel **panel rekomendasi langsung di halaman iGP** yang
-Anda buka — hanya di halaman **studi** (`#pageId` `cars` dan `manufacturers`,
-termasuk dialog Supply terbuka); halaman balapan/strategi **tidak pernah**
-mendapat UI. Sifatnya:
+Anda buka — hanya di halaman **studi** (`#pageId` `cars`, `manufacturers`,
+`staff`, dan `transfers`, termasuk dialog Supply terbuka); halaman
+balapan/strategi **tidak pernah** mendapat UI. Sifatnya:
 
 - **Supply (dialog Engine/Fuel/Tyres terbuka)** — membandingkan supplier aktif
   dengan alternatif di dialog: Σ bonus stat, biaya per balapan, dan
@@ -94,6 +94,17 @@ mendapat UI. Sifatnya:
 - **Design points (halaman Cars)** — prioritas alokasi DP per atribut: gap
   nilai atribut Anda terhadap **max rival liga** (`leagueDesignData`), dengan
   usulan % porsi DP proporsional gap terbesar.
+- **Drivers & Staff (v0.7.2)** — kondisi tim aktif: ability/mental/health
+  tiap driver (+ estimasi pemulihan per jam; health <30% ditandai), gaji &
+  kontrak staff aktif, dan status pit crew (mis. terkunci sampai level 5).
+  Kartu staff di halaman ini hanya menampilkan bintang — panel **tidak
+  mengarang angka rating**; angka kandidat lengkap ada di halaman Transfers.
+- **Transfers (v0.7.2)** — pasar yang tampil di tabel: driver terbaik
+  (overall, fee, **overall per 1jt fee**, special ability) dan staff pasar
+  per peran **CD/TD/DR** (top-2 per peran dengan trait hijau = penguat
+  atribut / merah = kelemahan dari tooltip game). Pasar bisa berubah sendiri
+  (refresh lelang) — panel diberi catatan dan di-render ulang saat Anda
+  berinteraksi.
 
 Semua panel berlabel **"estimasi — bukan rumus game"**: heuristik transparan
 atas angka yang memang tampil, bukan kepastian performa. Ada tombol
@@ -114,8 +125,9 @@ memilih menempelkan hasilnya.
 
 1. Pasang Tampermonkey/Violentmonkey.
 2. Dashboard → Create new script → tempel isi `src/igpas.user.js`.
-3. Buka igpmanager.com — halaman Cars/Manufacturers menampilkan panel
-   **I.G.P.A.S advisor** (bisa disembunyikan); halaman lain tetap senyap.
+3. Buka igpmanager.com — halaman Cars/Manufacturers/Team (Overview &
+   Transfers) menampilkan panel **I.G.P.A.S advisor** (bisa disembunyikan);
+   halaman lain tetap senyap.
 4. Buka <https://cnagnn.github.io/igpas/app/> — Command Center & alur capture.
 
 ## Pengembangan

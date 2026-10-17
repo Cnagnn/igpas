@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.7.1
+// @version      0.7.2
 // @description  Race strategy study calculators + read-only snapshot autoload for iGP Manager (account, car, supply, manufacturers). Study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + autoload snapshot read-only (akun, mobil, supply, manufacturers). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
@@ -21,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.7.1';
+    const VERSION = '0.7.2';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -412,6 +412,35 @@
                 },
             };
         },
+
+        /**
+         * Baca trait dari teks `data-append` (v0.7.2, halaman Transfers).
+         * Input = nilai atribut hoverData apa adanya (berisi potongan HTML
+         * dengan kutip tunggal). Output: { boost, weaken, special } — daftar
+         * label murni hasil parsing; tidak ada data tambahan yang dikarang.
+         *  - block-green  = spesialisasi penguat atribut (tooltip game)
+         *  - block-red    = kelemahan terkait (tooltip game)
+         *  - specialA*    = special ability driver ('None' dibuang)
+         */
+        parseTraits(html) {
+            const s = String(html == null ? '' : html);
+            const grab = pattern => {
+                const out = [];
+                const re = new RegExp(pattern, 'gi');
+                let m;
+                while ((m = re.exec(s)) !== null) {
+                    const t = String(m[1] || '').replace(/\s+/g, ' ').trim();
+                    if (t) out.push(t);
+                }
+                return out;
+            };
+            return {
+                boost: grab("class='[^']*block-green[^']*'[^>]*>(?:<icon>[^<]*</icon>)?([^<]+)"),
+                weaken: grab("class='[^']*block-red[^']*'[^>]*>(?:<icon>[^<]*</icon>)?([^<]+)"),
+                special: grab("class='[^']*specialA\\d*[^']*'[^>]*>([^<]+)")
+                    .filter(x => x.toLowerCase() !== 'none'),
+            };
+        },
     });
 
     // helper kecil (di luar freeze agar statis):
@@ -771,6 +800,169 @@
     };
 
     /**
+     * Adapter halaman Drivers & Staff (v0.7.2) — read-only. Dipetakan dari
+     * capture live DOM (fixture test/fixtures/staff.html). Gate: #pageId =
+     * 'staff'. Membaca: driver aktif (nama, ability/mental %, health bar +
+     * estimasi pemulihan, kontrak, gaji), kartu staff aktif (peran, gaji,
+     * kontrak), status pit crew (terkunci bila ada tooltip), jumlah reserve.
+     * KARTU staff aktif TIDAK memuat angka rating (bintang saja, relatif
+     * level) — adapter tidak pernah mengarang angka itu.
+     */
+    const IgpStaffAdapter = {
+        id: 'staff-data',
+        desc: 'halaman Drivers & Staff: driver aktif + staff + pit crew',
+        captures(doc) {
+            const pid = doc.getElementById('pageId');
+            if (!pid || pid.value !== 'staff') return null;
+            const drvBlock = doc.getElementById('drivers');
+            const staffGrid = doc.getElementById('staff');
+            if (!drvBlock && !staffGrid) return null;
+            const money = t => {
+                const m = String(t || '').match(/(\d+(?:\.\d+)?)\s*([kmb]?)/i);
+                if (!m) return null;
+                const suf = m[2].toLowerCase();
+                return Math.round(parseFloat(m[1]) * (suf === 'k' ? 1e3 : suf === 'm' ? 1e6 : suf === 'b' ? 1e9 : 1));
+            };
+            const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+            const intOf = t => {
+                const n = parseInt(String(t || '').replace(/[^\d-]/g, ''), 10);
+                return Number.isFinite(n) ? n : null;
+            };
+            const nameOf = el => {
+                if (!el) return null;
+                const c = el.cloneNode(true);
+                const brs = c.querySelectorAll('br');
+                for (const b of brs) b.replaceWith(doc.createTextNode(' '));
+                return clean(c.textContent);
+            };
+
+            const cols = [null, null]; // kolom driver 1 & 2 pada tabel statistik
+            const cell = i => (cols[i] = cols[i] || {});
+            const tbl = doc.getElementById('driverStatsTable');
+            if (tbl) {
+                for (const tr of tbl.querySelectorAll('tbody tr')) {
+                    const th = tr.querySelector('th');
+                    const label = clean(th ? th.textContent : '');
+                    const tds = tr.querySelectorAll('td');
+                    if (label === 'Ability' || label === 'Mental') {
+                        for (let i = 0; i < tds.length && i < 2; i++) cell(i)[label.toLowerCase()] = intOf(tds[i].textContent);
+                    } else if (label === 'Contract') {
+                        for (let i = 0; i < tds.length && i < 2; i++) cell(i).contract = clean(tds[i].textContent);
+                    } else if (label === 'Salary') {
+                        for (let i = 0; i < tds.length && i < 2; i++) cell(i).salaryPerRace = money(tds[i].textContent);
+                    }
+                    // baris health: tanpa label — kenali dari training preview
+                    const vals = tr.querySelectorAll('.trainingPreviewValue');
+                    if (vals.length) {
+                        vals.forEach((v, i) => {
+                            if (i < 2) {
+                                cell(i).health = intOf(v.getAttribute('data-val'));
+                                const rate = tds[i] ? tds[i].querySelector('.trainingPreviewRate') : null;
+                                if (rate) cell(i).recoveryPerHour = intOf(rate.textContent);
+                            }
+                        });
+                    }
+                    const hovers = tr.querySelectorAll('.hoverData[data-driver]');
+                    hovers.forEach((sp, i) => { if (i < 2) cell(i).raw = sp.getAttribute('data-driver'); });
+                }
+            }
+
+            const pics = ['d1Pic', 'd2Pic'].map(pId => doc.getElementById(pId));
+            const drivers = pics.map((pic, i) => {
+                const nm = pic ? pic.querySelector('.driverName') : null;
+                const a = pic ? pic.querySelector('a[href*="id="]') : null;
+                const idm = a ? (a.getAttribute('href') || '').match(/id=(\d+)/) : null;
+                return Object.assign(
+                    { id: idm ? parseInt(idm[1], 10) : null, name: nameOf(nm) },
+                    cols[i] || {}
+                );
+            });
+
+            const staffCards = [];
+            if (staffGrid) {
+                for (const card of staffGrid.querySelectorAll('.c-wrap')) {
+                    const roleEl = card.querySelector('.c-head');
+                    const link = card.querySelector('a[href*="id="]');
+                    const idm = link ? (link.getAttribute('href') || '').match(/id=(\d+)/) : null;
+                    staffCards.push({
+                        id: idm ? parseInt(idm[1], 10) : null,
+                        role: clean(roleEl ? roleEl.textContent : ''),
+                        name: nameOf(card.querySelector('.driverName')),
+                        salaryPerRace: money(card.textContent), // angka pertama pada kartu = gaji
+                        contract: clean((card.querySelector('span[id^="nStaffC"]') || {}).textContent),
+                    });
+                }
+            }
+
+            const pc = doc.querySelector('.pc-main-div');
+            const pitLocked = pc ? (clean(pc.getAttribute('data-tip') || '') || null) : null;
+            const reserveTable = doc.getElementById('reserveStaff');
+
+            return {
+                drivers: drivers,
+                staffCards: staffCards,
+                pitLocked: pitLocked,
+                reserveCount: reserveTable ? reserveTable.querySelectorAll('tbody tr').length : null,
+            };
+        },
+    };
+
+    /**
+     * Adapter pasar Transfers (v0.7.2) — read-only. Dipetakan dari capture
+     * live DOM (fixture test/fixtures/transfers.html). Gate: #pageId =
+     * 'transfers'. KEDUA tabel (driver + staff) selalu ada di DOM; tab aktif
+     * hanya display. Angka keseluruhan diambil dari atribut data-* yang
+     * memang ada di halaman (data-overall, data-sort fee/wage/age/role, CSV
+     * data-driver / data-staff, trait pada data-append) — tanpa angka fiktif.
+     * Daftar pasar bisa berubah sendiri (refresh lelang) — panel diberi catatan.
+     */
+    const IgpTransfersAdapter = {
+        id: 'transfers-data',
+        desc: 'pasar Transfers: driver & staff (rating/fee/wage/trait)',
+        captures(doc) {
+            const pid = doc.getElementById('pageId');
+            if (!pid || pid.value !== 'transfers') return null;
+            const dT = doc.getElementById('driver-table');
+            const sT = doc.getElementById('staff-table');
+            if (!dT && !sT) return null;
+            const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+            const sortNum = td => {
+                const v = td ? Number(td.getAttribute('data-sort')) : NaN;
+                return Number.isFinite(v) ? v : null;
+            };
+            const parseTable = (tid, isStaff) => {
+                const t = doc.getElementById(tid);
+                const out = [];
+                if (!t) return out;
+                for (const tr of t.querySelectorAll('tbody tr')) {
+                    const tds = tr.querySelectorAll('td');
+                    if (tds.length < 4) continue;
+                    const idm = String(tr.id || '').match(/_(\d+)$/);
+                    const hover = tr.querySelector('.hoverData');
+                    const row = {
+                        id: idm ? parseInt(idm[1], 10) : null,
+                        name: tr.getAttribute('data-name') || clean(tds[0].textContent),
+                        overall: (v => (v != null && Number.isFinite(Number(v)) ? Number(v) : null))(tr.getAttribute('data-overall')),
+                        traitsHtml: hover ? (hover.getAttribute('data-append') || '') : '',
+                        fee: sortNum(tds[3]),
+                        wage: sortNum(tds[4]),
+                    };
+                    if (isStaff) row.role = clean(tds[1].textContent);
+                    else row.age = sortNum(tds[1]);
+                    out.push(row);
+                }
+                return out;
+            };
+            const cd = doc.getElementById('cdTransfersRefresh');
+            return {
+                drivers: parseTable('driver-table', false),
+                staff: parseTable('staff-table', true),
+                refreshIn: cd ? clean(cd.textContent) : null,
+            };
+        },
+    };
+
+    /**
      * Registry adapter data. Status dipublikasikan apa adanya: ':ready' = adapter
      * read-only terpasang; ':menunggu-map' = pemetaan DOM halaman belum dilakukan.
      */
@@ -780,6 +972,8 @@
             { id: 'car-data', adapter: IgpCarsAdapter },
             { id: 'supply-data', adapter: IgpSupplyAdapter },
             { id: 'manufacturer-data', adapter: IgpManufacturersAdapter },
+            { id: 'staff-data', adapter: IgpStaffAdapter },
+            { id: 'transfers-data', adapter: IgpTransfersAdapter },
             { id: 'race-strategy', desc: 'strategi balapan (input manual, selalu)' },
         ],
         capture(kind, doc) {
@@ -1587,12 +1781,141 @@
             }
         }
 
+        /* Halaman Drivers & Staff: kondisi tim aktif (read-only, jujur). */
+        function mountTeam() {
+            const id = PREFIX + '-team';
+            if (pageId() !== 'staff') { removeIfAny([id]); return; }
+            const anchor = document.getElementById('drivers');
+            if (!anchor) { removeIfAny([id]); return; }
+            const s = IgpStaffAdapter.captures(document);
+            let body = '';
+            let note = '';
+            if (s && s.drivers && s.drivers.length) {
+                const rows = s.drivers.map((d, i) => {
+                    if (!d || d.name == null) return '';
+                    const low = d.health != null && d.health < 30;
+                    const tags =
+                        (low ? '<span class="igpas-adv-tag">sehat rendah — pulihkan dulu</span>' : '') +
+                        (d.recoveryPerHour != null ? ' <span class="igpas-adv-tag">+~' + esc(d.recoveryPerHour) + '/jam</span>' : '');
+                    return '<tr' + (low ? ' class="igpas-adv-best"' : '') + '>' +
+                        '<td>' + esc(d.name) + tags + '</td>' +
+                        '<td>' + (d.ability != null ? esc(d.ability) + '%' : '—') + '</td>' +
+                        '<td>' + (d.mental != null ? esc(d.mental) + '%' : '—') + '</td>' +
+                        '<td>' + (d.health != null ? esc(d.health) + '%' : '—') + '</td>' +
+                        '<td>' + (d.salaryPerRace != null ? fmtMoney(d.salaryPerRace) : '—') + '</td></tr>';
+                }).join('');
+                if (rows) {
+                    body += '<table><thead><tr><th>Driver aktif</th><th>Ability</th><th>Mental</th><th>Health</th><th>Gaji</th></tr></thead><tbody>' + rows + '</tbody></table>';
+                }
+            }
+            if (s && s.staffCards && s.staffCards.length) {
+                const rows2 = s.staffCards.map(c =>
+                    '<tr><td>' + esc(c.role || '?') + '</td><td>' + esc(c.name || '?') + '</td>' +
+                    '<td>' + (c.salaryPerRace != null ? fmtMoney(c.salaryPerRace) : '—') + '</td>' +
+                    '<td>' + esc(c.contract || '—') + '</td></tr>').join('');
+                body += '<table><thead><tr><th>Peran</th><th>Staff aktif</th><th>Gaji</th><th>Kontrak</th></tr></thead><tbody>' + rows2 + '</tbody></table>';
+            }
+            if (s && s.pitLocked) {
+                note += 'Pit crew: ' + esc(s.pitLocked) + ' ';
+            }
+            note += 'Kartu staff di halaman ini tidak menampilkan angka rating (bintang relatif level) - ' +
+                'angka kandidat lengkap ada di halaman Transfers. Health driver rendah: hanya info read-only - ' +
+                'keputusan heal (berbiaya token) tetap milik Anda. Estimasi, bukan rumus game.';
+            anchor.insertAdjacentElement('afterend', panelEl(id, 'I.G.P.A.S · team', 'Kondisi driver & staff aktif (estimasi)', body, note));
+        }
+
+        /* Halaman Transfers: pasar driver & staff yang tampil di tabel. */
+        function mountTransfers() {
+            const idD = PREFIX + '-tx-driver';
+            const idS = PREFIX + '-tx-staff';
+            if (pageId() !== 'transfers') { removeIfAny([idD, idS]); return; }
+            const m = IgpTransfersAdapter.captures(document);
+            const dT = document.getElementById('driver-table');
+            if (dT) {
+                // kontrak helper: ratingPct/costPerRace — map dari overall/fee pasar
+                const res = IGPCore.rankManufacturerItems({
+                    items: (m ? m.drivers : []).map(d => ({ id: d.id, name: d.name, ratingPct: d.overall, costPerRace: d.fee })),
+                    withCost: true,
+                });
+                let body = '';
+                if (res.ok) {
+                    const byId = {};
+                    for (const d of m.drivers) byId[d.id] = d;
+                    const rows = res.values.ranked.slice(0, 5).map((r, i) => {
+                        const src = byId[r.id] || {};
+                        const t = IGPCore.parseTraits(src.traitsHtml);
+                        const tags =
+                            (i === 0 ? '<span class="igpas-adv-tag">rating tertinggi</span>' : '') +
+                            (res.values.bestValueId === r.id ? '<span class="igpas-adv-tag">nilai terbaik</span>' : '') +
+                            (t.special.length ? '<span class="igpas-adv-tag">' + esc(t.special.join(', ')) + '</span>' : '');
+                        return '<tr' + (i === 0 ? ' class="igpas-adv-best"' : '') + '>' +
+                            '<td>' + (i + 1) + '. ' + esc(r.name) + (src.age != null ? ' (' + esc(src.age) + ' th)' : '') + tags + '</td>' +
+                            '<td>' + (r.rating != null ? esc(r.rating) : '—') + '</td>' +
+                            '<td>' + fmtMoney(r.cost) + '</td>' +
+                            '<td>' + (r.ratingPerCost == null ? '—' : esc(r.ratingPerCost)) + '</td></tr>';
+                    }).join('');
+                    body = '<table><thead><tr><th>Driver di pasar</th><th>Overall</th><th>Fee</th><th>Overall/1M</th></tr></thead><tbody>' + rows + '</tbody></table>';
+                } else {
+                    body = '<p class="igpas-adv-note">' + esc(res.error) + '.</p>';
+                }
+                const note = 'Overall/fee/wage diambil dari kolom tabel yang memang tampil; bintang rating iGP relatif ' +
+                    'terhadap level Anda. Pasar berubah sendiri (refresh lelang ' +
+                    (m && m.refreshIn ? '~' + esc(m.refreshIn) : '') + ') — panel di-render ulang saat Anda berinteraksi ' +
+                    '(klik apa pun). Overall/1M = heuristik estimasi, bukan rumus game; cocokkan gaya sirkuit Anda.';
+                dT.insertAdjacentElement('beforebegin', panelEl(idD, 'I.G.P.A.S · transfers', 'Driver terbaik yang tampil (estimasi)', body, note));
+            } else {
+                removeIfAny([idD]);
+            }
+            const sT = document.getElementById('staff-table');
+            if (sT && m && m.staff && m.staff.length) {
+                const roles = ['CD', 'TD', 'DR'];
+                const roleLabel = { CD: 'Chief Designer', TD: 'Technical Director', DR: 'Doctor' };
+                let body = '';
+                for (const code of roles) {
+                    const items = m.staff.filter(x => x.role === code);
+                    if (!items.length) continue;
+                    // kontrak helper: ratingPct/costPerRace — map dari overall/fee pasar
+                    const res = IGPCore.rankManufacturerItems({
+                        items: items.map(x => ({ id: x.id, name: x.name, ratingPct: x.overall, costPerRace: x.fee })),
+                        withCost: true,
+                    });
+                    if (!res.ok) continue;
+                    const byId = {};
+                    for (const x of items) byId[x.id] = x;
+                    const top = res.values.ranked.slice(0, 2);
+                    for (let i = 0; i < top.length; i++) {
+                        const r = top[i];
+                        const src = byId[r.id] || {};
+                        const t = IGPCore.parseTraits(src.traitsHtml);
+                        const tags =
+                            (i === 0 ? '<span class="igpas-adv-tag">rating tertinggi</span>' : '') +
+                            (res.values.bestValueId === r.id ? '<span class="igpas-adv-tag">nilai terbaik</span>' : '') +
+                            (t.boost.length ? '<span class="igpas-adv-tag">+' + esc(t.boost.join(', ')) + '</span>' : '') +
+                            (t.weaken.length ? '<span class="igpas-adv-tag">−' + esc(t.weaken.join(', ')) + '</span>' : '');
+                        body += '<tr' + (i === 0 ? ' class="igpas-adv-best"' : '') + '>' +
+                            '<td>' + esc(roleLabel[code] || code) + '</td>' +
+                            '<td>' + esc(r.name) + tags + '</td>' +
+                            '<td>' + (r.rating != null ? esc(r.rating) : '—') + '</td>' +
+                            '<td>' + fmtMoney(r.cost) + '</td>' +
+                            '<td>' + (r.ratingPerCost == null ? '—' : esc(r.ratingPerCost)) + '</td></tr>';
+                    }
+                }
+                if (!body) body = '<p class="igpas-adv-note">Baris staff pasar tidak terbaca dari tabel ini.</p>';
+                const note = 'Green = spesialis penguat atribut (dari tooltip game), merah = kelemahan terkait. ' +
+                    (m.refreshIn ? 'Lelang refresh otomatis (' + esc(m.refreshIn) + '); panel di-render ulang saat Anda berinteraksi. ' : '') +
+                    'Pilih CD/TD dengan spesialis yang cocok dengan atribut yang sedang Anda desain — heuristik estimasi, bukan rumus game.';
+                sT.insertAdjacentElement('beforebegin', panelEl(idS, 'I.G.P.A.S · transfers', 'Staff pasar per peran (estimasi)', body, note));
+            } else {
+                removeIfAny([idS]);
+            }
+        }
+
         function renderAll() {
             if (typeof document === 'undefined' || !document.body) return;
             const pid = pageId();
-            if (pid !== 'cars' && pid !== 'manufacturers') {
+            if (['cars', 'manufacturers', 'staff', 'transfers'].indexOf(pid) === -1) {
                 // Halaman lain (termasuk balapan/strategi): tanpa jejak UI apa pun.
-                removeIfAny([PREFIX + '-toggle', PREFIX + '-design', PREFIX + '-supply', PREFIX + '-mfg-engine', PREFIX + '-mfg-chassis']);
+                removeIfAny([PREFIX + '-toggle', PREFIX + '-design', PREFIX + '-supply', PREFIX + '-mfg-engine', PREFIX + '-mfg-chassis', PREFIX + '-team', PREFIX + '-tx-driver', PREFIX + '-tx-staff']);
                 return;
             }
             styleEnsure();
@@ -1614,6 +1937,8 @@
                 mountDesign();
                 mountSupply();
                 mountManufacturers();
+                mountTeam();
+                mountTransfers();
             } catch (e) {
                 if (typeof console !== 'undefined') console.warn('IGPAS advisor', e); // jangan pernah merusak halaman game
             }

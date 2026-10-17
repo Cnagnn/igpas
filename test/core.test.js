@@ -382,4 +382,25 @@ t('rankManufacturerItems: semua rating kosong → error jujur', () => {
     assert.strictEqual(r.ok, false);
 });
 
+/* ---------- parseTraits (v0.7.2 advisor, halaman Transfers) ---------- */
+
+t('parseTraits: block-green/block-red dan specialA1 terbaca, None dibuang', () => {
+    const staffHtml = "<div class='px-1 py-0.5 block-green' style='min-height: 32px;'><icon>igp-tyre</icon> Tyre economy</div> " +
+        "<div class='px-1 py-0.5 block-red' style='min-height: 32px;'><icon>igp-brake</icon> Braking</div>";
+    const r = IGPCore.parseTraits(staffHtml);
+    assert.deepStrictEqual(r.boost, ['Tyre economy']);
+    assert.deepStrictEqual(r.weaken, ['Braking']);
+    assert.deepStrictEqual(r.special, []);
+
+    const drvHtml = "<span class='specialA1 '>Street circuits</span><br>";
+    const d = IGPCore.parseTraits(drvHtml);
+    assert.deepStrictEqual(d.special, ['Street circuits']);
+
+    const none = IGPCore.parseTraits("<span class='specialA0 '>None</span><br>");
+    assert.deepStrictEqual(none.special, []);
+    const empty = IGPCore.parseTraits('');
+    assert.deepStrictEqual(empty, { boost: [], weaken: [], special: [] });
+    assert.deepStrictEqual(IGPCore.parseTraits(null), { boost: [], weaken: [], special: [] });
+});
+
 console.log('\nSemua ' + n + ' test lulus ✔');

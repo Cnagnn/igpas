@@ -157,5 +157,55 @@ t('PageCapture: menu Tampermonkey menyalin DOM dengan PII teredaksi (tanpa UI ha
     s.close();
 });
 
+t('Staff advisor: panel kondisi tim di halaman staff (health rendah ditandai, pit crew terkunci disebut)', () => {
+    const s = bootOn(load('staff.html'), 'https://www.igpmanager.com/app/p=staff');
+    const panel = s.doc.getElementById('igpas-adv-team');
+    assert(panel, 'panel team tidak ada');
+    assert(panel.previousElementSibling && panel.previousElementSibling.id === 'drivers',
+        'panel tidak ditempel tepat setelah blok driver');
+    const txt = panel.textContent;
+    assert(txt.indexOf('Syarif Hartono') >= 0, 'nama driver 1 tidak tampil');
+    assert(txt.indexOf('Kevin Yudhoyono') >= 0, 'nama driver 2 tidak tampil');
+    assert(txt.indexOf('sehat rendah') >= 0, 'peringatan health rendah tidak tampil (health 2%)');
+    assert(txt.indexOf('Chief Designer') >= 0 && txt.indexOf('Technical Director') >= 0 && txt.indexOf('Doctor') >= 0,
+        'kartu staff/roleId tidak tampil');
+    assert(txt.indexOf('unlock at level 5') >= 0, 'status pit crew terkunci tidak disebut');
+    assert(/estimasi/i.test(txt), 'label estimasi tidak tampil');
+    s.close();
+});
+
+t('Transfers advisor: panel driver pasar (rank, overall, fee, special ability)', () => {
+    const s = bootOn(load('transfers.html'), 'https://www.igpmanager.com/app/p=transfers');
+    const panel = s.doc.getElementById('igpas-adv-tx-driver');
+    assert(panel, 'panel driver transfer tidak ada');
+    assert(panel.nextElementSibling && panel.nextElementSibling.id === 'driver-table',
+        'panel tidak tepat sebelum tabel driver');
+    const txt = panel.textContent;
+    assert(txt.indexOf('Breno Maur') >= 0, 'driver terbaik (39.51) tidak di baris atas');
+    assert(txt.indexOf('rating tertinggi') >= 0 && txt.indexOf('nilai terbaik') >= 0, 'tanda belum lengkap');
+    assert(txt.indexOf('Street circuits') >= 0, 'special ability tidak tampil');
+    assert(txt.indexOf('Overall/1M') >= 0, 'kolom heuristik value tidak tampil');
+    assert(/estimasi/i.test(txt), 'label estimasi tidak tampil');
+    const firstRowRank = panel.querySelector('tbody tr td');
+    assert(firstRowRank && firstRowRank.textContent.indexOf('Breno') > -1, 'urutan #1 bukan overall tertinggi');
+    s.close();
+});
+
+t('Transfers advisor: panel staff pasar per peran (CD/TD/DR + spesialisasi hijau/merah)', () => {
+    const s = bootOn(load('transfers.html'), 'https://www.igpmanager.com/app/p=transfers');
+    const panel = s.doc.getElementById('igpas-adv-tx-staff');
+    assert(panel, 'panel staff transfer tidak ada');
+    assert(panel.nextElementSibling && panel.nextElementSibling.id === 'staff-table',
+        'panel tidak tepat sebelum tabel staff');
+    const txt = panel.textContent;
+    assert(txt.indexOf('Chief Designer') >= 0 && txt.indexOf('Technical Director') >= 0 && txt.indexOf('Doctor') >= 0,
+        'kelompok peran tidak tampil');
+    assert(txt.indexOf('+Tyre economy') >= 0 && txt.indexOf('−Braking') >= 0,
+        'trait hijau/merah CD terbaik tidak tampil');
+    assert(txt.indexOf('Kerekes') === -1, 'data yang tidak ada di fixture tidak boleh muncul');
+    assert(/heuristik estimasi/i.test(txt), 'label heuristik tidak tampil');
+    s.close();
+});
+
 console.log((fail ? '\n' : '') + (pass + fail) + ' test advisor, ' + fail + ' gagal' + (fail ? '' : ' — semua lulus ✔'));
 process.exit(fail ? 1 : 0);

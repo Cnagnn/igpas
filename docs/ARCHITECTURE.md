@@ -64,10 +64,13 @@ pembacaan langsung artefak.
 │ v0.7.0: + advisor in-page (prioritas DP, supply,    │
 │          ranking manufacturer) + helper heuristik   │
 │ v0.7.1: + menu capture DOM teredaksi-PII (fixture)  │
+│ v0.7.2: + advisor staff/driver (Team) + pasar        │
+│          Transfers (driver & staff CD/TD/DR)          │
 ├─────────────────────────────────────────────────────┤
-│ AdapterRegistry (account/car/supply/manufacturers   │
-│          ':ready'; race-strategy ':menunggu-map' —  │
-│          sengaja manual, tanpa selector fiktif)     │
+│ AdapterRegistry (account/car/supply/manufacturers/   │
+│   staff/transfers ':ready'; race-strategy            │
+│   ':menunggu-map' — sengaja manual, tanpa selector   │
+│   fiktif)                                            │
 │          | Boot (mount sesuai peran ROLE)           │
 └─────────────────────────────────────────────────────┘
 ```
@@ -106,6 +109,7 @@ Ini meniadakan risiko "invented data" dan membuat inti bisa di-unit-test.
 | v0.6.2 | Hardening korelasi hasil mailbox: hanya request aktif/kind diminta; hasil sukses pertama mengklaim sensor, error tidak mengunci sensor; stale/duplikat/legacy tidak menimpa data + regresi GUI (8 test GUI) | ✅ |
 | v0.7.0 | **Advisor in-page** di tab iGP (arah baru dari user): panel rekomendasi read-only melekat di halaman studi — dialog Supply (Σ bonus, biaya, nilai/1M, tanda terbaik/termurah), Manufacturers (ranking engine/chassis dari pager aktif), Cars (prioritas alokasi DP = gap vs max rival liga `leagueDesignData`, usulan % porsi). Semua heuristik berlabel "estimasi — bukan rumus game". Gate ketat `#pageId` cars/manufacturers — race pages tanpa UI (test). Hanya elemen sendiri (`igpas-adv-*`), game untouched, tanpa mailbox request; toggle tersimpan lokal. Helper murni: designPriority, rankSuppliers, rankManufacturerItems + 11 test core; 6 test advisor jsdom | ✅ |
 | v0.7.1 | **Menu capture DOM** (GM_registerMenuCommand): salin `documentElement` teredaksi PII (nama/saldo/token/rank) ke clipboard via GM_setClipboard — tanpa UI halaman (race pages tetap bersih), dipicu user sepenuhnya, untuk pemetaan fixture halaman baru (mis. Develop/Design). Test: PageCapture redaksi end-to-end + panel supply fuel/tyre (9 test advisor) | ✅ |
+| v0.7.2 | **Advisor staff & driver** (permintaan user): halaman **Drivers & Staff** (`#pageId=staff`) — panel kondisi tim (ability/mental/health driver + estimasi pemulihan per jam, gaji/kontrak staff aktif, catatan pit crew terkunci; **tanpa angka rating fiktif** karena kartu staff hanya bintang). Halaman **Transfers** (`#pageId=transfers`) — panel pasar driver (overall/fee dari `data-overall`/`data-sort` kolom tabel, Overall/1M, special ability) + panel pasar staff per peran CD/TD/DR (top-2, trait hijau/merah dari `data-append`, nilai = overall per 1M fee). Helper murni `parseTraits` (block-green/block-red/specialA*); fixture `staff.html` + `transfers.html` dari capture DOM; 3 test advisor baru + test `parseTraits` (44 core, 12 advisor) | ✅ |
 | — | race-strategy: sengaja manual selamanya | ⏳ |
 | v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0–v0.6.2 — account + cars + supply + manufacturers + autoload) |
 | v0.4 | Kalibrasi lap-time dari catatan user (tabel input sendiri, bukan scrape) | 🔜 |
@@ -122,6 +126,8 @@ Pemetaan selektor berasal dari **live DOM halaman iGP asli** (capture `document
 | `car-data` | halaman Cars (`#pageId=cars`) | `#carAttributes[data-dmax]`, `#carAttributesDisplay .attribute-row` (`#wrap-{key}`, `.ratingVal`), `#carsDesignPoints[data-dp]`, `#carAttributesBonuses .tooltip[data-tip]`, `#leagueDesignData` (JSON best rival), `.carsSuppliers .c-wrap img[src*=/supply/]` |
 | `supply-data` | dialog Supply di halaman Cars (dibuka user sendiri) | `.supplyDialog` (gate: dialog terbuka), `.dialog-subhead-content h2` (tipe engine/fuel/tyre), `.dialog-subhead img[src*=/supply/]` (supplier aktif), `.tooltip[data-tip]` (bonus stat), `a[data-tip*=supplyType]` → `eId`, kartu `.inline-block` (id gambar, cost/race) |
 | `manufacturer-data` | halaman Manufacturers (`#pageId=manufacturers`) — kedua tabel selalu di DOM, tab aktif hanya display | `#engine-table` / `#chassis-table` → `tbody tr[data-nationality]`; nama: teks sel-1 (link `a[href*=id=]`, `<img>` flag tanpa teks); rating: sel-2 `.tooltip[data-tip="Rating: N%"]`; cost: `td.currency` ('500k'/'1m'); stats: `use[href$=#ios-eye]` (terlihat) vs `#ios-eye-off` (disembunyikan); customers: sel terakhir; total halaman: `.pager-last[rel]` |
+| `staff-data` | halaman Drivers & Staff (`#pageId=staff`) | driver: `#d1Pic`/`#d2Pic` `.driverName` (`<br>`→spasi) + href `id=definition`; `#driverStatsTable` per baris label (`Ability`/`Mental`/`Contract`/`Salary`) → kolom td per driver; health: `.trainingPreviewValue[data-val]` + `.trainingPreviewRate` (estimasi pemulihan/jam); CSV `data-driver` di `.hoverData`; staff aktif: `#staff .c-wrap` (`.c-head` peran, `.driverName` nama, gaji = angka pertama kartu, kontrak `span[id^=nStaffC]`); pit crew: `.pc-main-div[data-tip]` (terkunci); reserve: `#reserveStaff tbody tr` (hitung) |
+| `transfers-data` | halaman Transfers (`#pageId=transfers`) — kedua tabel selalu di DOM (tab aktif hanya display), isi bisa refresh otomatis (lelang) | `#driver-table`/`#staff-table` → `tbody tr[id*=_]`; nama `data-name`; overall `data-overall`; age/role: `td[2] data-sort` (angka / kode CD-TD-DR); fee/wage: `td[4]`/`td[5] data-sort`; trait: `td.hoverData[data-append]` (block-green/block-red utk staff, specialA* utk driver); countdown: `#cdTransfersRefresh` |
 
 Aturan main adapter (bake-in, bukan kebijakan terpisah):
 

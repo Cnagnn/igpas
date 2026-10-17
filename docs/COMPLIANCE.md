@@ -43,7 +43,8 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
    halaman). Untuk kepatuhan ketat: jangan buka Command Center selama sesi.
 4. **Fase 3 (adapter data otomatis, v0.4.0–v0.6.2 TERLAKSANA)** — desain kepatuhan:
     - Hanya membaca data *yang memang ditampilkan* ke user biasa di halaman studi
-      (Cars, header akun) - bukan tersembunyi/undocumented.
+      (Cars, Manufacturers, Drivers & Staff, Transfers, header akun) - bukan
+      tersembunyi/undocumented.
     - **Read-on-request**: adapter hanya berjalan saat ada permintaan dari Command
       Center — saat halaman GUI dibuka (autoload v0.5.1), saat kembali ke tab (jeda
       ≥30 dtk), atau saat user klik *Capture*; sekali per permintaan, tanpa polling
@@ -65,6 +66,13 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
       kontrol “Show hidden stats” dibiarkan apa adanya), tanpa membuka dialog.
       Deteksi murni DOM (`#pageId`) — bukan URL matching; semua varian URL tab
       (`…&tab=engines`/`…&tab=chassis`) diterima setara.
+    - **v0.7.2 - advisor staff & driver**: panel tim aktif di halaman Drivers &
+      Staff dan panel pasar di Transfers — semuanya read-only pada baris/atribut
+      yang memang dirender game (`data-overall`, `data-sort`, `data-append`,
+      bar health). Panel TIDAK mengarang angka: kartu staff tanpa angka rating
+      tetap tanpa angka; pasar ditandai sebagai snapshot yang bisa berubah sendiri
+      (refresh lelang game). Tanpa klik/submit/apapun pada tabel pasar — bid tidak
+      dibuat, dibaca, atau dipicu userscript.
     - Tanpa distribusi ulang data orang lain; snapshot hanya di storage browser user.
     - Bukan: background polling halaman game, server-side scraping, atau adapter
       untuk data balapan (tidak ada lap/posisi/fuel race yang dibaca, kapan pun).
