@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.7.3
+// @version      0.7.4
 // @description  Race strategy study calculators + read-only study advice (account, car, supply, manufacturers, team, transfers) and pre-race setup/strategy estimate panels (ids `Setup`/`Strategy` tabs only — never the live Race tab). Study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + catatan studi read-only (akun, mobil, supply, manufacturers, tim, transfers) + estimasi setup & strategi pra-balapan (hanya tab Setup/Strategy — bukan tab Race live). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
@@ -21,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.7.3';
+    const VERSION = '0.7.4';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -1078,15 +1078,17 @@
     };
 
     /**
-     * Adapter tab Setup halaman PRA-BALAPAN (v0.7.3, permintaan user) —
-     * read-only. Dipetakan dari capture live DOM (fixture
-     * test/fixtures/race.html). Gate: #pageId='race' DAN wadah #setup ada.
-     * Membaca field yang memang dirender game: cuaca (span waterLevelText +
-     * teks °C di badge), slider setup per driver (nilai input + bar ideal
-     * via atribut style — bar setebal track = ideal belum dipelajari, TIDAK
-     * dikarang), kondisi mobil (health/condition/engine), komentar engineer,
-     * dan jumlah baris lap practice. Tab RACE LIVE (div id="race") tidak
-     * pernah dibaca atau diubah — disiplin live-race tetap absolut.
+     * Adapter tab Setup halaman PRA-BALAPAN (v0.7.3, diperbarui v0.7.4 dari
+     * capture practice nyata) — read-only. Dipetakan dari capture live DOM
+     * (fixture test/fixtures/race.html). Gate: #pageId='race' DAN wadah #setup ada.
+     * Membaca field yang memang dirender game: cuaca di c-head form setup
+     * (span .waterLevelText + teks °C dari .weatherTemp — bukan badge), slider
+     * setup per driver (nilai input + bar ideal via atribut style — bar setebal
+     * track = ideal belum dipelajari, TIDAK dikarang) + label arah game (kelas
+     * decrease/increase yang baru muncul setelah practice), kondisi mobil
+     * (health/condition/engine), komentar engineer, dan tabel practice (baris
+     * terakhir: lap/pengaturan/pemakaian/waktu). Tab RACE LIVE (div id="race")
+     * tidak pernah dibaca atau diubah — disiplin live-race tetap absolut.
      */
     const IgpRaceSetupAdapter = {
         id: 'race-setup-data',
@@ -1104,29 +1106,51 @@
                 : null;
             const numOrNull = v =>
                 ((v != null && String(v) !== '' && Number.isFinite(Number(v))) ? Number(v) : null);
-            const badge = wrap.querySelector('.raceWeatherBadge') || doc.querySelector('.raceWeatherBadge');
-            const rainText = badge && badge.querySelector('.waterLevelText')
-                ? badge.querySelector('.waterLevelText').textContent : null;
-            const tempText = badge
-                ? (badge.textContent.match(/-?\d+(?:\.\d+)?\s*°C/) || [null])[0] : null;
+            // Cuaca ada di c-head form setup (#dNSetupWrap): span .waterLevelText
+            // (kedalaman air, "0mm") + span .weatherTemp bertanda °C. Catatan: kelas
+            // .weatherTemp juga menempel di span air (teks "0mm") — karenanya suhu
+            // dicari sebagai teks yang MENGANDUNG "°C", bukan sekadar kelasnya
+            // (varian capture live v0.7.4; badge .raceWeatherBadge tidak ada di DOM
+            // praktik nyata — jangan dipakai sebagai satu-satunya jangkar).
+            const findTemp = root => {
+                if (!root) return null;
+                for (const el of root.querySelectorAll('.weatherTemp')) {
+                    const m = String(el.textContent || '').match(/-?\d+(?:\.\d+)?\s*°C/);
+                    if (m) return m[0];
+                }
+                return null;
+            };
+            const rainEl = wrap.querySelector('.waterLevelText');
+            const rainText = rainEl ? rainEl.textContent : null;
+            const tempText = findTemp(wrap);
             const drivers = [];
             for (const n of [1, 2]) {
                 const comments = doc.getElementById('d' + n + 'SetupComments');
+                // DOM live (capture v0.7.4): KEDUA blok nama berada di bawah
+                // #beginner-d1Comments (driver2Include tersembunyi) — tidak ada
+                // #beginner-d2Comments. Jangkar lewat kelas include per driver di
+                // dalam #setup, bukan per blok komentar.
                 const nameEl = doc.querySelector(
-                    '#beginner-d' + n + 'Comments .choiceDivInclude.driver' + n + 'Include .driverName');
+                    '#setup .choiceDivInclude.driver' + n + 'Include .driverName');
                 const sliders = [];
                 for (const el of wrap.querySelectorAll('.setupSliderWrap[id^="d' + n + '"]')) {
                     const idm = String(el.id || '').match(/^d\d(.+)$/);
                     const input = el.querySelector('input');
                     const valEl = el.querySelector('.setupSlider-value');
                     const irange = el.querySelector('.setupSlider-idealRange');
+                    const lblEl = el.querySelector('.setupSlider-label');
+                    // Kelas arah pada label (decrease/increase) HANYA muncul setelah
+                    // game punya data practice — sinyal arah yang dirender game
+                    // sendiri, dibaca apa adanya (null = belum ada).
+                    const dir = lblEl && lblEl.classList.contains('decrease') ? 'decrease'
+                        : (lblEl && lblEl.classList.contains('increase') ? 'increase' : null);
                     sliders.push({
                         key: idm ? idm[1].toLowerCase() : null,
-                        label: clean(el.querySelector('.setupSlider-label')
-                            ? el.querySelector('.setupSlider-label').textContent : null),
+                        label: lblEl ? clean(lblEl.textContent) : null,
                         value: numOrNull(input ? input.getAttribute('value')
                             : (valEl ? valEl.textContent : null)),
                         ideal: IGPCore.parseSliderIdeal(irange ? irange.getAttribute('style') : null),
+                        dir: dir,
                     });
                 }
                 if (!sliders.length) continue;
@@ -1134,9 +1158,25 @@
                     const el = comments ? comments.querySelector(sel) : null;
                     return numOrNull(el ? el.textContent : null);
                 };
+                // Tabel practice: baris data = ≥4 td (baris kosong game cuma 1 td
+                // colspan). Baris TERAKHIR disimpan apa adanya (lap/ride/susp/wing/
+                // pemakaian bensin, ban, waktu) — angka yang memang dirender game.
                 let practiceLaps = 0;
+                let practiceLast = null;
+                const cellText = el => (el ? clean(el.textContent) : '');
                 for (const tr of doc.querySelectorAll('#d' + n + 'Laps tbody tr')) {
-                    if (tr.querySelectorAll('td').length >= 4) practiceLaps++;
+                    const tds = tr.querySelectorAll('td');
+                    if (tds.length < 4) continue;
+                    practiceLaps++;
+                    practiceLast = {
+                        lap: cellText(tds[0]),
+                        ride: cellText(tds[1]),
+                        susp: cellText(tds[2]),
+                        wing: cellText(tds[3]),
+                        fuelUse: tds[4] ? cellText(tds[4]) : null,
+                        tyreUse: tds[5] ? cellText(tds[5]) : null,
+                        time: tds[6] ? cellText(tds[6]) : null,
+                    };
                 }
                 drivers.push({
                     num: n,
@@ -1148,6 +1188,7 @@
                     engineerComment: comments && comments.querySelector('.shrinkText')
                         ? clean(comments.querySelector('.shrinkText').textContent) : null,
                     practiceLaps: practiceLaps,
+                    practiceLast: practiceLast,
                 });
             }
             if (!drivers.length) return null;
@@ -1159,15 +1200,17 @@
     };
 
     /**
-     * Adapter tab Strategy halaman PRA-BALAPAN (v0.7.3, permintaan user) —
-     * read-only. Dipetakan dari capture live DOM (fixture
+     * Adapter tab Strategy halaman PRA-BALAPAN (v0.7.3, diperbarui v0.7.4 dari
+     * capture practice nyata) — read-only. Dipetakan dari capture live DOM (fixture
      * test/fixtures/race.html). Gate: #pageId='race' DAN wadah #strategy ada.
      * Membaca field yang memang game-render: #raceLaps, span #rules (JSON
      * aturan liga: refuelling/two_tyres/dll), blok data inerten
      * type="application/json" #dN-StrategyJson (BENER-BENER data JSON game —
      * bukan kode, tidak dieksekusi siapa pun), #dN-FuelPrediction, input
-     * bensin opsi lanjutan #dN-AdvancedFuel (atribut value), dan total laps
-     * versi game #dN-TotalLaps. Perhitungan ada di IGPCore.summarizeStrategy.
+     * bensin opsi lanjutan #dN-AdvancedFuel (atribut value), total laps
+     * versi game #dN-TotalLaps, umur ban per compound #dN-TyreLife (JSON game),
+     * dan push level default (select[name=pushLevel] tersembunyi). Perhitungan
+     * ada di IGPCore.summarizeStrategy.
      */
     const IgpRaceStrategyAdapter = {
         id: 'race-strategy-data',
@@ -1200,6 +1243,12 @@
                     fuelPerLap: numOrNull(textOf('d' + n + 'FuelPrediction')),
                     advancedFuel: numOrNull(attrOf('d' + n + 'AdvancedFuel', 'value')),
                     totalLapsGame: numOrNull(textOf('d' + n + 'TotalLaps')),
+                    // Umur ban per compound dari game ({"SS":12}); [] / {} / hilang = belum ada.
+                    tyreLife: jsonOf('d' + n + 'TyreLife'),
+                    // Push level default (select disembunyikan game, diganti slider
+                    // visual) — nilai terpilih berasal dari game, dibaca apa adanya.
+                    pushLevel: (sel => (sel ? numOrNull(sel.value) : null))(
+                        doc.querySelector('#d' + n + 'strategyAdvanced select[name="pushLevel"]')),
                 })),
             };
         },
@@ -2158,7 +2207,7 @@
             }
         }
 
-        /* Tab Setup halaman pra-balapan (v0.7.3): slider vs bar ideal + kondisi. */
+        /* Tab Setup halaman pra-balapan (v0.7.3, v0.7.4: arah-label + lap practice): slider vs bar ideal + kondisi. */
         function mountRaceSetup() {
             const id = PREFIX + '-rsetup';
             const idWrap = PREFIX + '-rsetup-wrap';
@@ -2179,17 +2228,22 @@
                         const deltaTxt = ar.learned
                             ? (ar.delta == null ? '—' : ((ar.delta > 0 ? '+' : '') + ar.delta))
                             : '—';
+                        // Arah dari kelas label game (decrease/increase), terjemahan
+                        // harfiah; null (belum dipelajari) = '—'.
+                        const dirTxt = (s.dir === 'decrease') ? '↓ kurangi'
+                            : (s.dir === 'increase') ? '↑ tambah' : '—';
                         rows.push('<tr>' +
                             '<td>' + esc(d.name || ('Driver ' + d.num)) + '</td>' +
                             '<td>' + esc(s.label || s.key || '?') + '</td>' +
                             '<td>' + (s.value == null ? '—' : esc(s.value)) + '</td>' +
                             '<td>' + esc(idealTxt) + '</td>' +
+                            '<td>' + esc(dirTxt) + '</td>' +
                             '<td>' + esc(deltaTxt) + '</td></tr>');
                     }
                 }
                 if (rows.length) {
                     body += '<table><thead><tr><th>Driver</th><th>Pengaturan</th><th>Sekarang</th>' +
-                        '<th>Ideal (bar game)</th><th>Selisih</th></tr></thead><tbody>' +
+                        '<th>Ideal (bar game)</th><th>Arah (game)</th><th>Selisih</th></tr></thead><tbody>' +
                         rows.join('') + '</tbody></table>';
                 }
                 const cond = data.drivers.map(d => {
@@ -2213,7 +2267,14 @@
                 for (const d of data.drivers) {
                     note += ' ' + esc(d.name || ('Driver ' + d.num)) + ': ' + d.practiceLaps +
                         ' lap practice tercatat' +
-                        (d.practiceLaps === 0 ? ' — jalankan practice untuk mempersempit ideal.' : '.') +
+                        (d.practiceLast
+                            ? ' — terakhir lap ' + esc(d.practiceLast.lap) + ': ' +
+                                esc(d.practiceLast.time || '—') +
+                                ' (ride/susp/wing ' + esc(d.practiceLast.ride) + '/' +
+                                esc(d.practiceLast.susp) + '/' + esc(d.practiceLast.wing) +
+                                ' · bensin ' + esc(d.practiceLast.fuelUse || '—') +
+                                ' · ban ' + esc(d.practiceLast.tyreUse || '—') + ').'
+                            : ' — jalankan practice untuk mempersempit ideal.') +
                         (d.engineerComment ? ' Engineer (kata game): “' + esc(d.engineerComment) + '”.' : '');
                 }
                 note += ' Ideal dibaca dari BAR ideal slider game (makin sempit, makin bisa dipercaya; ' +
@@ -2230,7 +2291,7 @@
             anchor.appendChild(wrapEl);
         }
 
-        /* Tab Strategy halaman pra-balapan (v0.7.3): ringkas stint/fuel/two-tyre. */
+        /* Tab Strategy halaman pra-balapan (v0.7.3, v0.7.4: push + umur ban): ringkas stint/fuel/two-tyre. */
         function mountRaceStrategy() {
             const id = PREFIX + '-rstrategy';
             const idWrap = PREFIX + '-rstrategy-wrap';
@@ -2271,10 +2332,18 @@
                                 ? 'butuh ±' + v.fuelNeed + ' L'
                                 : v.advancedFuel + ' L vs ±' + v.fuelNeed + ' L → sisa ' +
                                     v.fuelBuffer + ' L (≈' + v.bufferLaps + ' lap)');
+                        // Umur ban game ({"SS":12} → "SS ±12 lap"); [] / {} = belum ada.
+                        const tl = (d.tyreLife && typeof d.tyreLife === 'object' && !Array.isArray(d.tyreLife))
+                            ? Object.keys(d.tyreLife) : [];
+                        const tlTxt = tl.length
+                            ? tl.map(k => esc(k) + ' ±' + esc(d.tyreLife[k]) + ' lap').join(', ')
+                            : null;
                         cell = 'Lap ' + esc(lapsTxt) + ' · Ban ' + esc(tyresTxt) +
                             ' · Bensin ' + esc(fuelTxt) +
                             ' · pit ' + (v.pits == null ? '—' : esc(v.pits)) +
                             ' · risiko ' + (v.risk == null ? '—' : esc(v.risk)) +
+                            (d.pushLevel != null ? ' · push ' + esc(d.pushLevel) : '') +
+                            (tlTxt ? ' · umur ban game: ' + tlTxt : '') +
                             (v.unknownLaps ? ' · ' + v.unknownLaps + ' lap stint tak terbaca' : '');
                     }
                     rows.push('<tr><td>' + esc(d.num === 1 ? 'Driver utama' : 'Driver ' + d.num) +

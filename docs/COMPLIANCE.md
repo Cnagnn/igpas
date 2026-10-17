@@ -86,16 +86,26 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
       game untuk user biasa: slider + **bar ideal milik game** (stylenya — bar
       penuh = ideal belum dipelajari, dinyatakan jujur, bukan dikarang), kondisi
       health/condition/engine, JSON strategi yang game tulis sendiri di blok data
-      inerten `#dN-StrategyJson` (BCHAN kode, tidak dieksekusi), `#raceLaps`,
+      inerten `#dN-StrategyJson` (data JSON murni, tidak dieksekusi), `#raceLaps`,
       `#dN-FuelPrediction`, bensin opsi lanjutan `#dN-AdvancedFuel`, aturan liga
       span `#rules`. Perhitungan = aritmetika tampil (laps × fuel/lap, buffer,
       cek dua-compound) berlabel estimasi. **Wadah `#race` (tab Race live) tidak
       dibaca, tidak ditulis, tidak diubah**; tidak ada klik/submit pada slider,
       stint, tombol save, ataupun elemen game mana pun.
+    - **v0.7.4 - konsumsi data practice nyata (capture live user)**: fixture
+      `race.html` diganti total dengan rekonstruksi tersanitasi capture DOM
+      sesudah 1 lap practice (csrf, nama/ID manajer & pihak lain, id balapan,
+      atribut pelacak, semua script eksekutabel dibuang; blok data JSON game
+      dipertahankan karena inerten). Konsumsi anchor HANYA yang dirender game:
+      kelas arah label slider (`decrease`/`increase` — muncul otomatis setelah
+      practice), baris practice terakhir (waktu/pemakaian), umur ban
+      `#dN-TyreLife` (JSON game), push level `select[name=pushLevel]`. Tanpa
+      aritmetika baru di luar model v0.7.3; disiplin read-only & tab Race live
+      bersih dijaga test yang sama.
     - Tanpa distribusi ulang data orang lain; snapshot hanya di storage browser user.
     - Bukan: background polling halaman game, server-side scraping, atau pembacaan
       data race LIVE (lap/posisi/fuel saat sesi berjalan, kapan pun) — panel race
-      v0.7.3 hanya membaca tab pra-balapan yang statis.
+      v0.7.3–0.7.4 hanya membaca tab pra-balapan yang statis.
     - SEBELUM perluas cakupan (mis. halaman Supply/Chassis): tanyakan iGP Support
       (routes S-XIV) bila ingin kepastian tertulis.
 
@@ -105,14 +115,15 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
   `@require` **0**; `unsafeWindow` **0** (`node test`, `node --check`, audit 2026-10-17).
 - Mailbox polling hanya membaca **GM storage kita sendiri** (`igpas:mb:*`) di browser
   user — bukan trafik/menuju server iGP.
-- Adapter v0.4.0–v0.7.3: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
+- Adapter v0.4.0–v0.7.4: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
   tanpa `fetch`, tanpa XHR, tanpa akses `unsafeWindow`. Fixture pengujian dari DOM
   halaman nyata yang disanitasi (`test/fixtures/*.html`); suite: 51 core + 24 snapshot
   (akun, mobil, supply, manufacturers, staff, transfers, race setup/strategy) +
   6 mailbox + 8 GUI + 16 advisor (jsdom) = **105**.
-- Version: userscript kini 0.7.3 (estimasi setup & strategi pra-balapan di tab
-  Setup/Strategy — tab Race live tetap tanpa UI; zero automation & network);
-  landing/etika disclaimer diperbarui pada commit terkait.
+- Version: userscript kini 0.7.4 (estimasi setup & strategi pra-balapan di tab
+  Setup/Strategy diperkaya data practice — arah label game, umur ban, push level,
+  fuel presisi — sumber = capture live tersanitasi; tab Race live tetap tanpa UI;
+  zero automation & network); landing/etika disclaimer diperbarui pada commit terkait.
 
 ## Rekomendasi yang belum dilakukan (kembali ke user)
 

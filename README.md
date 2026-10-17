@@ -79,7 +79,7 @@ python3 -m http.server 8787 -d docs   # lalu buka http://localhost:8787/ (landin
 
 Semua angka berasal dari **input Anda sendiri** — tidak ada asumsi data game.
 
-## Advisor in-page (v0.7.0, diperluas v0.7.3)
+## Advisor in-page (v0.7.0, diperluas v0.7.3–0.7.4)
 
 Userscript kini menempel **panel rekomendasi langsung di halaman iGP** yang
 Anda buka — hanya di halaman **studi** (`#pageId` `cars`, `manufacturers`,
@@ -108,15 +108,19 @@ Sifatnya:
   atribut / merah = kelemahan dari tooltip game). Pasar bisa berubah sendiri
   (refresh lelang) — panel diberi catatan dan di-render ulang saat Anda
   berinteraksi.
-- **Setup & Strategy pra-balapan (v0.7.3)** — di tab **Setup**: nilai slider
-  vs **bar ideal milik game** (titik tengah bar sebagai estimasi; bar setebal
-  track = ideal belum dipelajari — ditulis jujur, bukan dikarang), kondisi
-  mobil (health/condition/engine; health <30% ditandai "kritis — repair
-  dulu"), cuaca, jumlah lap practice, dan kutipan komentar engineer game.
-  Di tab **Strategy**: ringkasan alokasi per driver — total lap stint vs laps
-  balapan, bensin tersedia vs kebutuhan (laps × fuel/lap game, sisa buffer
-  dalam liter & ekuivalen lap), susunan ban per stint + cek aturan
-  dua-compound liga (span `#rules`), jumlah pit & risk level game. Panel
+- **Setup & Strategy pra-balapan (v0.7.3, diperkaya v0.7.4 dari capture practice
+  nyata)** — di tab **Setup**: nilai slider vs **bar ideal milik game** (titik
+  tengah bar sebagai estimasi; bar setebal track = ideal belum dipelajari —
+  ditulis jujur, bukan dikarang), **arah dari label game** (`decrease`/`increase`
+  — kelas ini hanya muncul setelah ada lap practice), kondisi mobil
+  (health/condition/engine; health <30% ditandai "kritis — repair dulu"), cuaca
+  dari c-head form setup, ringkasan **lap practice terakhir** (waktu + pemakaian
+  bensin/ban dari tabel game), dan kutipan komentar engineer game. Di tab
+  **Strategy**: ringkasan alokasi per driver — total lap stint vs laps balapan,
+  bensin tersedia vs kebutuhan (laps × fuel/lap game **presisi**, mis. 2.460 —
+  sisa buffer dalam liter & ekuivalen lap), susunan ban per stint + cek aturan
+  dua-compound liga (span `#rules`), jumlah pit, risk level, **push level** dan
+  **umur ban per compound** (`#dN-TyreLife`, mis. SS ±12 lap) milik game. Panel
   bersifat **snapshot** saat dimuat — kalau Anda mengubah stint/slider,
   buka ulang tab agar perhitungan ikut baru.
 

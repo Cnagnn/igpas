@@ -216,11 +216,11 @@ t('Transfers advisor: panel staff pasar per peran (CD/TD/DR + spesialisasi hijau
     s.close();
 });
 
-/* ---------- Race (v0.7.3, permintaan user): estimasi Setup & Strategy ---------- */
+/* ---------- Race (v0.7.3; v0.7.4: capture practice nyata): estimasi Setup & Strategy ---------- */
 
 const URL_RACE = 'https://www.igpmanager.com/app/index.php?page=race&tab=race';
 
-t('Race: panel estimasi setup melekat di #setup (bar ideal belum dipelajari = tanpa angka karangan)', () => {
+t('Race: panel estimasi setup dari capture practice nyata (ideal menyempit + arah game + lap terakhir)', () => {
     const s = bootOn(load('race.html'), URL_RACE);
     const panel = s.doc.getElementById('igpas-adv-rsetup');
     assert(panel, 'panel setup race tidak ada');
@@ -229,20 +229,36 @@ t('Race: panel estimasi setup melekat di #setup (bar ideal belum dipelajari = ta
     assert(wrap && wrap.contains(panel) && wrap.parentNode === s.doc.getElementById('setup'),
         'wrapper setup race salah tempat');
     const txt = panel.textContent;
+    const tblTxt = panel.querySelector('table').textContent; // tabel slider
     assert(txt.indexOf('Estimasi ideal setup') >= 0, 'judul panel setup tidak ada');
-    assert(txt.indexOf('belum dipelajari') >= 0, 'ideal bar penuh harus tampil "belum dipelajari", bukan angka');
+    // Car 1: bar ideal menyempit (85%, kiri 0/15/0) → mid-bar + selisih + arah label game
+    assert(tblTxt.indexOf('≈ 42.5') >= 0, 'mid ideal ride/wing (0 + 85/2 = 42.5) tidak tampil');
+    assert(tblTxt.indexOf('≈ 57.5') >= 0, 'mid ideal suspension (15 + 85/2 = 57.5) tidak tampil');
+    assert(txt.indexOf('+7.5') >= 0 && txt.indexOf('-7.5') >= 0, 'selisih arah (+7.5/−7.5) tidak tampil');
+    assert(txt.indexOf('↓ kurangi') >= 0 && txt.indexOf('↑ tambah') >= 0,
+        'arah game dari kelas label decrease/increase tidak tampil');
+    // Car 2: tanpa lap practice → bar penuh = "belum dipelajari" ×3, tanpa angka karangan
+    const und = tblTxt.split('belum dipelajari').length - 1;
+    assert(und === 3, 'ketiga slider car 2 harus "belum dipelajari", dapat ' + und);
+    assert(tblTxt.split('≈').length - 1 === 3, 'hanya 3 mid-bar (car 1) yang boleh muncul — ada angka ideal karangan');
+    // Nama generik dari fixture ternsanitasi (blok nama car 2 = driver2Include tersembunyi)
     assert(txt.indexOf('Andi Pratama') >= 0 && txt.indexOf('Budi Santoso') >= 0, 'nama driver generik tidak terbaca');
-    assert(txt.indexOf('kritis — repair dulu') >= 0, 'health 9% harus ditandai kritis');
-    assert(txt.indexOf('9%') >= 0 && txt.indexOf('8%') >= 0, 'nilai health tidak tampil');
-    assert(txt.indexOf('bad shape') >= 0, 'komentar engineer (game) tidak dikutip');
-    assert(txt.indexOf('kering') >= 0 && txt.indexOf('0mm') >= 0, 'cuaca kering tidak terbaca');
-    assert(txt.indexOf('lap practice tercatat') >= 0, 'jumlah lap practice tidak tampil');
+    // Kondisi: game hanya merender blok health untuk mobil yang rusak (car 2: 8%)
+    assert(txt.indexOf('kritis — repair dulu') >= 0 && txt.indexOf('8%') >= 0, 'health 8% tidak ditandai kritis');
+    // Komentar engineer dua mobil (kata game)
+    assert(txt.indexOf('much too high') >= 0 && txt.indexOf('bad shape') >= 0, 'komentar engineer tidak dikutip');
+    // Cuaca dari c-head form setup (.waterLevelText + .weatherTemp "5°C")
+    assert(txt.indexOf('kering') >= 0 && txt.indexOf('0mm') >= 0 && txt.indexOf('5°C') >= 0, 'cuaca tidak terbaca');
+    // Lap practice terakhir dari tabel game (waktu + pemakaian bensin/ban)
+    assert(txt.indexOf('1:22.512') >= 0 && txt.indexOf('-2.4') >= 0 && txt.indexOf('-8%') >= 0,
+        'lap practice terakhir (waktu/bensin/ban) tidak tampil');
+    assert(txt.indexOf('jalankan practice untuk mempersempit ideal') >= 0,
+        'car 2 tanpa practice harus diminta jalankan practice');
     assert(/Estimasi — bukan rumus game/.test(txt), 'label estimasi tidak ada');
-    assert(txt.indexOf('≈ 50') === -1, 'tidak boleh ada angka ideal karangan saat bar penuh');
     s.close();
 });
 
-t('Race: panel ringkasan strategi di #strategy (aritmetika laps × fuel/lap + two-tyre)', () => {
+t('Race: panel ringkasan strategi dari capture practice nyata (fuel 2.460, push level, umur ban)', () => {
     const s = bootOn(load('race.html'), URL_RACE);
     const panel = s.doc.getElementById('igpas-adv-rstrategy');
     assert(panel, 'panel strategi race tidak ada');
@@ -250,11 +266,17 @@ t('Race: panel ringkasan strategi di #strategy (aritmetika laps × fuel/lap + tw
     const txt = panel.textContent;
     assert(txt.indexOf('Ringkasan strategi') >= 0, 'judul panel strategi tidak ada');
     assert(txt.indexOf('64/63 lap') >= 0, 'alokasi lap 4 stint (64) vs laps balapan (63) salah');
-    assert(txt.indexOf('174 L vs ±157.5 L') >= 0, 'perhitungan bensin (63 × 2.5 = 157.5) tidak sesuai');
-    assert(txt.indexOf('16.5 L') >= 0 && txt.indexOf('6.6 lap') >= 0, 'buffer bensin salah hitung');
+    // Car 1: fuel prediction presisi game 2.460 L/lap → 63 × 2.46 = 154.98 → ±155 L
+    assert(txt.indexOf('174 L vs ±155 L') >= 0 && txt.indexOf('sisa 19 L') >= 0 && txt.indexOf('≈7.7 lap') >= 0,
+        'hitungan bensin car 1 (2.460 L/lap) tidak sesuai');
+    // Car 2: fuel prediction 2.5 L/lap → 157.5 / buffer 16.5 / ≈6.6 lap
+    assert(txt.indexOf('±157.5 L') >= 0 && txt.indexOf('16.5 L') >= 0 && txt.indexOf('6.6 lap') >= 0,
+        'hitungan bensin car 2 (2.5 L/lap) tidak sesuai');
     assert(txt.indexOf('M, M, M, S') >= 0, 'susunan ban stint tidak terbaca dari JSON game');
     assert(txt.indexOf('2 compound kering ✓') >= 0, 'cek dua-compound (two_tyres=1) gagal');
     assert(txt.indexOf('risiko 60') >= 0, 'risk_level game tidak ditampilkan');
+    assert(txt.indexOf('push 60') >= 0, 'push level (select game) tidak ditampilkan');
+    assert(txt.indexOf('umur ban game: SS ±12 lap') >= 0, '#d1TyreLife {"SS":12} tidak dikonsumsi');
     assert(txt.indexOf('Driver utama') >= 0, 'label driver utama tidak ada');
     assert(txt.indexOf('snapshot') >= 0, 'catatan snapshot (data bisa berubah) tidak ada');
     s.close();
