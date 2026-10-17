@@ -145,4 +145,104 @@ t('stintSplit: input tak valid', () => {
     assert.strictEqual(IGPCore.stintSplit({ totalLaps: 10, tireLifeLaps: 0 }).ok, false);
 });
 
+/* ---------- strategyRecommendation ---------- */
+
+t('strategyRecommendation: rencana pit (fuel membatasi)', () => {
+    const r = IGPCore.strategyRecommendation({ lapsLeftOnFuel: 20, tyreLapsLeft: 30, reserveLaps: 1, pitLossLaps: 0.5, marginLaps: 2 });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.values.decision, 'plan');
+    assert.strictEqual(r.values.limiting, 'fuel');
+    assert.strictEqual(r.values.latest, 19);        // floor(20-1)
+    assert.strictEqual(r.values.recommended, 17);   // 19-2
+});
+
+t('strategyRecommendation: ban membatasi', () => {
+    const r = IGPCore.strategyRecommendation({ lapsLeftOnFuel: 50, tyreLapsLeft: 12, reserveLaps: 1, pitLossLaps: 0.5, marginLaps: 0 });
+    assert.strictEqual(r.values.latest, 12);
+    assert.strictEqual(r.values.limiting, 'tyre');
+    assert.strictEqual(r.values.decision, 'plan');
+});
+
+t('strategyRecommendation: ban tanpa data → ∞', () => {
+    const r = IGPCore.strategyRecommendation({ lapsLeftOnFuel: 10, tyreLapsLeft: '', reserveLaps: 0, pitLossLaps: 0, marginLaps: 0 });
+    assert.strictEqual(r.values.latest, 10);
+    assert.strictEqual(r.values.limiting, 'fuel');
+});
+
+t('strategyRecommendation: pit dalam ±1 lap', () => {
+    const r = IGPCore.strategyRecommendation({ lapsLeftOnFuel: 3.2, tyreLapsLeft: 20, reserveLaps: 1, pitLossLaps: 0.5, marginLaps: 1 });
+    assert.strictEqual(r.values.latest, 2);
+    assert.strictEqual(r.values.recommended, 1);
+    assert.strictEqual(r.values.decision, 'pit-soon');
+});
+
+t('strategyRecommendation: PIT SEKARANG + peringatan', () => {
+    const r = IGPCore.strategyRecommendation({ lapsLeftOnFuel: 1, tyreLapsLeft: 10, reserveLaps: 1, pitLossLaps: 0.5, marginLaps: 0 });
+    assert.strictEqual(r.values.decision, 'pit-now');
+    assert.ok(r.rows.some(row => String(row[0]).includes('⚠')));
+});
+
+t('strategyRecommendation: input tidak valid', () => {
+    assert.strictEqual(IGPCore.strategyRecommendation({ lapsLeftOnFuel: -1, tyreLapsLeft: 10 }).ok, false);
+    assert.strictEqual(IGPCore.strategyRecommendation({ lapsLeftOnFuel: 10, tyreLapsLeft: 0 }).ok, false);
+    assert.strictEqual(IGPCore.strategyRecommendation({ lapsLeftOnFuel: 10, tyreLapsLeft: 10, marginLaps: -2 }).ok, false);
+});
+
+/* ---------- rankOptions ---------- */
+
+t('rankOptions: total bobot 0 → error (harus eksplisit)', () => {
+    const r = IGPCore.rankOptions({ items: [{ name: 'A', ratings: { a: 5 } }], weights: {} });
+    assert.strictEqual(r.ok, false);
+});
+
+t('rankOptions: ranking benar sesuai bobot', () => {
+    const r = IGPCore.rankOptions({
+        items: [
+            { name: 'A', ratings: { aero: 8, power: 6 } },
+            { name: 'B', ratings: { aero: 6, power: 8 } },
+        ],
+        weights: { aero: 2, power: 1 },
+    });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.values.best, 'A');
+    assert.strictEqual(r.rows[0][1], '7.33');       // (8*2+6*1)/3
+    assert.strictEqual(r.rows[1][1], '6.67');
+});
+
+t('rankOptions: item kurang lengkap ditandai * dan tetap dijumlah parsialnya', () => {
+    const r = IGPCore.rankOptions({
+        items: [
+            { name: 'A', ratings: { a: 8, b: 6 } },
+            { name: 'C', ratings: { a: 7 } },
+        ],
+        weights: { a: 2, b: 1 },
+    });
+    assert.strictEqual(r.ok, true);
+    const rowC = r.rows.find(row => row[0].includes('C'));
+    assert.ok(rowC[0].includes('*'));
+    assert.strictEqual(rowC[1], '4.67');            // 7*2/3
+});
+
+t('rankOptions: rating di luar 0–10 → error', () => {
+    const r = IGPCore.rankOptions({ items: [{ name: 'A', ratings: { a: 11 } }], weights: { a: 1 } });
+    assert.strictEqual(r.ok, false);
+});
+
+t('rankOptions: item tanpa nama → error', () => {
+    const r = IGPCore.rankOptions({ items: [{ ratings: { a: 5 } }], weights: { a: 1 } });
+    assert.strictEqual(r.ok, false);
+});
+
+t('rankOptions: seri → urutan alfabetis', () => {
+    const r = IGPCore.rankOptions({
+        items: [
+            { name: 'Beta', ratings: { x: 5 } },
+            { name: 'Alpha', ratings: { x: 5 } },
+        ],
+        weights: { x: 1 },
+    });
+    assert.strictEqual(r.rows[0][0].includes('Alpha'), true);
+    assert.strictEqual(r.values.best, 'Alpha');
+});
+
 console.log('\nSemua ' + n + ' test lulus ✔');

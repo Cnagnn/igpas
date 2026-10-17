@@ -8,7 +8,7 @@ sebagai userscript. Terinspirasi arsitektur [A.C.A.S](https://psyyke.github.io/A
 > situs, tidak membantu kendali saat balapan live. Gunakan untuk analisis,
 > latihan berpikir strategi, dan evaluasi post-race. Patuhi ToS iGP Manager.
 
-## Fitur (v0.1)
+## Fitur (v0.2)
 
 | Kalkulator | Input | Output |
 |---|---|---|
@@ -17,9 +17,32 @@ sebagai userscript. Terinspirasi arsitektur [A.C.A.S](https://psyyke.github.io/A
 | Tire life | wear kini, wear/lap, threshold | laps sampai threshold |
 | Pit window | fuel-laps left, reserve, tire-laps, margin | latest pit lap, rekomendasi, faktor pembatas |
 | Stint splitter | total laps, tire life, pit loss | jumlah stop, distribusi stint, biaya waktu |
+| **Strategy recommendation** (v0.2) | fuel-laps, tyre-laps, reserve, pit loss, margin | keputusan pit (plan/pit-soon/pit-now) + alasan |
+| **Ranking mobil/manufaktur** (v0.2) | item + rating kriteria 0–10 + bobot | skor & juara, transparan Σ(rating×bobot)/Σbobot |
 
-Profil setup per sirkuit disimpan lokal (GM storage), hotkey **Alt+I** untuk
+Profil setup per sirkuit tersimpan lokal (GM storage), hotkey **Alt+I** untuk
 buka/tutup panel.
+
+## Dual-Tab Command Center (v0.2)
+
+Struktur ala A.C.A.S: **tab 1** igpmanager.com (sensor), **tab 2** GUI
+Command Center (jurik jarak jauh), tersambung via **mailbox GM-storage**
+(polling, read-once — pola CommLink).
+
+1. Jalankan server GUI lokal (repo masih private — GitHub Pages menyusul):
+   ```bash
+   cd /home/user/igpas && python3 -m http.server 8787 -d docs/gui
+   ```
+2. Buka **tab 1**: `http://localhost:8787` → badge "● live (userscript aktif)".
+3. Buka **tab 2**: igpmanager.com → panel floating menampilkan status
+   `GUI: ● terhubung`.
+4. Di GUI: **Request data from tabs** → menerima laporan adapter/profil dari
+   tab igpmanager; panel **Strategy Recommendations** dan **Data Lab**
+   (ranking mobil & manufaktur) siap dipakai.
+
+> Sumber data v0.2 tetap **manual**. Adapter DOM (mobil/manufaktur otomatis)
+> berstatus `selectors-tbd` — framework siap, pemetaan halaman nyata belum
+> dilakukan (lihat `docs/ARCHITECTURE.md` § Fase 3). Tidak ada selector fiktif.
 
 Semua angka berasal dari **input Anda sendiri** — tidak ada asumsi data game.
 

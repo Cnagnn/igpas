@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.1.1
+// @version      0.2.0
 // @description  Race strategy study calculators for iGP Manager (fuel, tyres, pit window, stints). Manual input — study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint). Input manual — alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
@@ -9,6 +9,8 @@
 // @supportURL   https://github.com/Cnagnn/igpas/issues
 // @match        https://igpmanager.com/*
 // @match        https://*.igpmanager.com/*
+// @match        http://localhost/*
+// @match        https://cnagnn.github.io/igpas/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_deleteValue
@@ -19,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.1.1';
+    const VERSION = '0.2.0';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -177,10 +179,111 @@
                 ],
             };
         },
+
+        /**
+         * Rekomendasi keputusan pit — deterministik dan transparan.
+         * @param {object} p { lapsLeftOnFuel, tyreLapsLeft, reserveLaps, pitLossLaps, marginLaps }
+         */
+        strategyRecommendation(p) {
+            const fuelLaps = Number(p.lapsLeftOnFuel);
+            const tyreRaw = (p.tyreLapsLeft === '' || p.tyreLapsLeft == null) ? Infinity : Number(p.tyreLapsLeft);
+            const reserve = Number(p.reserveLaps) || 0;
+            const pitLoss = Number(p.pitLossLaps) || 0;
+            const margin = Number(p.marginLaps) || 0;
+
+            if (!(fuelLaps >= 0)) return { ok: false, error: 'Laps left on fuel >= 0' };
+            if (!(tyreRaw > 0)) return { ok: false, error: 'Tyre laps harus > 0' };
+            if (!(reserve >= 0) || !(pitLoss >= 0) || !(margin >= 0)) {
+                return { ok: false, error: 'Reserve/pit-loss/margin >= 0' };
+            }
+
+            const fuelLatest = Math.max(0, Math.floor(fuelLaps - reserve));
+            const latest = Math.min(fuelLatest, tyreRaw);
+            const limiting = fuelLatest < tyreRaw ? 'fuel' : (tyreRaw < fuelLatest ? 'tyre' : 'tie');
+            const recommended = Math.max(0, latest - margin);
+
+            const decision = latest < 1 ? 'pit-now' : (recommended <= 1 ? 'pit-soon' : 'plan');
+
+            return {
+                ok: true,
+                values: { decision, latest, recommended, limiting, pitLoss },
+                rows: [
+                    ['Keputusan', decision],
+                    ['Faktor pembatas', limiting],
+                    ['Latest pit setelah', latest + ' lap'],
+                    ['Rekomendasi (−margin)', recommended + ' lap'],
+                    ['Biaya pit', pitLoss + ' lap-equivalent'],
+                    ...(latest < 1 ? [['⚠', 'Tidak bisa menunggu 1 lap penuh']] : []),
+                ],
+            };
+        },
+
+        /**
+         * Peringkat opsi (manufaktur / mobil / bagian) dengan bobot kriteria.
+         * Asumsi eksplisit: rating 0–10 dari pengguna; skor = Σ(rating·bobot)/Σbobot.
+         * @param {object} p { items:[{name, ratings:{k:v}}], weights:{k:w} }
+         */
+        rankOptions(p) {
+            const items = (p && Array.isArray(p.items)) ? p.items : null;
+            const weights = (p && p.weights && typeof p.weights === 'object') ? p.weights : {};
+            if (!items || items.length < 1) return { ok: false, error: 'Minimal 1 item' };
+            if (items.length > 50) return { ok: false, error: 'Maksimal 50 item' };
+            for (const it of items) {
+                if (!it || typeof it.name !== 'string' || !it.name.trim()) {
+                    return { ok: false, error: 'Setiap item butuh "name"' };
+                }
+            }
+
+            const keys = new Set();
+            for (const it of items) {
+                for (const k of Object.keys((it && it.ratings) || {})) keys.add(k);
+            }
+            const criteria = Array.from(keys);
+            if (criteria.length === 0) return { ok: false, error: 'ratings kosong' };
+
+            const w = {};
+            let totalW = 0;
+            for (const k of criteria) {
+                const ww = Number(weights[k]);
+                w[k] = (Number.isFinite(ww) && ww > 0) ? ww : 0;
+                totalW += w[k];
+            }
+            if (totalW <= 0) return { ok: false, error: 'Total bobot harus > 0' };
+
+            const scored = [];
+            for (const it of items) {
+                let s = 0;
+                let incomplete = false;
+                for (const k of criteria) {
+                    if (!(k in (it.ratings || {}))) { incomplete = true; continue; }
+                    const v = Number(it.ratings[k]);
+                    if (!Number.isFinite(v) || v < 0 || v > 10) {
+                        return { ok: false, error: 'Rating harus angka 0–10 (' + it.name + '.' + k + ')' };
+                    }
+                    s += v * w[k];
+                }
+                scored.push({
+                    name: it.name,
+                    score: Math.round((s / totalW) * 100) / 100,
+                    incomplete: incomplete,
+                });
+            }
+            scored.sort((a, b) => (b.score - a.score) || a.name.localeCompare(b.name));
+
+            const rows = scored.map((sc, i) =>
+                [(i + 1) + '. ' + sc.name + (sc.incomplete ? ' *' : ''), sc.score.toFixed(2)]);
+
+            return {
+                ok: true,
+                values: { ranking: scored, best: scored[0].name },
+                rows: rows,
+                criteria: criteria,
+                weightsUsed: w,
+            };
+        },
     });
 
     // helper kecil (di luar freeze agar statis):
-    function fuelPerLapExplorer(fuelPerLap) { return fuelPerLap; }
 
     /* =====================================================================
      * 2) STORAGE — GM storage dengan fallback memori (agar bisa dites).
@@ -192,11 +295,13 @@
             get: (k, d) => { try { return GM_getValue(k, d); } catch (e) { return d; } },
             set: (k, v) => { try { GM_setValue(k, v); } catch (e) { memStore.set(k, v); } },
             del: (k) => { try { GM_deleteValue(k); } catch (e) { memStore.delete(k); } },
+            keys: () => { try { return GM_listValues() || []; } catch (e) { return []; } },
         }
         : {
             get: (k, d) => (memStore.has(k) ? memStore.get(k) : d),
             set: (k, v) => { memStore.set(k, v); },
             del: (k) => { memStore.delete(k); },
+            keys: () => Array.from(memStore.keys()),
         };
 
     const Keys = Object.freeze({
@@ -218,6 +323,90 @@
         },
         getUi() { return gm.get(Keys.ui, {}) || {}; },
         setUi(state) { gm.set(Keys.ui, state); },
+    };
+
+    /* =====================================================================
+     * 2.5) BRIDGE — struktur dual-tab (pola CommLink/A.C.A.S):
+     *      mailbox GM-storage, polling & read-once. Peran tab:
+     *      gui (localhost / github.io/igpas/) <-> sensor (igpmanager.com).
+     * ===================================================================== */
+
+    const ROLE = (() => {
+        if (typeof location === 'undefined') return 'test';
+        const h = location.hostname || '';
+        if (h === 'localhost' || h === '127.0.0.1') return 'gui';
+        if (h.endsWith('.github.io') && (location.pathname || '').startsWith('/igpas/')) return 'gui';
+        if (h.includes('igpmanager.com')) return 'sensor';
+        return 'unknown';
+    })();
+
+    const INSTANCE_ID = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+    const Mailbox = {
+        PREFIX: 'igpas:mb:',
+        HEARTBEAT_KEY: 'igpas:gui:heartbeat',
+        handlers: {},
+        timer: null,
+        on(type, fn) {
+            Mailbox.handlers[type] = Mailbox.handlers[type] || [];
+            Mailbox.handlers[type].push(fn);
+        },
+        send(type, payload, to) {
+            const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+            const packet = {
+                id: id,
+                type: type,
+                to: to || '*',
+                from: ROLE + ':' + INSTANCE_ID,
+                ts: Date.now(),
+                payload: payload || {},
+            };
+            gm.set(Mailbox.PREFIX + id, packet);
+        },
+        pollOnce() {
+            const now = Date.now();
+            for (const key of gm.keys()) {
+                if (typeof key !== 'string' || key.indexOf(Mailbox.PREFIX) !== 0) continue;
+                const packet = gm.get(key, null);
+                gm.del(key); // read-once: pesan dihapus begitu dibaca (pola A.C.A.S)
+                if (!packet || typeof packet !== 'object') continue;
+                if (now - (packet.ts || 0) > 30000) continue; // paket basi
+                if (packet.from === ROLE + ':' + INSTANCE_ID) continue; // pesan sendiri
+                if (packet.to && packet.to !== '*' && packet.to !== INSTANCE_ID) continue;
+                const list = Mailbox.handlers[packet.type] || [];
+                for (const fn of list) {
+                    try { fn(packet); } catch (e) { if (typeof console !== 'undefined') console.warn('IGPAS listener', e); }
+                }
+            }
+        },
+        start(intervalMs) {
+            if (Mailbox.timer) return;
+            Mailbox.timer = setInterval(() => Mailbox.pollOnce(), intervalMs || 400);
+            if (ROLE === 'gui') {
+                gm.set(Mailbox.HEARTBEAT_KEY, Date.now());
+                setInterval(() => gm.set(Mailbox.HEARTBEAT_KEY, Date.now()), 2000);
+            }
+        },
+        guiConnected() {
+            const hb = Number(gm.get(Mailbox.HEARTBEAT_KEY, 0));
+            return hb > 0 && (Date.now() - hb) < 10000;
+        },
+    };
+
+    /**
+     * Registry adapter data (mobil, manufaktur, strategi). Status dipublikasikan
+     * apa adanya: 'selectors-tbd' = kerangka siap, pemetaan DOM belum dilakukan
+     * (butuh sesi validasi halaman nyata). Tidak ada selector fiktif.
+     */
+    const AdapterRegistry = {
+        defs: [
+            { id: 'car-data', desc: 'data mobil' },
+            { id: 'manufacturer-data', desc: 'data manufaktur' },
+            { id: 'race-strategy', desc: 'strategi balapan (v0.2: input manual)' },
+        ],
+        status() {
+            return AdapterRegistry.defs.map(d => d.id + ':selectors-tbd').join(', ');
+        },
     };
 
     /* =====================================================================
@@ -391,7 +580,8 @@
                 `<p class="sub">Alat studi — input manual. Tidak otomasi apa pun.</p>` +
                 profilesHtml() +
                 CALCULATORS.map(calcHtml).join('') +
-                `<div class="igpas-foot">GPL-3.0-or-later · angka = aritmetika input Anda</div>`;
+                `<div class="igpas-foot">GPL-3.0-or-later · angka = aritmetika input Anda · ` +
+                `<span id="igpas-gui-status"></span></div>`;
             document.body.appendChild(panel);
 
             panel.querySelectorAll('input').forEach(inputEl => {
@@ -447,16 +637,208 @@
     })();
 
     /* =====================================================================
+     * 3.5) GUI MASTER — widget untuk tab Command Center (peran 'gui').
+     *      Me-render ke elemen shell di docs/gui/index.html.
+     * ===================================================================== */
+
+    const GuiMaster = (() => {
+        const reports = new Map(); // instanceId -> laporan terakhir
+        let labData = null;
+
+        const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const $ = id => document.getElementById(id);
+        const $v = id => { const el = $(id); return el ? el.value : ''; };
+
+        const san = s => String(s).replace(/\W+/g, '_');
+
+        function refreshInstances() {
+            const box = $('igpas-gui-instances');
+            if (!box) return;
+            const hb = Mailbox.guiConnected()
+                ? '<span class="badge ok">● heartbeat live</span>'
+                : '<span class="badge off">○ heartbeat idle</span>';
+            let html = hb;
+            if (reports.size === 0) {
+                html += ' <span class="badge">no sensor tab yet</span>';
+            } else {
+                for (const [id, r] of reports) {
+                    html += '<div class="rec"><div><strong>' + esc(r.label) + '</strong>' +
+                        ' <span class="hint">' + esc(r.url || '') + '</span></div>' +
+                        '<div class="why">adapters: ' + esc(r.adapters || '—') +
+                        ' · profiles: ' + esc(r.profiles) + ' · ' + esc(r.t) +
+                        ' · instance ' + esc(id.slice(0, 14)) + '…</div></div>';
+                }
+            }
+            box.innerHTML = html;
+        }
+
+        function strategy() {
+            const out = $('ig-str-out');
+            if (!out) return;
+            const r = IGPCore.strategyRecommendation({
+                lapsLeftOnFuel: $v('ig-str-fuel'),
+                tyreLapsLeft: $v('ig-str-tyre'),
+                reserveLaps: $v('ig-str-res'),
+                pitLossLaps: $v('ig-str-loss'),
+                marginLaps: $v('ig-str-margin'),
+            });
+            if (!r.ok) {
+                out.innerHTML = '<div class="warn">✗ ' + esc(r.error) + '</div>';
+                return;
+            }
+            const titles = { 'pit-now': '🅿️ PIT SEKARANG', 'pit-soon': '🅿️ Pit dalam ±1 lap', 'plan': '🗓️ Rencanakan pit' };
+            const title = titles[r.values.decision] || r.values.decision;
+            out.innerHTML = '<div class="rec"><div><strong>' + esc(title) + '</strong></div>' +
+                r.rows.map(row => '<div class="why">' + esc(row[0]) + ': <strong>' + esc(row[1]) + '</strong></div>').join('') +
+                '</div>';
+        }
+
+        function strategyDemo() {
+            const demo = { 'ig-str-fuel': '9.5', 'ig-str-tyre': '14', 'ig-str-res': '1', 'ig-str-loss': '0.5', 'ig-str-margin': '1' };
+            for (const id of Object.keys(demo)) { const el = $(id); if (el) el.value = demo[id]; }
+            strategy();
+        }
+
+        function criteriaOf(items) {
+            const s = new Set();
+            for (const it of items) for (const k of Object.keys(it.ratings || {})) s.add(k);
+            return Array.from(s);
+        }
+
+        function labLoad(parse) {
+            const ta = $('ig-lab-json');
+            const out = $('ig-lab-out');
+            if (!ta || !out) return;
+            if (!parse) {
+                try {
+                    const obj = JSON.parse(ta.value);
+                    if (!obj || !Array.isArray(obj.items)) throw new Error('butuh {"type":…,"items":[…]}');
+                    labData = obj;
+                } catch (e) {
+                    out.innerHTML = '<div class="warn">✗ JSON: ' + esc(e.message) + '</div>';
+                    return false;
+                }
+            }
+            const box = $('ig-lab-weights');
+            if (box && labData) {
+                box.innerHTML = criteriaOf(labData.items).map(k =>
+                    '<div class="row"><label style="flex:1">' + esc(k) + '</label>' +
+                    '<input type="number" min="0" max="5" step="0.5" value="3" id="ig-lab-w-' + esc(san(k)) + '"></div>').join('');
+            }
+            if (out && labData) {
+                out.innerHTML = '<span class="hint">' + esc(labData.type || 'data') + ': ' +
+                    labData.items.length + ' item dimuat — atur bobot lalu <em>Rank</em>.</span>';
+            }
+            return true;
+        }
+
+        function labExample() {
+            const ta = $('ig-lab-json');
+            if (!ta) return;
+            ta.value = JSON.stringify({
+                type: 'manufacturer',
+                items: [
+                    { name: 'Alpha Aero', ratings: { aero: 8, power: 5, reliability: 7, cost: 4 } },
+                    { name: 'Beta Drive', ratings: { aero: 6, power: 8, reliability: 6, cost: 6 } },
+                    { name: 'Gamma Tech', ratings: { aero: 7, power: 7, reliability: 8, cost: 3 } },
+                ],
+            }, null, 2);
+            labLoad(false);
+        }
+
+        function labRank() {
+            const out = $('ig-lab-out');
+            if (!out) return;
+            if (!labData) { out.innerHTML = '<span class="hint">Load JSON dulu.</span>'; return; }
+            const weights = {};
+            for (const k of criteriaOf(labData.items)) {
+                weights[k] = Number($v('ig-lab-w-' + san(k))) || 3;
+            }
+            const r = IGPCore.rankOptions({ items: labData.items, weights: weights });
+            if (!r.ok) { out.innerHTML = '<div class="warn">✗ ' + esc(r.error) + '</div>'; return; }
+            out.innerHTML = '<table><tr><th>Opsi</th><th>Skor</th></tr>' +
+                r.rows.map(row => '<tr><td>' + esc(row[0]) + '</td><td class="num">' + esc(row[1]) + '</td></tr>').join('') +
+                '</table><div class="why" style="color:#8fa1b8;font-size:12px;margin-top:6px">Best: <strong>' +
+                esc(r.values.best) + '</strong> · * = rating belum lengkap · skor = Σ(rating×bobot)/Σbobot (0–10)</div>';
+        }
+
+        function mount() {
+            const ver = $('igpas-gui-version');
+            if (ver) ver.textContent = 'GUI v' + VERSION;
+            const mode = $('igpas-gui-mode');
+            if (mode) { mode.textContent = '● live (userscript aktif)'; mode.className = 'badge ok'; }
+
+            const req = $('igpas-gui-request-report');
+            if (req) req.addEventListener('click', () => Mailbox.send('report-request', {}));
+
+            const sc = $('ig-str-calc');   if (sc) sc.addEventListener('click', strategy);
+            const sd = $('ig-str-demo');   if (sd) sd.addEventListener('click', strategyDemo);
+            const ll = $('ig-lab-load');   if (ll) ll.addEventListener('click', () => labLoad(false));
+            const le = $('ig-lab-example'); if (le) le.addEventListener('click', labExample);
+            const lr = $('ig-lab-rank');   if (lr) lr.addEventListener('click', labRank);
+
+            Mailbox.on('report', p => {
+                reports.set(p.from, {
+                    label: (p.payload && p.payload.label) || p.from,
+                    url: p.payload && p.payload.url,
+                    adapters: p.payload && p.payload.adapters,
+                    profiles: p.payload && p.payload.profiles,
+                    t: new Date(p.ts).toLocaleTimeString(),
+                });
+                refreshInstances();
+                const ls = $('igpas-gui-last-sync');
+                if (ls) ls.textContent = 'Last sync: ' + new Date().toLocaleTimeString();
+            });
+
+            setInterval(refreshInstances, 2000);
+            refreshInstances();
+        }
+
+        return { mount: mount };
+    })();
+
+    /* =====================================================================
      * 4) BOOT — hanya memasang panel. Tidak menyentuh elemen game.
      * ===================================================================== */
 
     function boot() {
         if (typeof document === 'undefined') return; // lingkungan non-browser (tes)
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => UI.mount());
-        } else {
+
+        const startUi = () => {
             UI.mount();
+            if (ROLE === 'gui' && typeof GuiMaster !== 'undefined') GuiMaster.mount();
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startUi);
+        } else {
+            startUi();
         }
+
+        // ======== Jembatan antar-tab (dual-tab) ========
+        Mailbox.start();
+
+        if (ROLE !== 'gui') {
+            // Tab sensor: tanggapi permintaan data GUI dengan laporan status.
+            Mailbox.on('report-request', () => {
+                Mailbox.send('report', {
+                    label: 'iGP tab (' + (typeof location !== 'undefined' ? location.pathname : '?') + ')',
+                    url: (typeof location !== 'undefined') ? location.href : '?',
+                    adapters: AdapterRegistry.status(),
+                    profiles: Object.keys(Storage.getProfiles()).length,
+                });
+            });
+        }
+
+        // Status koneksi GUI di panel floating (semua peran)
+        setInterval(() => {
+            const el = document.getElementById('igpas-gui-status');
+            if (el) el.textContent = ROLE === 'gui'
+                ? 'peran: GUI'
+                : ('GUI: ' + (Mailbox.guiConnected() ? '● terhubung' : '○ tidak ada'));
+        }, 2000);
+
         document.addEventListener('keydown', e => {
             if (e.altKey && (e.key === 'i' || e.key === 'I')) {
                 e.preventDefault();

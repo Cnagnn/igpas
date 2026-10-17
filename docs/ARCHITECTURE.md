@@ -37,17 +37,35 @@ pembacaan langsung artefak.
 ```
 ┌─────────────────────────────────────────────────────┐
 │ IGPCore  (pure, teruji): calcFuel, projectTireWear, │
-│          lapsToThreshold, pitWindow, stintSplit     │
+│          lapsToThreshold, pitWindow, stintSplit,    │
+│          strategyRecommendation, rankOptions        │
 ├─────────────────────────────────────────────────────┤
 │ Storage  (GM_getValue/GM_setValue + fallback memori │
 │          agar bisa dites di Node)                   │
 ├─────────────────────────────────────────────────────┤
-│ UI       Panel floating: 4 kalkulator + profil      │
-│          setup; input manual; output live           │
+│ Mailbox  (v0.2: bridge antar-tab pola CommLink —    │
+│          key 'igpas:mb:*', polling 400ms, read-once,│
+│          packet TTL 30s; heartbeat 'igpas:gui:*')   │
 ├─────────────────────────────────────────────────────┤
-│ Boot     Mount UI di igpmanager.com (document-idle) │
+│ UI       Panel floating (semua tab) + GuiMaster     │
+│          (peran gui: status, strategy, data lab)    │
+├─────────────────────────────────────────────────────┤
+│ AdapterRegistry (mobil/manufaktur/strategi — status │
+│          jujur 'selectors-tbd', tanpa selector      │
+│          fiktif) | Boot (mount sesuai peran ROLE)   │
 └─────────────────────────────────────────────────────┘
 ```
+
+### Protokol Mailbox (v0.2)
+
+| Paket | Arah | Payload |
+|---|---|---|
+| heartbeat (key `igpas:gui:heartbeat`) | gui → semua | timestamp (praktik: 1 key overwriten per 2s) |
+| `report-request` | gui → * | {} (broadcast) |
+| `report` | sensor → gui | {label, url, adapters, profiles} |
+
+Prinsip (menurun dari pola A.C.A.S): read-once delete, TTL anti-dead-mail,
+ignore-self, peran pakai `@match` localhost/github.io vs igpmanager.com.
 
 Prinsip: **kalkulator = aritmetika murni atas input user**. Tidak ada data game
 yang diandaikan (wear rate, konsumsi fuel, dll. semuanya diisi pengguna).
@@ -57,9 +75,9 @@ Ini meniadakan risiko "invented data" dan membuat inti bisa di-unit-test.
 
 | Versi | Isi | Status |
 |---|---|---|
-| v0.1 | Kerangka + 4 kalkulator + profil + UI | ✅ ini |
-| v0.2 | Preset contoh sirkuit (dari data user sendiri), export/import JSON | 🔜 |
-| v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah | 🔜 |
+| v0.1 | Kerangka + 4 kalkulator + profil + UI | ✅ |
+| v0.2 | Dual-tab GUI (mailbox bridge) + engine rekomendasi (strategyRecommendation, rankOptions) + data lab + AdapterRegistry 'selectors-tbd' | ✅ |
+| v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | 🔜 |
 | v0.4 | Kalibrasi lap-time dari catatan user (tabel input sendiri, bukan scrape) | 🔜 |
 
 ## 4b. Rencana Fase 3 — Adapter DOM (detail penerapan pola A.C.A.S)
