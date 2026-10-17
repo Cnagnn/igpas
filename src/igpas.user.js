@@ -391,7 +391,7 @@
                 `<p class="sub">Alat studi — input manual. Tidak otomasi apa pun.</p>` +
                 profilesHtml() +
                 CALCULATORS.map(calcHtml).join('') +
-                `<div class="igpas-foot">GPL-3.0 · angka = aritmetika input Anda</div>`;
+                `<div class="igpas-foot">GPL-3.0-or-later · angka = aritmetika input Anda</div>`;
             document.body.appendChild(panel);
 
             panel.querySelectorAll('input').forEach(inputEl => {
