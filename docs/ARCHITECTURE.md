@@ -47,8 +47,9 @@ pembacaan langsung artefak.
 │          key 'igpas:mb:*', polling 400ms, read-once,│
 │          packet TTL 30s; heartbeat 'igpas:gui:*')   │
 ├─────────────────────────────────────────────────────┤
-│ UI       Panel floating (semua tab) + GuiMaster     │
-│          (peran gui: status, strategy, data lab)    │
+│ UI       HANYA di Command Center (peran gui):       │
+│          kalkulator tersemat + strategy + data lab  │
+│          v0.3.0: tab igpmanager = sensor senyap     │
 ├─────────────────────────────────────────────────────┤
 │ AdapterRegistry (mobil/manufaktur/strategi — status │
 │          jujur 'selectors-tbd', tanpa selector      │
@@ -77,6 +78,7 @@ Ini meniadakan risiko "invented data" dan membuat inti bisa di-unit-test.
 |---|---|---|
 | v0.1 | Kerangka + 4 kalkulator + profil + UI | ✅ |
 | v0.2 | Dual-tab GUI (mailbox bridge) + engine rekomendasi (strategyRecommendation, rankOptions) + data lab + AdapterRegistry 'selectors-tbd' | ✅ |
+| v0.3.0 | Panel floating dihapus — tab iGP sensor senyap; kalkulator+profil pindah ke Command Center; landing & GUI neobrutalism semi-rounded | ✅ |
 | v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | 🔜 |
 | v0.4 | Kalibrasi lap-time dari catatan user (tabel input sendiri, bukan scrape) | 🔜 |
 

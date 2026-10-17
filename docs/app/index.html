@@ -56,6 +56,22 @@
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
     @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
 
+    /* Kalkulator tersemat (dirender userscript) — neo-brutalist semi-rounded */
+    #igpas-calc fieldset.igpas-calc { border: 2px solid var(--ink); border-radius: 10px;
+        padding: 12px; margin: 0 0 16px; background: #fff; box-shadow: 3px 3px 0 var(--ink); }
+    #igpas-calc legend { font-weight: 800; padding: 0 6px; }
+    #igpas-calc .igpas-row { display: flex; align-items: center; justify-content: space-between;
+        gap: 10px; margin: 7px 0; }
+    #igpas-calc .igpas-row label { flex: 1; font-weight: 700; font-size: 13px; }
+    #igpas-calc .igpas-row input { flex: 1; max-width: 130px; text-align: right; }
+    #igpas-calc .igpas-out { border-top: 2px solid var(--ink); margin-top: 9px; padding-top: 9px; }
+    #igpas-calc .igpas-out .row { display: flex; justify-content: space-between; gap: 10px;
+        margin: 4px 0; font-size: 13px; }
+    #igpas-calc .igpas-out .row span:first-child { color: var(--muted); font-weight: 600; }
+    #igpas-calc .igpas-out .row span:last-child { font-weight: 800; }
+    #igpas-prof { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    .igpas-foot { text-align: center; color: var(--muted); font-size: 11px; font-weight: 700; margin-top: 6px; }
+
     .rec { padding: 10px 12px; border: 2px solid var(--ink); border-radius: 10px;
            background: #EAF3FF; box-shadow: 3px 3px 0 var(--ink); margin: 8px 0; }
     .rec .why { color: #37414d; font-size: 12.5px; }
@@ -94,6 +110,14 @@
             <button id="igpas-gui-request-report">↩︎ Request data from tabs</button>
             <span class="hint" id="igpas-gui-last-sync" style="margin:0"></span>
         </div>
+    </section>
+
+    <section id="igpas-calc">
+        <h2>🧮 Calculators &amp; Profiles</h2>
+        <p class="hint">Fuel · ban · pit window · stint + profil setup per sirkuit (tersimpan
+           lokal via GM storage). Konten dirender oleh userscript saat badge atas jadi "live".</p>
+        <div id="igpas-calc-panel"><span class="hint">⚠ Userscript belum aktif di tab ini —
+           pastikan sudah terpasang lalu muat ulang halaman.</span></div>
     </section>
 
     <section id="igpas-strategy">

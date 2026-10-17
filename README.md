@@ -20,8 +20,9 @@ sebagai userscript. Terinspirasi arsitektur [A.C.A.S](https://psyyke.github.io/A
 | **Strategy recommendation** (v0.2) | fuel-laps, tyre-laps, reserve, pit loss, margin | keputusan pit (plan/pit-soon/pit-now) + alasan |
 | **Ranking mobil/manufaktur** (v0.2) | item + rating kriteria 0–10 + bobot | skor & juara, transparan Σ(rating×bobot)/Σbobot |
 
-Profil setup per sirkuit tersimpan lokal (GM storage), hotkey **Alt+I** untuk
-buka/tutup panel.
+Profil setup per sirkuit tersimpan lokal (GM storage) dan dirender langsung
+di **Command Center** (v0.3.0: userscript tidak lagi menampilkan panel apapun
+di igpmanager.com — tab permainan = sensor senyap).
 
 ## Dual-Tab Command Center (v0.2)
 
@@ -32,8 +33,9 @@ Struktur ala A.C.A.S: **tab 1** GUI Command Center (ter-host GitHub Pages),
 1. Buka **tab 1**: <https://cnagnn.github.io/igpas/> (landing) → klik
    **Open Command Center** (atau langsung <https://cnagnn.github.io/igpas/app/>)
    → badge "● live (userscript aktif)" (butuh userscript terpasang).
-2. Buka **tab 2**: igpmanager.com → panel floating menampilkan status
-   `GUI: ● terhubung`.
+2. Buka **tab 2**: igpmanager.com (sensor **senyap** — v0.3.0 tidak meng-inject
+   UI apa pun ke halaman permainan). Status koneksi terlihat di panel
+   **Connection** tab 1 setelah **Request data from tabs** diklik.
 3. Di GUI: **Request data from tabs** → menerima laporan adapter/profil dari
    tab igpmanager; panel **Strategy Recommendations** dan **Data Lab**
    (ranking mobil & manufaktur) siap dipakai.

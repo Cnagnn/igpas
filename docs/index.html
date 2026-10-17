@@ -6,74 +6,97 @@
 <title>I.G.P.A.S — Race Strategy Study for iGP Manager</title>
 <meta name="description" content="Open-source study tool for iGP Manager: fuel, tyre, pit-window and stint calculators with a dual-tab command center. No automation.">
 <style>
-    :root { color-scheme: dark; }
+    :root { color-scheme: light;
+        --ink:#101010; --paper:#F6F2E9; --card:#FFFDF7;
+        --blue:#4DA3FF; --yellow:#FFD23F; --pink:#FF6B6B;
+        --green:#7CE38B; --muted:#5f584d; }
     * { box-sizing: border-box; margin: 0; }
-    body { background: #0d1420; color: #dbe6f5; font: 16px/1.6 system-ui, sans-serif; }
-    a { color: #9fd0ff; text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    body { background: var(--paper); color: var(--ink); font: 16px/1.6 system-ui, sans-serif; }
+    a { color: var(--ink); text-decoration: none; }
 
-    /* motif: sector stripes (restrained, satu zona saja) */
-    .stripes { height: 4px; background: linear-gradient(90deg,
-        #9fd0ff 0 33.3%, #e8eef7 33.3% 66.6%, #ffce6b 66.6% 100%); }
+    .stripes { height: 8px; border-bottom: 3px solid var(--ink);
+        background: linear-gradient(90deg, var(--blue) 0 33.3%, #FFFDF7 33.3% 66.6%, var(--yellow) 66.6% 100%); }
 
-    header { position: sticky; top: 0; z-index: 10; background: rgba(13,20,32,.92);
-        backdrop-filter: blur(6px); border-bottom: 1px solid #22314a; }
+    header { position: sticky; top: 0; z-index: 10; background: var(--paper);
+        border-bottom: 3px solid var(--ink); }
     .nav { max-width: 1080px; margin: 0 auto; padding: 14px 22px;
         display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-    .logo { font-weight: 800; letter-spacing: .5px; color: #eaf2ff; }
-    .logo span { color: #9fd0ff; }
+    .logo { font-weight: 900; letter-spacing: .5px; font-size: 17px; }
+    .logo span { background: var(--yellow); border: 2px solid var(--ink);
+        border-radius: 8px; padding: 1px 7px; box-shadow: 2px 2px 0 var(--ink); }
     .nav .spacer { flex: 1; }
-    .nav a { font-size: 14px; color: #a9b8cd; }
-    .nav a:hover { color: #eaf2ff; text-decoration: none; }
+    .nav a { font-size: 14px; font-weight: 700; padding: 5px 10px;
+        border: 2px solid transparent; border-radius: 9px; }
+    .nav a:hover { border-color: var(--ink); background: var(--card);
+        box-shadow: 3px 3px 0 var(--ink); }
 
     main { max-width: 1080px; margin: 0 auto; padding: 0 22px; }
 
-    .hero { padding: 72px 0 40px; text-align: center; }
-    .hero h1 { font-size: clamp(30px, 6vw, 46px); line-height: 1.15; color: #eaf2ff; }
-    .hero h1 em { font-style: normal; color: #9fd0ff; }
-    .hero p { max-width: 640px; margin: 16px auto 28px; color: #a9b8cd; }
-    .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-    .btn { display: inline-block; padding: 12px 22px; border-radius: 10px;
-        border: 1px solid #2b3b55; font-weight: 700; font-size: 15px; }
-    .btn:hover { text-decoration: none; transform: translateY(-1px); }
-    .btn.primary { background: #9fd0ff; color: #0d1420; border-color: #9fd0ff; }
-    .btn.ghost { color: #dbe6f5; }
+    .hero { padding: 70px 0 40px; text-align: center; }
+    .hero h1 { font-size: clamp(30px, 6vw, 46px); line-height: 1.15; font-weight: 900; }
+    .hero h1 em { font-style: normal; background: var(--blue); border: 2.5px solid var(--ink);
+        border-radius: 10px; padding: 0 12px; box-shadow: 4px 4px 0 var(--ink);
+        display: inline-block; }
+    .hero p { max-width: 660px; margin: 22px auto 30px; color: var(--muted); font-weight: 600; }
+    .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .btn { display: inline-block; padding: 13px 24px; border-radius: 12px;
+        border: 2.5px solid var(--ink); font-weight: 800; font-size: 15px;
+        box-shadow: 4px 4px 0 var(--ink); transition: transform .06s, box-shadow .06s; }
+    .btn:hover { text-decoration: none; transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--ink); }
+    .btn:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--ink); }
+    .btn.primary { background: var(--yellow); }
+    .btn.ghost { background: var(--card); }
 
-    .stats { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; padding: 8px 0 52px; }
-    .stat { background: #111b2c; border: 1px solid #22314a; border-radius: 12px;
-        padding: 14px 22px; min-width: 150px; text-align: center; }
-    .stat b { display: block; font-size: 22px; color: #eaf2ff; }
-    .stat span { font-size: 12px; color: #7b8ba1; }
+    .stats { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; padding: 10px 0 54px; }
+    .stat { background: var(--card); border: 2.5px solid var(--ink); border-radius: 14px;
+        padding: 16px 24px; min-width: 150px; text-align: center; box-shadow: 5px 5px 0 var(--ink); }
+    .stat b { display: block; font-size: 24px; }
+    .stat span { font-size: 12px; color: var(--muted); font-weight: 700; }
+    .stat:nth-child(1) { background: var(--yellow); }
+    .stat:nth-child(2) { background: var(--blue); }
+    .stat:nth-child(3) { background: var(--green); }
+    .stat:nth-child(4) { background: var(--pink); }
 
-    section.h2 { padding: 42px 0 8px; }
-    section h2 { font-size: 26px; color: #eaf2ff; }
-    section .sub { color: #8fa1b8; margin: 6px 0 22px; }
+    section.pad { padding: 44px 0 12px; }
+    section h2 { font-size: 27px; font-weight: 900; }
+    section .sub { color: var(--muted); margin: 8px 0 26px; font-weight: 600; }
 
-    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding-bottom: 30px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; padding-bottom: 30px; }
     @media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
-    .card { background: #111b2c; border: 1px solid #22314a; border-radius: 12px;
-        padding: 18px; transition: border-color .15s ease; }
-    .card:hover { border-color: #3d5778; }
-    .card .ico { font-size: 24px; }
-    .card h3 { font-size: 15px; margin: 8px 0 6px; color: #9fd0ff; }
-    .card p { font-size: 13.5px; color: #a9b8cd; }
-    .card .chip { display: inline-block; margin-top: 10px; font-size: 11px;
-        color: #7ce38b; border: 1px solid #2c5a37; border-radius: 999px; padding: 2px 9px; }
+    .card { background: var(--card); border: 2.5px solid var(--ink); border-radius: 14px;
+        padding: 20px; transition: transform .06s, box-shadow .06s; box-shadow: 5px 5px 0 var(--ink); }
+    .card:hover { transform: translate(-1px, -1px); box-shadow: 7px 7px 0 var(--ink); }
+    .card .ico { width: 46px; height: 46px; display: grid; place-items: center;
+        font-size: 23px; border: 2px solid var(--ink); border-radius: 10px;
+        background: var(--yellow); box-shadow: 3px 3px 0 var(--ink); margin-bottom: 12px; }
+    .card:nth-child(6n+2) .ico { background: var(--blue); }
+    .card:nth-child(6n+3) .ico { background: var(--green); }
+    .card:nth-child(6n+4) .ico { background: var(--pink); }
+    .card:nth-child(6n+5) .ico { background: var(--card); }
+    .card:nth-child(6n) .ico { background: var(--yellow); }
+    .card h3 { font-size: 15px; margin: 0 0 6px; font-weight: 800; }
+    .card p { font-size: 13.5px; color: #45403a; font-weight: 600; }
+    .card .chip { display: inline-block; margin-top: 12px; font-size: 11px; font-weight: 800;
+        color: var(--ink); border: 2px solid var(--ink); border-radius: 999px;
+        padding: 2px 10px; background: var(--paper); }
 
-    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding-bottom: 26px; }
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; padding-bottom: 28px; }
     @media (max-width: 700px) { .steps { grid-template-columns: 1fr; } }
-    .step { border: 1px dashed #2b3b55; border-radius: 12px; padding: 16px; }
-    .step b { color: #9fd0ff; }
-    .step p { font-size: 13.5px; color: #a9b8cd; margin-top: 6px; }
+    .step { background: var(--card); border: 2.5px solid var(--ink); border-radius: 14px;
+        padding: 18px; box-shadow: 5px 5px 0 var(--ink); }
+    .step b { color: var(--ink); background: var(--blue); border: 2px solid var(--ink);
+        border-radius: 8px; padding: 2px 8px; box-shadow: 2px 2px 0 var(--ink);
+        display: inline-block; font-size: 13px; }
+    .step p { font-size: 13.5px; color: #45403a; margin-top: 10px; font-weight: 600; }
 
-    .ethics { background: #241c10; border: 1px solid #5a442c; border-radius: 12px;
-        padding: 16px 18px; margin: 10px 0 46px; }
-    .ethics b { color: #ffce6b; }
-    .ethics p { font-size: 14px; color: #d8c9a9; margin-top: 4px; }
+    .ethics { background: var(--pink); border: 2.5px solid var(--ink); border-radius: 14px;
+        padding: 18px 22px; margin: 14px 0 52px; box-shadow: 6px 6px 0 var(--ink); }
+    .ethics b { font-size: 15px; }
+    .ethics p { font-size: 14px; margin-top: 6px; font-weight: 600; }
 
-    footer { border-top: 1px solid #1a2740; color: #6a788d; text-align: center;
-        font-size: 13px; padding: 22px; }
+    footer { border-top: 3px solid var(--ink); color: var(--muted); text-align: center;
+        font-size: 13px; font-weight: 600; padding: 24px 16px 30px; }
 </style>
 </head>
 <body>
@@ -104,16 +127,17 @@
     </div>
 
     <div class="stats">
-        <div class="stat"><b>v0.2.0</b><span>current release</span></div>
+        <div class="stat"><b>v0.3.0</b><span>current release</span></div>
         <div class="stat"><b>7</b><span>study tools</span></div>
         <div class="stat"><b>32</b><span>unit tests passing</span></div>
         <div class="stat"><b>0</b><span>automation &amp; network calls</span></div>
     </div>
 
-    <section class="h2">
+    <section class="pad">
         <h2>Beyond move… er, <em>lap</em> suggestions.</h2>
         <p class="sub">Every number is pure arithmetic on inputs <strong>you</strong> provide —
-           your practice data, your judgement. The tool never guesses game values.</p>
+           your practice data, your judgement. The tool never guesses game values,
+           and the interface lives entirely in the Command Center tab.</p>
         <div class="grid">
             <div class="card"><div class="ico">⛽</div><h3>Fuel Planner</h3>
                 <p>Fuel to add, laps of coverage, reserve policy and over-tank warnings — before you commit.</p>
@@ -131,16 +155,16 @@
                 <p>Rank manufacturers and cars by weighted criteria you pick. Incomplete data is flagged, not hidden.</p>
                 <span class="chip">transparent scoring</span></div>
             <div class="card"><div class="ico">🖥️</div><h3>Dual-Tab Command Center</h3>
-                <p>Game in one tab, strategy desk in another — linked live over a storage mailbox. A.C.A.S-inspired architecture.</p>
+                <p>Game in one tab (silent sensor — no injected UI), strategy desk in another, linked over a local mailbox.</p>
                 <span class="chip">GUI ↔ sensor</span></div>
         </div>
     </section>
 
-    <section class="h2">
+    <section class="pad">
         <h2>How it works</h2>
         <p class="sub">Three steps. No build, no cloud, no accounts.</p>
         <div class="steps">
-            <div class="step"><b>1 · Install</b><p>Install Tampermonkey, then the userscript from this site. Runs only on igpmanager.com and this GUI.</p></div>
+            <div class="step"><b>1 · Install</b><p>Install Tampermonkey, then the userscript. Userscript never draws anything on igpmanager.com — the whole interface lives here.</p></div>
             <div class="step"><b>2 · Connect</b><p>Open the Command Center in one tab and iGP Manager in another — they link over a local storage mailbox.</p></div>
             <div class="step"><b>3 · Study</b><p>Enter your numbers, read the projections and recommendations, save setups per circuit.</p></div>
         </div>
@@ -148,16 +172,17 @@
 
     <div class="ethics">
         <b>⚠ A study tool, not a race aid.</b>
-        <p>I.G.P.A.S performs zero automation, makes zero network requests, and never
-           touches game elements during a race. Use it for analysis, practice and
-           post-race review — and please respect the iGP Manager Terms of Service.</p>
+        <p>I.G.P.A.S performs zero automation, makes zero network requests, renders no
+           interface on race pages, and never touches game elements during a race. Use it
+           for analysis, practice and post-race review — and please respect the
+           iGP Manager Terms of Service.</p>
     </div>
 </main>
 
 <footer>
     GPL-3.0-or-later · by the community, for study ·
-    <a href="https://github.com/Cnagnn/igpas">source</a> ·
-    architecture inspired by open-source userscript assistants<br>
+    <a href="https://github.com/Cnagnn/igpas" style="text-decoration:underline">source</a> ·
+    architecture inspired by open-source userscript assistants<br><br>
     I.G.P.A.S is an independent open-source project — not affiliated with, endorsed by,
     or connected to iGP Games / iGP Manager. "iGP Manager" is a trademark of its owner,
     referred here for identification only.
