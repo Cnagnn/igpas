@@ -18,6 +18,9 @@ function eq(a, b, msg) {
 
 const carsDoc = new JSDOM(fs.readFileSync(path.join(__dirname, 'fixtures/cars.html'), 'utf8')).window.document;
 const accDoc = new JSDOM(fs.readFileSync(path.join(__dirname, 'fixtures/account.html'), 'utf8')).window.document;
+const engSupDoc = new JSDOM(fs.readFileSync(path.join(__dirname, 'fixtures/supply-engine.html'), 'utf8')).window.document;
+const fuelSupDoc = new JSDOM(fs.readFileSync(path.join(__dirname, 'fixtures/supply-fuel.html'), 'utf8')).window.document;
+const tyreSupDoc = new JSDOM(fs.readFileSync(path.join(__dirname, 'fixtures/supply-tyre.html'), 'utf8')).window.document;
 const blankDoc = new JSDOM('<html><body></body></html>').window.document;
 
 t('car-data: gate pageId — halaman lain ditolak', () => {
@@ -58,6 +61,48 @@ t('car-data: best rival dari leagueDesignData', () => {
     eq(r.data.best.braking.max, 300);
 });
 
+t('supply-data: gate — tanpa dialog Supply ditolak', () => {
+    eq(AdapterRegistry.capture('supply-data', blankDoc).ok, false);
+    eq(AdapterRegistry.capture('supply-data', carsDoc).ok, false);
+});
+
+t('supply-data: engine — supplier aktif + bonus + cost/race', () => {
+    const r = AdapterRegistry.capture('supply-data', engSupDoc);
+    eq(r.ok, true);
+    eq(r.data.type, 'engine');
+    eq(r.data.current.supplierId, 2);
+    eq(r.data.current.costPerRace, 500000);
+    eq(r.data.current.bonuses, [{ stat: 'Braking', value: 10 }, { stat: 'Fuel economy', value: -6 }]);
+});
+
+t('supply-data: engine — 5 alternatif (eId + id gambar + cost)', () => {
+    const r = AdapterRegistry.capture('supply-data', engSupDoc);
+    eq(r.data.alternatives.length, 5);
+    eq(r.data.alternatives.map(a => a.eId), [1, 3, 4, 5, 6]);
+    eq(r.data.alternatives.map(a => a.supplierId), [1, 3, 4, 5, 6]);
+    eq(r.data.alternatives[4].costPerRace, 400000);
+    eq(r.data.alternatives[1].bonuses, [{ stat: 'Acceleration', value: 10 }, { stat: 'Fuel economy', value: -6 }]);
+});
+
+t('supply-data: fuel — tipe, id, cost 50k/race, daftar alternatif', () => {
+    const r = AdapterRegistry.capture('supply-data', fuelSupDoc);
+    eq(r.ok, true);
+    eq(r.data.type, 'fuel');
+    eq(r.data.current.supplierId, 8);
+    eq(r.data.current.costPerRace, 50000);
+    eq(r.data.alternatives.map(a => a.eId), [7, 9, 10, 11]);
+    eq(r.data.alternatives[0].costPerRace, 35000);
+});
+
+t('supply-data: tyre — bonus negatif terbaca', () => {
+    const r = AdapterRegistry.capture('supply-data', tyreSupDoc);
+    eq(r.ok, true);
+    eq(r.data.type, 'tyre');
+    eq(r.data.current.supplierId, 13);
+    eq(r.data.current.bonuses.find(b => b.stat === 'Tyre economy').value, -3);
+    eq(r.data.alternatives.find(a => a.eId === 14).bonuses.find(b => b.stat === 'Handling').value, -1);
+});
+
 t('account-data: header akun terbaca penuh', () => {
     const r = AdapterRegistry.capture('account-data', accDoc);
     eq(r.ok, true);
@@ -86,7 +131,7 @@ t('adapter belum ada -> pesan error jujur', () => {
 
 t('status registry jujur (ready vs menunggu-map)', () => {
     eq(AdapterRegistry.status(),
-        'account-data:ready, car-data:ready, manufacturer-data:menunggu-map, race-strategy:menunggu-map');
+        'account-data:ready, car-data:ready, supply-data:ready, manufacturer-data:menunggu-map, race-strategy:menunggu-map');
 });
 
 t('Storage: snapshot simpan/baca/hapus', () => {
@@ -97,6 +142,17 @@ t('Storage: snapshot simpan/baca/hapus', () => {
     Storage.clearSnapshots();
     eq(Storage.getSnapshot('account-data'), null);
     eq(Storage.getSnapshot('car-data'), null);
+});
+
+t('Storage: mergeSnapshot supply per tipe', () => {
+    Storage.clearSnapshots();
+    Storage.mergeSnapshot('supply-data', { engine: { type: 'engine' } });
+    Storage.mergeSnapshot('supply-data', { fuel: { type: 'fuel' } });
+    const s = Storage.getSnapshot('supply-data');
+    eq(Object.keys(s.data).sort(), ['engine', 'fuel']);
+    eq(s.data.engine.type, 'engine');
+    Storage.clearSnapshots();
+    eq(Storage.getSnapshot('supply-data'), null);
 });
 
 console.log(pass + fail + ' test, ' + fail + ' gagal');

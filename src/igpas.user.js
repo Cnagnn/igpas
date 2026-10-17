@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.4.0
-// @description  Race strategy study calculators for iGP Manager (fuel, tyres, pit window, stints). Manual input — study tool only, no live-race assistance, no automation.
-// @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint). Input manual — alat studi, bukan bantuan saat balapan, tanpa otomasi.
+// @version      0.5.0
+// @description  Race strategy study calculators + read-only snapshots for iGP Manager (account, car, supply). Study tool only, no live-race assistance, no automation.
+// @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + snapshot read-only (akun, mobil, supply). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
 // @supportURL   https://github.com/Cnagnn/igpas/issues
@@ -21,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.4.0';
+    const VERSION = '0.5.0';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -330,6 +330,13 @@
             all[kind] = { data, ts: Date.now() };
             gm.set(Keys.snapshots, all);
         },
+        /** Gabungkan patch ke snapshot kind (mis. supply: {engine|fuel|tyre} per capture). */
+        mergeSnapshot(kind, patch) {
+            const cur = Storage.getSnapshot(kind);
+            const data = Object.assign({}, (cur && cur.data) || {}, patch);
+            Storage.saveSnapshot(kind, data);
+            return data;
+        },
         clearSnapshots() {
             gm.del(Keys.snapshots);
         },
@@ -478,6 +485,73 @@
     };
 
     /**
+     * Adapter dialog Supply (engine/fuel/tyre) — read-only, dipetakan dari capture
+     * live DOM (fixture test/fixtures/supply-*.html). Dialog dibuka OLEH USER di
+     * halaman Cars (klik tile Engines/Fuel/Tyres); adapter tidak pernah membuka
+     * dialog, tidak mengklik, tidak submit — hanya membaca DOM yang tampak.
+     * Gate: `.supplyDialog` harus ada (dialog terbuka) + judul h2 menentukan tipe.
+     */
+    const IgpSupplyAdapter = {
+        id: 'supply-data',
+        desc: 'supplier engine/fuel/tyre (dialog Supply di halaman Cars)',
+        captures(doc) {
+            const root = doc.querySelector('.supplyDialog');
+            if (!root) return null; // gate: hanya saat dialog Supply terbuka
+            const h2 = root.querySelector('.dialog-subhead-content h2');
+            const tm = (h2 ? h2.textContent : '').match(/^\s*(engine|fuel|tyre)s?\s+supply\s*$/i);
+            if (!tm) return null;
+            const type = tm[1].toLowerCase();
+
+            const money = t => {
+                const m = String(t || '').match(/(\d+(?:\.\d+)?)\s*([kmb]?)/i);
+                if (!m) return null;
+                const suf = m[2].toLowerCase();
+                return Math.round(parseFloat(m[1]) * (suf === 'k' ? 1e3 : suf === 'm' ? 1e6 : suf === 'b' ? 1e9 : 1));
+            };
+            const sid = el => {
+                const m = el ? (el.getAttribute('src') || '').match(/\/supply\/(?:light\/)?(\d+)\.png/) : null;
+                return m ? parseInt(m[1], 10) : null;
+            };
+            const bonusesIn = scope => {
+                const out = [];
+                for (const s of scope.querySelectorAll('.tooltip[data-tip]')) {
+                    const v = (s.textContent || '').match(/[+-]?\d+/);
+                    if (v) out.push({ stat: s.getAttribute('data-tip'), value: parseInt(v[0], 10) });
+                }
+                return out;
+            };
+
+            const sub = root.querySelector('.dialog-subhead');
+            const costMatch = sub ? (sub.textContent || '').match(/Cost:\s*([\d.]+\s*[kmb]?)/i) : null;
+
+            const alternatives = [];
+            for (const btn of root.querySelectorAll('a[data-tip*="supplyType="]')) {
+                const tip = btn.getAttribute('data-tip') || '';
+                const eId = (tip.match(/eId=(\d+)/) || [])[1];
+                const supType = (tip.match(/supplyType=([a-z]+)/i) || [])[1];
+                if (!eId || (supType && supType.toLowerCase() !== type)) continue;
+                const card = btn.closest('.inline-block') || btn.parentElement;
+                alternatives.push({
+                    eId: parseInt(eId, 10),
+                    supplierId: sid(card ? card.querySelector('img[src*="/supply/"]') : null),
+                    costPerRace: money(btn.textContent),
+                    bonuses: card ? bonusesIn(card) : [],
+                });
+            }
+
+            return {
+                type,
+                current: {
+                    supplierId: sid(sub ? sub.querySelector('img[src*="/supply/"]') : null),
+                    costPerRace: costMatch ? money(costMatch[1]) : null,
+                    bonuses: sub ? bonusesIn(sub) : [],
+                },
+                alternatives,
+            };
+        },
+    };
+
+    /**
      * Registry adapter data. Status dipublikasikan apa adanya: ':ready' = adapter
      * read-only terpasang; ':menunggu-map' = pemetaan DOM halaman belum dilakukan.
      */
@@ -485,7 +559,8 @@
         defs: [
             { id: 'account-data', adapter: IgpAccountAdapter },
             { id: 'car-data', adapter: IgpCarsAdapter },
-            { id: 'manufacturer-data', desc: 'pemilihan manufaktur (menunggu capture halaman Supply)' },
+            { id: 'supply-data', adapter: IgpSupplyAdapter },
+            { id: 'manufacturer-data', desc: 'halaman Manufacturers/Chassis (menunggu capture)' },
             { id: 'race-strategy', desc: 'strategi balapan (input manual, selalu)' },
         ],
         capture(kind, doc) {
@@ -809,6 +884,33 @@
                 esc(v === null || v === undefined || v === '' ? '—' : String(v)) + '</span></div>';
         }
 
+        const fmtMoney = n => (n === null || n === undefined) ? '–' :
+            n >= 1e6 ? (Math.round(n / 1e5) / 10) + 'M' :
+            n >= 1e3 ? (Math.round(n / 100) / 10) + 'k' : String(n);
+
+        const bonusStr = bs => (bs || [])
+            .map(b => b.stat + ' ' + (b.value > 0 ? '+' : '') + b.value).join(' · ') || '—';
+
+        function supplyHtml(s) {
+            if (!s) return '<span class="hint">belum ada — buka dialog Supply (klik tile Engines/Fuel/Tyres di halaman Cars), lalu klik “Capture supply”.</span>';
+            const names = { engine: 'Engine', fuel: 'Fuel', tyre: 'Tyres' };
+            let html = '';
+            for (const tp of ['engine', 'fuel', 'tyre']) {
+                const d = s.data ? s.data[tp] : null;
+                if (!d) { html += '<div class="hint">' + esc(names[tp]) + ': belum tercapture</div>'; continue; }
+                const rows = (d.alternatives || []).map(al =>
+                    '<tr><td>#' + esc(al.supplierId) + '</td><td>' + esc(bonusStr(al.bonuses)) +
+                    '</td><td class="num">' + fmtMoney(al.costPerRace) + '</td></tr>').join('');
+                html += '<div class="row"><span>' + esc(names[tp]) + ' — aktif: #' +
+                    esc(d.current ? d.current.supplierId : '?') + '</span><span>' +
+                    fmtMoney(d.current ? d.current.costPerRace : null) + '/race</span></div>' +
+                    '<div class="hint">Bonus: ' + esc(bonusStr(d.current && d.current.bonuses)) + '</div>' +
+                    '<table><tr><th>Alt</th><th>Bonus</th><th>Cost/race</th></tr>' + rows + '</table>';
+            }
+            html += '<div class="hint">tangkap ' + esc(new Date(s.ts).toLocaleTimeString()) + '</div>';
+            return html;
+        }
+
         function renderSnapshots() {
             const badge = $('igpas-snap-badge');
             const acc = $('igpas-snap-account-body');
@@ -816,8 +918,11 @@
             if (!acc || !car) return;
             const a = Storage.getSnapshot('account-data');
             const c = Storage.getSnapshot('car-data');
+            const s = Storage.getSnapshot('supply-data');
+            const sCount = s ? ['engine', 'fuel', 'tyre'].filter(tp => s.data && s.data[tp]).length : 0;
             if (badge) badge.textContent =
-                (a ? 'akun ✓' : 'akun –') + ' · ' + (c ? 'mobil ✓' : 'mobil –');
+                (a ? 'akun ✓' : 'akun –') + ' · ' + (c ? 'mobil ✓' : 'mobil –') +
+                ' · supply ' + sCount + '/3';
 
             if (a) {
                 acc.innerHTML =
@@ -851,6 +956,9 @@
             } else {
                 car.innerHTML = '<span class="hint">belum ada — buka halaman <em>Cars</em> di tab iGP, lalu klik Capture</span>';
             }
+
+            const sup = $('igpas-snap-supply-body');
+            if (sup) sup.innerHTML = supplyHtml(s);
         }
 
         function mount() {
@@ -872,12 +980,18 @@
             const le = $('ig-lab-example'); if (le) le.addEventListener('click', labExample);
             const lr = $('ig-lab-rank');   if (lr) lr.addEventListener('click', labRank);
 
-            // Snapshot akun & mobil (Fase 3 — baca-saja, read-once per klik)
+            // Snapshot akun/mobil/supply (Fase 3 — baca-saja, read-once per klik)
             const cap = $('igpas-snap-capture');
             if (cap) cap.addEventListener('click', () => {
                 const st = $('igpas-snap-status');
                 if (st) st.textContent = 'permintaan dikirim ke tab iGP… (baca-saja, sekali per klik)';
                 Mailbox.send('collect-request', { kinds: ['account-data', 'car-data'] });
+            });
+            const capSup = $('igpas-snap-capture-supply');
+            if (capSup) capSup.addEventListener('click', () => {
+                const st = $('igpas-snap-status');
+                if (st) st.textContent = 'permintaan supply dikirim… (dialog Supply harus terbuka di tab iGP)';
+                Mailbox.send('collect-request', { kinds: ['supply-data'] });
             });
             const clr = $('igpas-snap-clear');
             if (clr) clr.addEventListener('click', () => {
@@ -891,10 +1005,15 @@
                 const pay = (p && p.payload) || {};
                 const st = $('igpas-snap-status');
                 if (pay.ok && pay.data) {
-                    Storage.saveSnapshot(pay.kind, pay.data);
+                    if (pay.kind === 'supply-data') {
+                        Storage.mergeSnapshot('supply-data', { [pay.data.type]: pay.data });
+                    } else {
+                        Storage.saveSnapshot(pay.kind, pay.data);
+                    }
                     if (st) st.textContent = pay.kind + ' tersimpan (' + new Date().toLocaleTimeString() + ').';
                 } else if (st) {
-                    st.textContent = '✗ ' + pay.kind + ': ' + (pay.error || 'tidak ada data');
+                    const extra = pay.kind === 'supply-data' ? ' — buka dialog Supply dulu di tab iGP' : '';
+                    st.textContent = '✗ ' + pay.kind + ': ' + (pay.error || 'tidak ada data') + extra;
                 }
                 renderSnapshots();
             });

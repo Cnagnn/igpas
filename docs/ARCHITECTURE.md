@@ -52,6 +52,8 @@ pembacaan langsung artefak.
 │          strategy + data lab                        │
 │ v0.3.0: tab igpmanager = sensor senyap              │
 │ v0.4.0: adapter read-only + snapshot mailbox        │
+│ v0.5.0: + supply-data (dialog Supply engine/fuel/   │
+│          tyre — merge per tipe)                     │
 ├─────────────────────────────────────────────────────┤
 │ AdapterRegistry (mobil/manufaktur/strategi — status │
 │          jujur 'selectors-tbd', tanpa selector      │
@@ -82,8 +84,9 @@ Ini meniadakan risiko "invented data" dan membuat inti bisa di-unit-test.
 | v0.2 | Dual-tab GUI (mailbox bridge) + engine rekomendasi (strategyRecommendation, rankOptions) + data lab + AdapterRegistry 'selectors-tbd' | ✅ |
 | v0.3.0 | Panel floating dihapus — tab iGP sensor senyap; kalkulator+profil pindah ke Command Center; landing & GUI neobrutalism semi-rounded | ✅ |
 | v0.4.0 | Fase 3 (relaunch): adapter **account-data** (header global) & **car-data** (halaman Cars) read-only, read-once per klik Capture dari GUI; snapshot tersimpan lokal; fixture DOM nyata + jsdom | ✅ |
-| — | manufacturer-data: menunggu capture halaman Supply/Chassis; race-strategy: sengaja manual selamanya | ⏳ |
-| v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0 — account + cars) |
+| v0.5.0 | Adapter **supply-data** (dialog Supply: engine/fuel/tyre) — supplier aktif + alternatif (bonus stat, cost/race, eId); merge per tipe di snapshot; fixture DOM nyata + test jsdom | ✅ |
+| — | manufacturer-data (halaman Manufacturers/Chassis): menunggu capture; race-strategy: sengaja manual selamanya | ⏳ |
+| v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0–v0.5.0 — account + cars + supply) |
 | v0.4 | Kalibrasi lap-time dari catatan user (tabel input sendiri, bukan scrape) | 🔜 |
 
 ## 4b. Fase 3 (v0.4.0) — Adapter DOM read-only (TERLAKSANA)
@@ -96,6 +99,7 @@ Pemetaan selektor berasal dari **live DOM halaman iGP asli** (capture `document
 |---|---|---|
 | `account-data` | header global (semua halaman login) | `#myProfileName`, `#managerRankValue`, `#managerRankIcon[src*=rank]`, `#balanceText`, `#tokens-total`, `.myProfileStatsStack .teal` |
 | `car-data` | halaman Cars (`#pageId=cars`) | `#carAttributes[data-dmax]`, `#carAttributesDisplay .attribute-row` (`#wrap-{key}`, `.ratingVal`), `#carsDesignPoints[data-dp]`, `#carAttributesBonuses .tooltip[data-tip]`, `#leagueDesignData` (JSON best rival), `.carsSuppliers .c-wrap img[src*=/supply/]` |
+| `supply-data` | dialog Supply di halaman Cars (dibuka user sendiri) | `.supplyDialog` (gate: dialog terbuka), `.dialog-subhead-content h2` (tipe engine/fuel/tyre), `.dialog-subhead img[src*=/supply/]` (supplier aktif), `.tooltip[data-tip]` (bonus stat), `a[data-tip*=supplyType]` → `eId`, kartu `.inline-block` (id gambar, cost/race) |
 
 Aturan main adapter (bake-in, bukan kebijakan terpisah):
 
@@ -106,10 +110,14 @@ Aturan main adapter (bake-in, bukan kebijakan terpisah):
    baca ke halaman balapan/strategi.
 4. **Kegagalan jujur** — halaman tak cocok → `collect-result {ok:false,error}`,
    ditampilkan di Command Center, bukan angka salah.
+5. **dialog gate (supply)** — adapter supply hanya aktif bila dialog Supply
+   sedang terbuka (dibuka user sendiri); adapter tidak pernah membuka dialog,
+   mengklik tile, atau menyentuh elemen game.
 
-Menunggu capture: halaman **Supply/Chassis** (pemilihan manufaktur) →
-adapter `manufacturer-data`. Selektor di atas dapat berubah bila iGP
-meredesign — jika capture gagal, pesan error muncul jelas di GUI.
+Menunggu capture: halaman **Manufacturers/Chassis** (pilihan chassis supplier,
+route `p=manufacturers&tab=chassis`) → adapter `manufacturer-data`. Selektor di
+atas dapat berubah bila iGP meredesign — jika capture gagal, pesan error muncul
+jelas di GUI. Fixture supply: `supply-engine/fuel/tyre.html` (17 test jsdom total).
 
 ## 5. Etika & batasan
 

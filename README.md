@@ -24,13 +24,17 @@ Profil setup per sirkuit tersimpan lokal (GM storage) dan dirender langsung
 di **Command Center** (v0.3.0: userscript tidak lagi menampilkan panel apapun
 di igpmanager.com — tab permainan = sensor senyap).
 
-**Autoload akun & mobil (v0.4.0)** — di Command Center, seksi
+**Autoload akun, mobil & supply (v0.4.0 → v0.5.0)** — di Command Center, seksi
 **Account & Car Snapshot**: klik *Capture now* → tab iGP yang terbaca membaca
 halamannya **baca-saja, sekali per klik** (header akun = semua halaman; atribut
 mobil = halaman *Cars* saja) dan mengirim snapshot: nama/level/rank/saldo/token,
 8 atribut mobil, design points, bonus supplier, id supplier engine/fuel/tyre.
-Snapshot tersimpan lokal (GM storage). Tanpa polling, tanpa aksi apa pun pada
-elemen game, dan halaman balapan tidak pernah dibaca.
+**Capture supply (v0.5.0)**: buka dialog Supply di halaman *Cars* (klik tile
+Engines/Fuel/Tyres — Anda yang membukanya) lalu klik *Capture supply* → snapshot
+supplier aktif + semua alternatif (bonus stat & biaya per balapan, id gambar +
+eId) untuk engine, fuel, dan tyres — tersimpan per tipe (merge). Snapshot
+tersimpan lokal (GM storage). Tanpa polling, tanpa aksi apa pun pada elemen
+game, dan halaman balapan tidak pernah dibaca.
 
 ## Dual-Tab Command Center (v0.2)
 
@@ -54,10 +58,10 @@ Fallback dev lokal (opsional):
 python3 -m http.server 8787 -d docs   # lalu buka http://localhost:8787/ (landing) atau /app/
 ```
 
-> Data akun & mobil (v0.4.0) kini bisa di-**autoload** dari halaman iGP
-> (read-only, sekali per klik Capture — lihat seksi di atas). Data
-> manufaktur (halaman Supply/Chassis) masih menunggu mapping; Data Lab
-> tetap menerima input manual/JSON. Tidak ada selector fiktif.
+> Data akun, mobil (v0.4.0) dan supply engine/fuel/tyre (v0.5.0) bisa
+> di-**autoload** dari halaman iGP (read-only, sekali per klik Capture).
+> Halaman Manufacturers/Chassis masih menunggu mapping; Data Lab tetap
+> menerima input manual/JSON. Tidak ada selector fiktif.
 
 Semua angka berasal dari **input Anda sendiri** — tidak ada asumsi data game.
 
@@ -73,7 +77,7 @@ Semua angka berasal dari **input Anda sendiri** — tidak ada asumsi data game.
 ```
 src/igpas.user.js        userscript (tanpa build step)
 test/core.test.js        unit test inti (Node)
-test/snapshots.test.js   adapter akun+mobil vs fixture DOM nyata (jsdom)
+test/snapshots.test.js   adapter akun+mobil+supply vs fixture DOM nyata (jsdom)
 test/fixtures/*.html     DOM halaman iGP yang disanitasi (tanpa data pribadi)
 docs/ARCHITECTURE.md     blueprint + peta pola A.C.A.S → I.G.P.A.S
 ```

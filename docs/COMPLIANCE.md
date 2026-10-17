@@ -34,6 +34,10 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
       Command Center (sekali per klik, tanpa polling latar di halaman game).
     - **pageId gate**: adapter mobil hanya aktif di halaman Cars - tak ada jalur baca
       ke halaman balapan/strategi.
+    - **v0.5.0 - dialog Supply**: hanya membaca dialog Supply yang **sudah dibuka user
+      sendiri** (engine/fuel/tyre: supplier aktif + alternatif — bonus stat & biaya per
+      balapan). Adapter tidak pernah membuka dialog atau mengklik tile game; gate
+      `.supplyDialog` yang sudah ada di DOM user-driven oleh user.
     - Tanpa distribusi ulang data orang lain; snapshot hanya di storage browser user.
     - Bukan: background polling halaman game, capture saat race live, server-side
       scraping.
@@ -46,10 +50,12 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
   `@require` **0**; `unsafeWindow` **0** (`node test`, `node --check`, audit 2026-10-17).
 - Mailbox polling hanya membaca **GM storage kita sendiri** (`igpas:mb:*`) di browser
   user — bukan trafik/menuju server iGP.
-- Adapter v0.4.0: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
+- Adapter v0.4.0–v0.5.0: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
   tanpa `fetch`, tanpa XHR, tanpa akses `unsafeWindow`. Fixture pengujian dari DOM
-  halaman nyata yang disanitasi (`test/fixtures/*.html`, 11 test jsdom).
-- Version: landing/etika disclaimer ditambahkan commit terkait; userscript tak berubah.
+  halaman nyata yang disanitasi (`test/fixtures/*.html`, 17 test jsdom: akun, mobil,
+  supply engine/fuel/tyre).
+- Version: userscript kini 0.5.0 (adapter supply-data); landing/etika disclaimer
+  diperbarui pada commit terkait.
 
 ## Rekomendasi yang belum dilakukan (kembali ke user)
 

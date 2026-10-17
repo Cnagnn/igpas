@@ -51,6 +51,7 @@
     #igpas-strategy button { background: var(--blue); }
     #igpas-lab button { background: var(--green); }
     #igpas-connection button { background: var(--pink); }
+    #igpas-snap button#igpas-snap-capture-supply { background: var(--green); }
     button#ig-lab-example, button#ig-str-demo { background: var(--card); }
 
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
@@ -134,9 +135,12 @@
         <p class="hint">Autoload read-only: klik <strong>Capture</strong> → tab iGP yang terbuka
            membaca halamannya <strong>sekali per klik</strong> (tidak ada polling, tidak menyentuh
            elemen game) dan mengirim snapshot ke sini. Untuk snapshot mobil, buka halaman
-           <em>Cars</em> di tab iGP dulu. Snapshot tersimpan lokal di browser Anda.</p>
+           <em>Cars</em> di tab iGP dulu. Untuk snapshot <strong>supply</strong> (engine/fuel/tyres):
+           buka dialog Supply di halaman Cars (klik tile Engines/Fuel/Tyres) lalu klik
+           <em>Capture supply</em>. Snapshot tersimpan lokal di browser Anda.</p>
         <div class="igpas-snap-actions">
             <button id="igpas-snap-capture">📥 Capture now (request ke tab iGP)</button>
+            <button id="igpas-snap-capture-supply">🏭 Capture supply (dialog Supply terbuka)</button>
             <button id="igpas-snap-clear">🗑️ Hapus snapshot</button>
             <span class="hint" id="igpas-snap-status" style="margin:0"></span>
         </div>
@@ -149,6 +153,10 @@
                 <h3>🏎️ Car</h3>
                 <div id="igpas-snap-car-body"><span class="hint">belum ada</span></div>
             </div>
+        </div>
+        <div class="snapcard" style="margin-top:16px">
+            <h3>🏭 Supply — Engine · Fuel · Tyres</h3>
+            <div id="igpas-snap-supply-body"><span class="hint">belum ada</span></div>
         </div>
     </section>
 
@@ -175,9 +183,8 @@
     <section id="igpas-lab">
         <h2>🚗 Data Lab — Mobil & Manufaktur</h2>
         <p class="hint">Sumber data: input manual (JSON) <em>atau</em> hasil autoload —
-           adapter <strong>mobil</strong> (halaman Cars) <strong>sudah dipetakan</strong>
-           (v0.4.0, lihat snapshot di atas); halaman <strong>manufaktur/Supply</strong>
-           masih menunggu capture berikutnya.</p>
+           adapter <strong>mobil</strong> (halaman Cars) dan <strong>supply</strong>
+           (dialog Engine/Fuel/Tyres) <strong>sudah dipetakan</strong> (v0.5.0, lihat snapshot di atas).</p>
         <div class="grid2">
             <div>
                 <textarea id="ig-lab-json" placeholder='{"type":"manufacturer","items":[
