@@ -31,6 +31,9 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
    (read-once, tanpa polling). Rekomendasi berlabel *estimasi — bukan rumus game*.
    Tetap menyisakan risiko *letter* § V.J (tak terhindarkan bagi *semua* userscript).
    Keputusan gunakan/tidak = milik user; kepatuhan mutlak tetap bisa via mode 1.
+   Catatan v0.7.1: menu **capture DOM** hanya entri menu userscript (bukan UI
+   halaman), 100% dipicu user, hasil disalin ke clipboard dengan redaksi PII
+   (nama/saldo/token/rank) — tanpa jaringan, tanpa pengiriman otomatis.
 3. **Selama balapan live** — DILARANG secara kebijakan proyek ini (di luar ToS eksplisit
    juga: § V.H unfair advantage). Jangan pernah aktifkan di race view saat sesi berjalan.
    Catatan v0.7.0: gate `#pageId` membuat advisor in-page tidak merender apa pun di

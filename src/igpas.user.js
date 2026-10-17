@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.7.0
+// @version      0.7.1
 // @description  Race strategy study calculators + read-only snapshot autoload for iGP Manager (account, car, supply, manufacturers). Study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + autoload snapshot read-only (akun, mobil, supply, manufacturers). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
@@ -21,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.7.0';
+    const VERSION = '0.7.1';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -1650,6 +1650,46 @@
     })();
 
     /* =====================================================================
+     * 3c) PAGE CAPTURE (v0.7.1) — satu-klik salin DOM utk pemetaan fixture.
+     *  - Tanpa UI di halaman: hanya entri menu Tampermonkey/Violentmonkey
+     *    (GM_registerMenuCommand). Tidak menambah elemen apa pun ke situs,
+     *    termasuk di halaman balapan.
+     *  - 100% dipicu user; hasil = salinan read-only DOM dengan redaksi PII
+     *    tetap (nama, saldo, token, rank), lewat GM_setClipboard. Tidak ada
+     *    jaringan, tidak ada mailbox, tidak ada penyimpanan otomatis.
+     *  - Tujuan: user bisa kirim capture halaman belum terpetakan (mis.
+     *    Develop/Design) agar advisor DP bisa dipasang di tempat yang tepat.
+     * ===================================================================== */
+    const PageCapture = (() => {
+        const REDACT_SELECTORS = ['#myProfileName', '#balanceText', '#tokens-total', '#managerRankValue'];
+        function buildCapture(doc) {
+            if (!doc || !doc.documentElement) return null;
+            const clone = doc.documentElement.cloneNode(true);
+            for (const sel of REDACT_SELECTORS) {
+                const el = clone.querySelector(sel); // id selalu unik — satu penulisan cukup
+                if (el) el.textContent = '[REDACTED]';
+            }
+            return '<!doctype html>\n<html>' + clone.innerHTML + '</html>';
+        }
+        function install() {
+            if (typeof document === 'undefined') return;
+            if (typeof GM_registerMenuCommand !== 'function' || typeof GM_setClipboard !== 'function') return;
+            GM_registerMenuCommand('I.G.P.A.S: salin capture DOM halaman ini (fixture mapping)', () => {
+                const html = buildCapture(document);
+                if (!html) return;
+                GM_setClipboard(html, 'text/html');
+                if (typeof GM_notification === 'function') {
+                    GM_notification({
+                        title: 'I.G.P.A.S capture',
+                        text: 'DOM halaman (PII teredaksi) disalin ke clipboard. Tempel & kirim untuk pemetaan fixture.',
+                    });
+                }
+            });
+        }
+        return { buildCapture: buildCapture, install: install };
+    })();
+
+    /* =====================================================================
      * 4) BOOT — pasang UI read-only. Elemen game tidak pernah diubah.
      * ===================================================================== */
 
@@ -1662,6 +1702,8 @@
             // pernah di halaman balapan; elemen game tidak disentuh).
             if (ROLE === 'sensor' && typeof Advisor !== 'undefined') Advisor.start();
             if (ROLE === 'gui' && typeof GuiMaster !== 'undefined') GuiMaster.mount();
+            // v0.7.1: menu Tampermonkey utk salin capture DOM (redaksi PII) — tanpa UI halaman.
+            if (typeof PageCapture !== 'undefined') PageCapture.install();
         };
 
         if (document.readyState === 'loading') {
@@ -1708,6 +1750,6 @@
 
     // Ekspor untuk pengujian Node — tanpa efek di browser (module tak terdefinisi).
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { IGPCore, AdapterRegistry, Storage, Mailbox, Advisor };
+        module.exports = { IGPCore, AdapterRegistry, Storage, Mailbox, Advisor, PageCapture };
     }
 })();

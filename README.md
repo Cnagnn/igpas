@@ -102,6 +102,14 @@ atas angka yang memang tampil, bukan kepastian performa. Ada tombol
 tanpa klik, tanpa submit, tanpa jaringan, tanpa request mailbox, dan elemen
 game tidak pernah diubah.
 
+**Menu capture fixture (v0.7.1):** lewat menu userscript
+("I.G.P.A.S: salin capture DOM halaman ini") Anda bisa menyalin DOM halaman
+yang sedang dibuka — **dengan PII otomatis teredaksi** (nama manager, saldo,
+token, rank) — untuk dikirim agar halaman yang belum terpetakan (mis.
+Develop/Design) bisa didukung advisor. Tidak ada UI yang ditambahkan ke
+halaman oleh fitur ini dan tidak ada pengiriman otomatis; Anda yang
+memilih menempelkan hasilnya.
+
 ## Instal (dev)
 
 1. Pasang Tampermonkey/Violentmonkey.

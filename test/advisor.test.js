@@ -20,6 +20,9 @@ function bootOn(html, url) {
     win.GM_setValue = (k, v) => { store.set(k, v); };
     win.GM_deleteValue = k => { store.delete(k); };
     win.GM_listValues = () => [...store.keys()];
+    win.GM_setClipboard = () => {};            // stub; test override utk capture
+    win.GM_registerMenuCommand = (label, fn) => { win.__igpasMenuHandler = fn; };
+    win.GM_notification = () => {};
     win.eval(fs.readFileSync(path.join(__dirname, '../src/igpas.user.js'), 'utf8'));
     win.document.dispatchEvent(new win.Event('DOMContentLoaded')); // idempoten di sisi userscript
     return { win, doc: win.document, store, close: () => win.close() };
@@ -59,6 +62,22 @@ t('Supply advisor: panel di dalam dialog Supply terbuka (engine) + tanda terbaik
     assert(/aktif:\s*supplier\s*#/i.test(txt), 'supplier aktif tidak disebut');
     assert(/estimasi/i.test(txt), 'label estimasi tidak tampil');
     assert(/terbaik nilai|termurah/.test(txt), 'tanda terbaik/termurah tidak tampil');
+    s.close();
+});
+
+t('Supply advisor: dialog Fuel — panel tampil dengan tipe fuel', () => {
+    const s = bootOn(load('supply-fuel.html'), URL_IGP);
+    const panel = s.doc.getElementById('igpas-adv-supply');
+    assert(panel && panel.closest('.supplyDialog'), 'panel supply fuel tidak ada di dialog');
+    assert(/supply\s*·\s*fuel/i.test(panel.textContent), 'tipe fuel tidak tercantum di panel');
+    s.close();
+});
+
+t('Supply advisor: dialog Tyre — panel tampil dengan tipe tyre', () => {
+    const s = bootOn(load('supply-tyre.html'), URL_IGP);
+    const panel = s.doc.getElementById('igpas-adv-supply');
+    assert(panel && panel.closest('.supplyDialog'), 'panel supply tyre tidak ada di dialog');
+    assert(/supply\s*·\s*tyre/i.test(panel.textContent), 'tipe tyre tidak tercantum di panel');
     s.close();
 });
 
@@ -105,6 +124,36 @@ t('Toggle advisor: sembunyikan/sembunyikan panel, aria-pressed sinkron, preferen
     assert((s.store.get('igpas:advisor') || {}).hidden === true, 'preferensi tidak tersimpan');
     btn.click();
     assert(!s.doc.body.classList.contains('igpas-adv-hide'), 'panel tidak tampil kembali');
+    s.close();
+});
+
+t('PageCapture: menu Tampermonkey menyalin DOM dengan PII teredaksi (tanpa UI halaman)', () => {
+    const s = bootOn(
+        '<!doctype html><html><body>' +
+        '<input id="pageId" value="develop">' +
+        '<span id="myProfileName">Rahasia Manager</span>' +
+        '<span id="balanceText">$12.345.678</span>' +
+        '<span id="tokens-total">42</span>' +
+        '<span id="managerRankValue">1234</span>' +
+        '<div id="design-target">Design page harness</div>' +
+        '</body></html>',
+        'https://www.igpmanager.com/app/p=develop');
+    const captured = [];
+    // simulasi menu capture user-driven (tidak ada UI yang di-inject ke halaman)
+    s.win.GM_setClipboard = (data, type) => captured.push({ data: data, type: type });
+    const handler = s.win.__igpasMenuHandler;
+    assert(typeof handler === 'function', 'menu capture tidak terdaftar');
+    assert(!s.doc.getElementById('igpas-adv-toggle') && !s.doc.getElementById('igpas-adv-design'),
+        'halaman develop belum terpetakan tapi ada UI advisor (harusnya tidak)');
+    handler();
+    assert(captured.length === 1, 'clipboard tidak terisi');
+    assert(captured[0].type === 'text/html', 'tipe clipboard bukan text/html');
+    const html = captured[0].data;
+    assert(html.indexOf('Rahasia Manager') === -1 && html.indexOf('[REDACTED]') >= 0, 'nama manager tidak teredaksi');
+    assert(html.indexOf('$12.345.678') === -1, 'saldo tidak teredaksi');
+    assert(html.indexOf('>42<') === -1, 'token tidak teredaksi');
+    assert(html.indexOf('1234') === -1, 'angka rank tidak teredaksi');
+    assert(html.indexOf('design-target') >= 0, 'isi DOM halaman tidak ikut tersalin');
     s.close();
 });
 
