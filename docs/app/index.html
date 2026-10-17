@@ -52,6 +52,7 @@
     #igpas-lab button { background: var(--green); }
     #igpas-connection button { background: var(--pink); }
     #igpas-snap button#igpas-snap-capture-supply { background: var(--green); }
+    #igpas-snap button#igpas-snap-capture-manufacturers { background: var(--blue); }
     button#ig-lab-example, button#ig-str-demo { background: var(--card); }
 
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
@@ -139,11 +140,14 @@
            halaman game). Klik <strong>Capture</strong> untuk menyegarkan lagi kapan pun;
            snapshot mobil butuh tab iGP di halaman <em>Cars</em>. Untuk
            <strong>supply</strong> (engine/fuel/tyres): buka dialog Supply di halaman Cars
-           (klik tile Engines/Fuel/Tyres) lalu klik <em>Capture supply</em>. Snapshot
-           tersimpan lokal di browser Anda.</p>
+           (klik tile Engines/Fuel/Tyres) lalu klik <em>Capture supply</em>. Untuk
+           <strong>manufacturers</strong> (engine + chassis): buka halaman
+           <em>Manufacturers</em> di tab iGP (tab mana pun) lalu klik
+           <em>Capture manufacturers</em>. Snapshot tersimpan lokal di browser Anda.</p>
         <div class="igpas-snap-actions">
             <button id="igpas-snap-capture">📥 Capture now (request ke tab iGP)</button>
             <button id="igpas-snap-capture-supply">🏭 Capture supply (dialog Supply terbuka)</button>
+            <button id="igpas-snap-capture-manufacturers">🔧 Capture manufacturers (halaman Manufacturers)</button>
             <button id="igpas-snap-clear">🗑️ Hapus snapshot</button>
             <span class="hint" id="igpas-snap-status" style="margin:0"></span>
         </div>
@@ -160,6 +164,10 @@
         <div class="snapcard" style="margin-top:16px">
             <h3>🏭 Supply — Engine · Fuel · Tyres</h3>
             <div id="igpas-snap-supply-body"><span class="hint">belum ada</span></div>
+        </div>
+        <div class="snapcard" style="margin-top:16px">
+            <h3>🔧 Manufacturers — Engines &amp; Chassis</h3>
+            <div id="igpas-snap-manufacturer-body"><span class="hint">belum ada</span></div>
         </div>
     </section>
 
@@ -186,8 +194,10 @@
     <section id="igpas-lab">
         <h2>🚗 Data Lab — Mobil & Manufaktur</h2>
         <p class="hint">Sumber data: input manual (JSON) <em>atau</em> hasil autoload —
-           adapter <strong>mobil</strong> (halaman Cars) dan <strong>supply</strong>
-           (dialog Engine/Fuel/Tyres) <strong>sudah dipetakan</strong> (v0.5.0, lihat snapshot di atas).</p>
+           adapter <strong>mobil</strong> (halaman Cars), <strong>supply</strong>
+           (dialog Engine/Fuel/Tyres), dan <strong>manufacturers</strong>
+           (halaman Manufacturers engine/chassis) <strong>sudah dipetakan</strong>
+           (v0.6.0, lihat snapshot di atas).</p>
         <div class="grid2">
             <div>
                 <textarea id="ig-lab-json" placeholder='{"type":"manufacturer","items":[

@@ -56,11 +56,14 @@ pembacaan langsung artefak.
 │ v0.5.0: + supply-data (dialog Supply engine/fuel/   │
 │          tyre — merge per tipe)                     │
 │ v0.5.1: autoload saat /app/ dibuka + deteksi       │
-│          sensor (fix race mailbox)                  │
+│          sensor (fix race mailbox)                 │
+│ v0.6.0: + manufacturer-data (halaman               │
+│          Manufacturers engine+chassis)              │
 ├─────────────────────────────────────────────────────┤
-│ AdapterRegistry (mobil/manufaktur/strategi — status │
-│          jujur 'selectors-tbd', tanpa selector      │
-│          fiktif) | Boot (mount sesuai peran ROLE)   │
+│ AdapterRegistry (account/car/supply/manufacturers   │
+│          ':ready'; race-strategy ':menunggu-map' —  │
+│          sengaja manual, tanpa selector fiktif)     │
+│          | Boot (mount sesuai peran ROLE)           │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -71,8 +74,8 @@ pembacaan langsung artefak.
 | heartbeat (key `igpas:gui:heartbeat`) | gui → semua | timestamp (praktik: 1 key overwriten per 2s) |
 | `report-request` | gui → * | {} (broadcast) |
 | `report` | sensor → gui | {label, url, adapters, profiles} |
-| `collect-request` | gui → * | {kinds:[account-data, car-data, supply-data], reqId} (v0.4.0–v0.5.1) |
-| `collect-result` | sensor → gui | {reqId, kind, ok, data, error, pageUrl} (v0.4.0–v0.5.1) |
+| `collect-request` | gui → * | {kinds:[account-data, car-data, supply-data, manufacturer-data], reqId} (v0.4.0–v0.6.0) |
+| `collect-result` | sensor → gui | {reqId, kind, ok, data, error, pageUrl} (v0.4.0–v0.6.0) |
 
 Prinsip (menurun dari pola A.C.A.S): read-once delete **hanya setelah
 dikonsumsi penerima** (pengirim tidak menghapus pesannya sendiri — fix race
@@ -93,11 +96,12 @@ Ini meniadakan risiko "invented data" dan membuat inti bisa di-unit-test.
 | v0.4.0 | Fase 3 (relaunch): adapter **account-data** (header global) & **car-data** (halaman Cars) read-only, read-once per klik Capture dari GUI; snapshot tersimpan lokal; fixture DOM nyata + jsdom | ✅ |
 | v0.5.0 | Adapter **supply-data** (dialog Supply: engine/fuel/tyre) — supplier aktif + alternatif (bonus stat, cost/race, eId); merge per tipe di snapshot; fixture DOM nyata + test jsdom | ✅ |
 | v0.5.1 | **Autoload** snapshot saat Command Center dibuka (+ auto-refresh kembali ke tab, jeda ≥30 dtk); deteksi sensor + pesan jujur bila tak ada respons; fix race mailbox (pesan dihapus hanya setelah dikonsumsi penerima) | ✅ |
-| — | manufacturer-data (halaman Manufacturers/Chassis): menunggu capture; race-strategy: sengaja manual selamanya | ⏳ |
-| v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0–v0.5.1 — account + cars + supply + autoload) |
+| v0.6.0 | Adapter **manufacturer-data** (halaman Manufacturers — tabel engine + chassis selalu di DOM; read-once dari tombol Capture) + fixture DOM nyata kedua tab + panel snapshot GUI | ✅ |
+| — | race-strategy: sengaja manual selamanya | ⏳ |
+| v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0–v0.6.0 — account + cars + supply + manufacturers + autoload) |
 | v0.4 | Kalibrasi lap-time dari catatan user (tabel input sendiri, bukan scrape) | 🔜 |
 
-## 4b. Fase 3 (v0.4.0–v0.5.1) — Adapter DOM read-only (TERLAKSANA)
+## 4b. Fase 3 (v0.4.0–v0.6.0) — Adapter DOM read-only (TERLAKSANA)
 
 Pemetaan selektor berasal dari **live DOM halaman iGP asli** (capture `document
 .documentElement.outerHTML` oleh pengguna, disanitasi lalu dijadikan fixture
@@ -108,6 +112,7 @@ Pemetaan selektor berasal dari **live DOM halaman iGP asli** (capture `document
 | `account-data` | header global (semua halaman login) | `#myProfileName`, `#managerRankValue`, `#managerRankIcon[src*=rank]`, `#balanceText`, `#tokens-total`, `.myProfileStatsStack .teal` |
 | `car-data` | halaman Cars (`#pageId=cars`) | `#carAttributes[data-dmax]`, `#carAttributesDisplay .attribute-row` (`#wrap-{key}`, `.ratingVal`), `#carsDesignPoints[data-dp]`, `#carAttributesBonuses .tooltip[data-tip]`, `#leagueDesignData` (JSON best rival), `.carsSuppliers .c-wrap img[src*=/supply/]` |
 | `supply-data` | dialog Supply di halaman Cars (dibuka user sendiri) | `.supplyDialog` (gate: dialog terbuka), `.dialog-subhead-content h2` (tipe engine/fuel/tyre), `.dialog-subhead img[src*=/supply/]` (supplier aktif), `.tooltip[data-tip]` (bonus stat), `a[data-tip*=supplyType]` → `eId`, kartu `.inline-block` (id gambar, cost/race) |
+| `manufacturer-data` | halaman Manufacturers (`#pageId=manufacturers`) — kedua tabel selalu di DOM, tab aktif hanya display | `#engine-table` / `#chassis-table` → `tbody tr[data-nationality]`; nama: teks sel-1 (link `a[href*=id=]`, `<img>` flag tanpa teks); rating: sel-2 `.tooltip[data-tip="Rating: N%"]`; cost: `td.currency` ('500k'/'1m'); stats: `use[href$=#ios-eye]` (terlihat) vs `#ios-eye-off` (disembunyikan); customers: sel terakhir; total halaman: `.pager-last[rel]` |
 
 Aturan main adapter (bake-in, bukan kebijakan terpisah):
 
@@ -117,18 +122,22 @@ Aturan main adapter (bake-in, bukan kebijakan terpisah):
    saat tombol Capture diklik; sensor menjawab `collect-result` lalu selesai.
    Polling hanya pada mailbox GM-storage lokal (400 ms); DOM halaman game
    dibaca hanya saat ada permintaan. Tanpa polling halaman game.
-3. **pageId gate** — adapter mobil menolak halaman selain Cars; tidak ada jalur
-   baca ke halaman balapan/strategi.
+3. **pageId gate** — adapter mobil hanya aktif di halaman Cars; adapter
+   manufacturers hanya aktif di halaman Manufacturers (`#pageId=manufacturers`);
+   tidak ada jalur baca ke halaman balapan/strategi.
 4. **Kegagalan jujur** — halaman tak cocok → `collect-result {ok:false,error}`,
    ditampilkan di Command Center, bukan angka salah.
 5. **dialog gate (supply)** — adapter supply hanya aktif bila dialog Supply
    sedang terbuka (dibuka user sendiri); adapter tidak pernah membuka dialog,
    mengklik tile, atau menyentuh elemen game.
 
-Menunggu capture: halaman **Manufacturers/Chassis** (pilihan chassis supplier,
-route `p=manufacturers&tab=chassis`) → adapter `manufacturer-data`. Selektor di
-atas dapat berubah bila iGP meredesign — jika capture gagal, pesan error muncul
-jelas di GUI. Fixture supply: `supply-engine/fuel/tyre.html` (17 test jsdom total).
+Semua halaman yang direncanakan sudah dipetakan (v0.6.0): **Manufacturers**
+(`p=manufacturers`, tab engines & chassis — fixture `manufacturers-engines.html`
+& `manufacturers-chassis.html`) kini terpasang sebagai adapter
+`manufacturer-data`. Selektor di atas dapat berubah bila iGP meredesign — jika
+capture gagal, pesan error muncul jelas di GUI. Fixture: `supply-*.html`,
+`manufacturers-*.html` (23 test jsdom snapshot). Race-strategy tetap **manual
+selamanya** (bukan adapter).
 
 ## 5. Etika & batasan
 

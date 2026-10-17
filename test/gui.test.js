@@ -1,6 +1,7 @@
-// Test GUI Command Center (jsdom, shell nyata docs/app/index.html) — I.G.P.A.S v0.5.1.
+// Test GUI Command Center (jsdom, shell nyata docs/app/index.html) — I.G.P.A.S v0.6.0.
 // Menguji: mount wiring, autoload saat halaman "dibuka" (collect-request + report-request),
-// agregasi hasil per-kind (reqId), simpan snapshot, dan tombol Capture manual.
+// agregasi hasil per-kind (reqId), simpan snapshot, tombol Capture manual, dan
+// alur Capture manufacturers (request → hasil → snapshot + panel terisi).
 // Proses terpisah: GM_* + document/location di-stub SEBELUM require (ROLE → 'gui').
 const fs = require('fs');
 const path = require('path');
@@ -43,7 +44,7 @@ let autoReqId = null;
     }
 
     t('mount: badge versi + mode live (userscript aktif)', () => {
-        assert($('igpas-gui-version').textContent === 'GUI v0.5.1',
+        assert($('igpas-gui-version').textContent === 'GUI v0.6.0',
             'versi: ' + $('igpas-gui-version').textContent);
         assert(/live/.test($('igpas-gui-mode').textContent), 'mode tidak live');
     });
@@ -91,6 +92,42 @@ let autoReqId = null;
         assert(last && last.payload.reqId !== autoReqId, 'tidak ada permintaan manual baru');
         assert($('igpas-snap-status').textContent.indexOf('Capture') === 0,
             'status: ' + $('igpas-snap-status').textContent);
+    });
+
+    let mfrReqId = null;
+    t('Capture manufacturers: klik → collect-request manufacturer-data + status', () => {
+        $('igpas-snap-capture-manufacturers').click();
+        const reqs = mbPackets().filter(p => p.type === 'collect-request');
+        const last = reqs[reqs.length - 1];
+        assert(last && JSON.stringify(last.payload.kinds) === JSON.stringify(['manufacturer-data']),
+            'kinds: ' + JSON.stringify(last && last.payload.kinds));
+        mfrReqId = last.payload.reqId;
+        assert($('igpas-snap-status').textContent.indexOf('Capture manufacturers') === 0,
+            'status: ' + $('igpas-snap-status').textContent);
+    });
+
+    // Sensor menjawab permintaan manufacturers (bentuk data dari adapter nyata).
+    store.set('igpas:mb:res3', {
+        id: 'res3', type: 'collect-result', to: '*', from: 'sensor:test', ts: Date.now(),
+        payload: { reqId: mfrReqId, kind: 'manufacturer-data', ok: true, error: null,
+            pageUrl: 'https://igpmanager.com/app/p=manufacturers',
+            data: {
+                engines: [{ id: 5108, name: 'Akina SpeedStars', nationality: 'FR', ratingPct: 0,
+                    costPerRace: 500000, statsVisible: false, customers: 1 }],
+                chassis: [{ id: 14263, name: 'Bibo Racing', nationality: 'GB', ratingPct: 38, customers: 10 }],
+                totalPages: { engines: 672, chassis: 204 },
+            } } });
+
+    await wait(900);
+
+    t('hasil manufacturers: snapshot tersimpan + panel & badge terisi', () => {
+        const snaps = store.get('igpas:snapshots') || {};
+        assert(snaps['manufacturer-data'] && snaps['manufacturer-data'].data.engines.length === 1,
+            'snapshot manufacturers tidak tersimpan');
+        assert($('igpas-snap-manufacturer-body').textContent.indexOf('Akina SpeedStars') >= 0,
+            'panel manufacturers tidak terisi');
+        assert($('igpas-snap-badge').textContent.indexOf('mfr 2/2') >= 0,
+            'badge: ' + $('igpas-snap-badge').textContent);
     });
 
     console.log('\n' + pass + ' test, ' + fail + ' gagal' + (fail ? '' : ' — semua lulus ✔'));

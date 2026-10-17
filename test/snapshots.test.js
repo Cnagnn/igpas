@@ -21,6 +21,8 @@ const accDoc = new JSDOM(fs.readFileSync(path.join(__dirname, 'fixtures/account.
 const engSupDoc = new JSDOM(fs.readFileSync(path.join(__dirname, 'fixtures/supply-engine.html'), 'utf8')).window.document;
 const fuelSupDoc = new JSDOM(fs.readFileSync(path.join(__dirname, 'fixtures/supply-fuel.html'), 'utf8')).window.document;
 const tyreSupDoc = new JSDOM(fs.readFileSync(path.join(__dirname, 'fixtures/supply-tyre.html'), 'utf8')).window.document;
+const mfrEngDoc = new JSDOM(fs.readFileSync(path.join(__dirname, 'fixtures/manufacturers-engines.html'), 'utf8')).window.document;
+const mfrChsDoc = new JSDOM(fs.readFileSync(path.join(__dirname, 'fixtures/manufacturers-chassis.html'), 'utf8')).window.document;
 const blankDoc = new JSDOM('<html><body></body></html>').window.document;
 
 t('car-data: gate pageId — halaman lain ditolak', () => {
@@ -123,15 +125,65 @@ t('account-data: valid di halaman Cars (header global)', () => {
     eq(r.data.balance, '8.4m');
 });
 
+t('manufacturer-data: gate pageId — halaman lain ditolak', () => {
+    eq(AdapterRegistry.capture('manufacturer-data', blankDoc).ok, false);
+    eq(AdapterRegistry.capture('manufacturer-data', carsDoc).ok, false);
+});
+
+t('manufacturer-data: engine — 20 baris, bentuk data lengkap (baris pertama)', () => {
+    const r = AdapterRegistry.capture('manufacturer-data', mfrEngDoc);
+    eq(r.ok, true);
+    eq(r.data.engines.length, 20);
+    eq(r.data.engines[0], {
+        id: 5108, name: 'Akina SpeedStars', nationality: 'FR', ratingPct: 0,
+        costPerRace: 500000, statsVisible: false, customers: 1,
+    });
+});
+
+t('manufacturer-data: engine — edge case nyata (spasi ganda, 1m, dot, eye)', () => {
+    const r = AdapterRegistry.capture('manufacturer-data', mfrEngDoc);
+    const byId = id => r.data.engines.find(x => x.id === id);
+    eq(byId(148).name, 'Aston Martin Red Bull racing'); // spasi ganda di DOM dinormalisasi
+    const mous = byId(6381); // trailing spaces + cost '1m' + stats disembunyikan
+    eq([mous.name, mous.costPerRace, mous.statsVisible, mous.customers], ['Moustache racing', 1000000, false, 20]);
+    eq(byId(4865).name, '.'); // nama " ." -> "."
+    const cav = byId(5586);
+    eq([cav.ratingPct, cav.statsVisible, cav.costPerRace], [100, true, 500000]);
+});
+
+t('manufacturer-data: chassis — kolom tanpa cost/stats + edge case', () => {
+    const r = AdapterRegistry.capture('manufacturer-data', mfrEngDoc);
+    eq(r.data.chassis.length, 20);
+    eq(r.data.chassis[0], { id: 14263, name: 'Bibo Racing', nationality: 'GB', ratingPct: 38, customers: 10 });
+    eq(r.data.chassis.find(x => x.id === 13161).name, '0 failures');
+    eq(r.data.chassis.find(x => x.id === 17611), { id: 17611, name: 'Royal Alphä', nationality: 'BR', ratingPct: 2, customers: 1 });
+    if ('costPerRace' in r.data.chassis[0] || 'statsVisible' in r.data.chassis[0]) {
+        throw new Error('chassis tidak boleh punya costPerRace/statsVisible');
+    }
+});
+
+t('manufacturer-data: kedua tab capture (engines/chassis) -> data identik', () => {
+    const a = AdapterRegistry.capture('manufacturer-data', mfrEngDoc);
+    const b = AdapterRegistry.capture('manufacturer-data', mfrChsDoc);
+    eq(a.ok, true);
+    eq(b.ok, true);
+    eq(b.data, a.data); // kedua tabel selalu ada di DOM — tab aktif hanya soal display
+});
+
+t('manufacturer-data: total halaman pager (engine 672 / chassis 204)', () => {
+    const r = AdapterRegistry.capture('manufacturer-data', mfrEngDoc);
+    eq(r.data.totalPages, { engines: 672, chassis: 204 });
+});
+
 t('adapter belum ada -> pesan error jujur', () => {
-    const r = AdapterRegistry.capture('manufacturer-data', carsDoc);
+    const r = AdapterRegistry.capture('race-strategy', carsDoc);
     eq(r.ok, false);
     if (!/belum tersedia/.test(r.error)) throw new Error(r.error);
 });
 
 t('status registry jujur (ready vs menunggu-map)', () => {
     eq(AdapterRegistry.status(),
-        'account-data:ready, car-data:ready, supply-data:ready, manufacturer-data:menunggu-map, race-strategy:menunggu-map');
+        'account-data:ready, car-data:ready, supply-data:ready, manufacturer-data:ready, race-strategy:menunggu-map');
 });
 
 t('Storage: snapshot simpan/baca/hapus', () => {

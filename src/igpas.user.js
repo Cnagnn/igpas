@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.5.1
-// @description  Race strategy study calculators + read-only snapshot autoload for iGP Manager (account, car, supply). Study tool only, no live-race assistance, no automation.
-// @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + autoload snapshot read-only (akun, mobil, supply). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
+// @version      0.6.0
+// @description  Race strategy study calculators + read-only snapshot autoload for iGP Manager (account, car, supply, manufacturers). Study tool only, no live-race assistance, no automation.
+// @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + autoload snapshot read-only (akun, mobil, supply, manufacturers). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
 // @supportURL   https://github.com/Cnagnn/igpas/issues
@@ -21,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.5.1';
+    const VERSION = '0.6.0';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -556,6 +556,87 @@
     };
 
     /**
+     * Adapter halaman Manufacturers (p=manufacturers) — read-only. Dipetakan dari
+     * capture live DOM kedua tab (fixture test/fixtures/manufacturers-engines.html
+     * & manufacturers-chassis.html). Fakta halaman: KEDUA tabel (engine + chassis)
+     * selalu ada di DOM; tab aktif hanya soal display — jadi satu capture membaca
+     * keduanya, dari tab mana pun. Gate: #pageId = 'manufacturers'.
+     * Hanya membaca; tidak pernah klik (termasuk kontrol “Show hidden stats”),
+     * tidak submit, tidak membuka dialog.
+     */
+    const IgpManufacturersAdapter = {
+        id: 'manufacturer-data',
+        desc: 'daftar manufacturer engine + chassis (halaman Manufacturers)',
+        captures(doc) {
+            const pid = doc.getElementById('pageId');
+            if (!pid || pid.value !== 'manufacturers') return null; // gate: halaman Manufacturers saja
+            const engineTable = doc.getElementById('engine-table');
+            const chassisTable = doc.getElementById('chassis-table');
+            if (!engineTable && !chassisTable) return null;
+
+            const money = t => {
+                const m = String(t || '').match(/(\d+(?:\.\d+)?)\s*([kmb]?)/i);
+                if (!m) return null;
+                const suf = m[2].toLowerCase();
+                return Math.round(parseFloat(m[1]) * (suf === 'k' ? 1e3 : suf === 'm' ? 1e6 : suf === 'b' ? 1e9 : 1));
+            };
+            const clean = s => String(s || '').replace(/\s+/g, ' ').trim(); // nama punya spasi nyasar di DOM
+            const num = t => {
+                const n = parseInt(String(t || '').replace(/[^\d]/g, ''), 10);
+                return Number.isFinite(n) ? n : null;
+            };
+            /** Stats terlihat? ikon #ios-eye = ya; #ios-eye-off (red) = disembunyikan. */
+            const statsVisible = td => {
+                const use = td ? td.querySelector('svg use') : null;
+                if (!use) return null;
+                const ref = use.getAttribute('xlink:href') || use.getAttribute('href') || '';
+                if (/#ios-eye-off$/.test(ref)) return false;
+                if (/#ios-eye$/.test(ref)) return true;
+                return null;
+            };
+            const totalPages = pagerId => {
+                const pgr = doc.getElementById(pagerId);
+                const last = pgr ? pgr.querySelector('.pager-last') : null;
+                return last ? num(last.getAttribute('rel')) : null;
+            };
+
+            /** Baris tabel: engine = 5 kolom (name/rating/cost/stats/customers), chassis = 3. */
+            const parseRows = (table, withCost) => {
+                const out = [];
+                if (!table) return out;
+                for (const tr of table.querySelectorAll('tbody tr')) {
+                    const tds = tr.querySelectorAll('td');
+                    if (tds.length < 2) continue;
+                    const a = tds[0].querySelector('a[href]');
+                    const idm = a ? (a.getAttribute('href') || '').match(/id=(\d+)/) : null;
+                    const tip = tds[1] ? tds[1].querySelector('.tooltip[data-tip]') : null;
+                    const rm = tip ? (tip.getAttribute('data-tip') || '').match(/^Rating:\s*(\d+)%$/) : null;
+                    const row = {
+                        id: idm ? parseInt(idm[1], 10) : null,
+                        name: clean(tds[0].textContent), // teks saja — <a> kosong + <img> flag tidak menghasilkan teks
+                        nationality: tr.getAttribute('data-nationality') || null,
+                        ratingPct: rm ? parseInt(rm[1], 10) : null,
+                    };
+                    if (withCost) {
+                        const costTd = (tds[2] && tds[2].classList.contains('currency')) ? tds[2] : null;
+                        row.costPerRace = costTd ? money(costTd.textContent) : null;
+                        row.statsVisible = statsVisible(tds[3]);
+                    }
+                    row.customers = num(tds[tds.length - 1].textContent);
+                    out.push(row);
+                }
+                return out;
+            };
+
+            return {
+                engines: parseRows(engineTable, true),
+                chassis: parseRows(chassisTable, false),
+                totalPages: { engines: totalPages('engine-pager'), chassis: totalPages('chassis-pager') },
+            };
+        },
+    };
+
+    /**
      * Registry adapter data. Status dipublikasikan apa adanya: ':ready' = adapter
      * read-only terpasang; ':menunggu-map' = pemetaan DOM halaman belum dilakukan.
      */
@@ -564,7 +645,7 @@
             { id: 'account-data', adapter: IgpAccountAdapter },
             { id: 'car-data', adapter: IgpCarsAdapter },
             { id: 'supply-data', adapter: IgpSupplyAdapter },
-            { id: 'manufacturer-data', desc: 'halaman Manufacturers/Chassis (menunggu capture)' },
+            { id: 'manufacturer-data', adapter: IgpManufacturersAdapter },
             { id: 'race-strategy', desc: 'strategi balapan (input manual, selalu)' },
         ],
         capture(kind, doc) {
@@ -916,8 +997,36 @@
             return html;
         }
 
+        function manufacturerHtml(m) {
+            if (!m) return '<span class="hint">belum ada — buka halaman <em>Manufacturers</em> (p=manufacturers) di tab iGP, lalu klik “Capture manufacturers”.</span>';
+            const d = m.data || {};
+            const pages = d.totalPages || {};
+            const head = { engines: 'Engine', chassis: 'Chassis' };
+            const tbox = (key, withCost) => {
+                const arr = d[key] || [];
+                if (!arr.length) return '<div class="hint">' + esc(head[key]) + ': belum tercapture</div>';
+                const rows = arr.map(r =>
+                    '<tr><td>' + esc(r.name) + '</td><td class="num">' + esc(r.ratingPct) + '%</td>' +
+                    (withCost
+                        ? '<td class="num">' + fmtMoney(r.costPerRace) + '</td>' +
+                          '<td title="stats ' + (r.statsVisible === true ? 'terlihat' : r.statsVisible === false ? 'disembunyikan' : '?') + '">' +
+                          (r.statsVisible === true ? '👁' : r.statsVisible === false ? '–' : '?') + '</td>'
+                        : '') +
+                    '<td class="num">' + esc(r.customers) + '</td></tr>').join('');
+                const th = withCost
+                    ? '<tr><th>Name</th><th>Rating</th><th>Cost/race</th><th>Stats</th><th>Cust</th></tr>'
+                    : '<tr><th>Name</th><th>Rating</th><th>Cust</th></tr>';
+                return '<div class="hint">' + esc(head[key]) + ' — ' + arr.length + ' baris · total ' +
+                    (pages[key] != null ? pages[key] : '?') + ' halaman</div>' +
+                    '<div style="max-height:280px;overflow:auto"><table>' + th + rows + '</table></div>';
+            };
+            return tbox('engines', true) +
+                '<div style="margin-top:10px">' + tbox('chassis', false) + '</div>' +
+                '<div class="hint">tangkap ' + esc(new Date(m.ts).toLocaleTimeString()) + '</div>';
+        }
+
         // ---- Autoload & deteksi (v0.5.1) ----
-        const KIND_LABEL = { 'account-data': 'akun', 'car-data': 'mobil', 'supply-data': 'supply' };
+        const KIND_LABEL = { 'account-data': 'akun', 'car-data': 'mobil', 'supply-data': 'supply', 'manufacturer-data': 'manufacturers' };
         let activeReq = null;  // permintaan berjalan: { id, label, kinds, got, details }
         let lastReqAt = 0;     // throttle auto-refresh (≥30 dtk)
 
@@ -953,10 +1062,12 @@
             const a = Storage.getSnapshot('account-data');
             const c = Storage.getSnapshot('car-data');
             const s = Storage.getSnapshot('supply-data');
+            const mfr = Storage.getSnapshot('manufacturer-data');
             const sCount = s ? ['engine', 'fuel', 'tyre'].filter(tp => s.data && s.data[tp]).length : 0;
+            const mfrCount = mfr ? ['engines', 'chassis'].filter(k => mfr.data && mfr.data[k] && mfr.data[k].length).length : 0;
             if (badge) badge.textContent =
                 (a ? 'akun ✓' : 'akun –') + ' · ' + (c ? 'mobil ✓' : 'mobil –') +
-                ' · supply ' + sCount + '/3';
+                ' · supply ' + sCount + '/3' + ' · mfr ' + mfrCount + '/2';
 
             if (a) {
                 acc.innerHTML =
@@ -993,6 +1104,9 @@
 
             const sup = $('igpas-snap-supply-body');
             if (sup) sup.innerHTML = supplyHtml(s);
+
+            const mfrBody = $('igpas-snap-manufacturer-body');
+            if (mfrBody) mfrBody.innerHTML = manufacturerHtml(mfr);
         }
 
         let mounted = false;
@@ -1023,6 +1137,9 @@
             const capSup = $('igpas-snap-capture-supply');
             if (capSup) capSup.addEventListener('click', () =>
                 requestCollect(['supply-data'], 'Capture supply', ' — buka dialog Supply dulu di tab iGP'));
+            const capMfr = $('igpas-snap-capture-manufacturers');
+            if (capMfr) capMfr.addEventListener('click', () =>
+                requestCollect(['manufacturer-data'], 'Capture manufacturers', ' — buka halaman Manufacturers dulu di tab iGP'));
             const clr = $('igpas-snap-clear');
             if (clr) clr.addEventListener('click', () => {
                 Storage.clearSnapshots();

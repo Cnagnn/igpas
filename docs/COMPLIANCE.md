@@ -22,7 +22,7 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
 1. **GUI-only (nama kepatuhan) — RISIKO ~0**: Command Center berfungsi 100% tanpa
    userscript aktif di tab iGP (kalkulator, Data Lab, rekomendasi semua di tab GUI).
    User yang mau kepatuhan mutlak: cukup *disable* userscript saat membuka igpmanager.com.
-2. **Dual-tab study (v0.2.1, diperbarui v0.5.1)** — risiko praktis rendah: tanpa UI di
+2. **Dual-tab study (v0.2.1, diperbarui v0.6.0)** — risiko praktis rendah: tanpa UI di
    situs game (v0.3.0+), tanpa aksi ke situs, tanpa jaringan; pembacaan DOM hanya saat
    ada permintaan eksplisit (read-once, tanpa polling halaman game). Menyisakan risiko
    *letter* § V.J (tak terhindarkan bagi *semua* userscript). Keputusan gunakan/tidak =
@@ -33,7 +33,7 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
    adapter untuk data race (lap/posisi/fuel race), jadi paling banyak hanya header akun
    global (sama di semua halaman). Untuk kepatuhan ketat: jangan buka Command Center
    selama sesi.
-4. **Fase 3 (adapter data otomatis, v0.4.0–v0.5.1 TERLAKSANA)** — desain kepatuhan:
+4. **Fase 3 (adapter data otomatis, v0.4.0–v0.6.0 TERLAKSANA)** — desain kepatuhan:
     - Hanya membaca data *yang memang ditampilkan* ke user biasa di halaman studi
       (Cars, header akun) - bukan tersembunyi/undocumented.
     - **Read-on-request**: adapter hanya berjalan saat ada permintaan dari Command
@@ -50,6 +50,11 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
       (satu permintaan read-once per pembukaan; auto-refresh saat kembali ke tab,
       jeda ≥30 dtk). Bukan loop latar: DOM game hanya dibaca saat ada permintaan;
       mailbox hanya memindahkan permintaan/hasil antar-tab via storage lokal kita.
+    - **v0.6.0 - halaman Manufacturers**: hanya membaca tabel yang memang
+      ditampilkan di halaman Manufacturers (engine + chassis; kedua tabel ada di
+      DOM, tab aktif hanya soal display) pada halaman yang dibuka user sendiri —
+      read-once dari tombol *Capture manufacturers*, tanpa klik apa pun (termasuk
+      kontrol “Show hidden stats” dibiarkan apa adanya), tanpa membuka dialog.
     - Tanpa distribusi ulang data orang lain; snapshot hanya di storage browser user.
     - Bukan: background polling halaman game, server-side scraping, atau adapter
       untuk data balapan (tidak ada lap/posisi/fuel race yang dibaca, kapan pun).
@@ -62,12 +67,12 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
   `@require` **0**; `unsafeWindow` **0** (`node test`, `node --check`, audit 2026-10-17).
 - Mailbox polling hanya membaca **GM storage kita sendiri** (`igpas:mb:*`) di browser
   user — bukan trafik/menuju server iGP.
-- Adapter v0.4.0–v0.5.1: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
+- Adapter v0.4.0–v0.6.0: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
   tanpa `fetch`, tanpa XHR, tanpa akses `unsafeWindow`. Fixture pengujian dari DOM
-  halaman nyata yang disanitasi (`test/fixtures/*.html`); suite: 32 core + 17 snapshot
-  (akun, mobil, supply) + 6 mailbox + 4 GUI (jsdom) = 59.
-- Version: userscript kini 0.5.1 (autoload snapshot + deteksi sensor); landing/etika
-  disclaimer diperbarui pada commit terkait.
+  halaman nyata yang disanitasi (`test/fixtures/*.html`); suite: 32 core + 23 snapshot
+  (akun, mobil, supply, manufacturers) + 6 mailbox + 6 GUI (jsdom) = 67.
+- Version: userscript kini 0.6.0 (adapter manufacturer-data engine/chassis + autoload
+  snapshot + deteksi sensor); landing/etika disclaimer diperbarui pada commit terkait.
 
 ## Rekomendasi yang belum dilakukan (kembali ke user)
 
