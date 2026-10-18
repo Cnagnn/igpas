@@ -126,6 +126,7 @@ Ini meniadakan risiko "invented data" dan membuat inti bisa di-unit-test.
 | v0.7.3 | **Estimasi setup & strategi pra-balapan** (permintaan user, capture tab `p=race` Race/Setup/Strategy): halaman pra-balapan (`#pageId=race`) kini mendapat panel READ-ONLY **hanya** di tab **Setup** (slider vs bar ideal game `setupSlider-idealRange` — bar penuh = ideal belum dipelajari, ditulis jujur; kondisi health/condition/engine `<30%` ditandai; cuaca; lap practice; kutipan komentar engineer) dan tab **Strategy** (ringkasan per driver: total lap stint vs `#raceLaps`, bensin `#dN-AdvancedFuel` vs kebutuhan laps × `#dN-FuelPrediction` + buffer liter/lap, ban per stint dari blok data JSON `#dN-StrategyJson` + cek dua-compound aturan `#rules`, pit & risk_level). **Tab Race live (`#race`) tetap 100% bersih** — test snapshot innerHTML pre/post boot + gate tanpa wadah tab. Helper murni `parseSliderIdeal`, `setupAdvice`, `summarizeStrategy` (guards `Number(null)===0`); adapter `race-setup-data`/`race-strategy-data` + fixture sanitasi `race.html`; toggle hanya muncul saat ada panel (24 test snapshot, 16 test advisor) | ✅ |
 | v0.7.4 | **Konsumsi data practice nyata** (user mengirim capture live DOM sesudah 1 lap practice): fixture `race.html` **diganti total** dengan rekonstruksi tersanitasi capture itu (csrf + nama/ID pihak lain + id balapan + atribut pelacak + seluruh script eksekutabel dibuang; blok `type=application/json` game dipertahankan — inerten). **Perbaikan jangkar vs DOM nyata**: cuaca dibaca dari c-head `#dNSetupWrap` (`.waterLevelText` + teks `°C` dari `.weatherTemp`; `.raceWeatherBadge` ternyata TIDAK ada di halaman praktik nyata) dan nama driver via `#setup .driverNInclude .driverName` (di DOM nyata kedua blok nama berada di `#beginner-d1Comments` — tidak ada `#beginner-d2Comments`). **Anchor baru dikonsumsi**: kelas arah label slider game (`decrease`/`increase` → kolom "Arah (game)" — kelas ini hanya muncul setelah practice; mid-bar terbukti sejalan arah komentar engineer), baris practice terakhir `#dN-Laps` (lap/ride/susp/wing/pemakaian/waktu), umur ban `#dN-TyreLife` (`{"SS":12}` → "SS ±12 lap"; `[]` = belum ada), push level `select[name=pushLevel]`, fuel/lap presisi (`2.460` → kebutuhan ±155 L, sisa 19 L ≈7.7 lap). Tanpa aritmetika baru di luar model `summarizeStrategy`; test snapshot `#race` pre/post boot + zero-UI tetap hijau; **105 test** | ✅ |
 | v0.8.0 | **Perbandingan keputusan "lebih bagus / lebih buruk / sama"** (permintaan user): helper murni `numberVerdict` (toleransi "≈ sama" eksplisit; sisi kosong → `unknown`, tidak dikarang), `compareRoster` (roster aktif vs pasar; dua sumbu dilaporkan terpisah — rating naik = bagus dengan pembanding nilai tertinggi, gaji turun = bagus dengan pembanding termurah; peran dinormalisasi `CD`/`TD`/`DR` agar label Teams sebanding dengan kode Transfers; basis verdict + jumlah sisi tak terbaca dilaporkan), `compareSuppliers` (supplier aktif vs alternatif dialog yang sama), `Utils.statIndex` (rata-rata 12 angka CSV kolom rating — **identik di kedua halaman**, dilabeli *bukan overall game* karena CSV dibulatkan per stat) & `Utils.roleCode`. Advisor: panel banding di halaman Teams (baca snapshot `staff-data`+`transfers-data`, **0 permintaan baru**), di Transfers (pasar vs roster), dan di dialog Supply (aktif vs alternatif). Command Center: kartu snapshot tim & pasar + panel Decision Compare dengan tombol ambil/bandingkan. `parseTraits` kini membuang elemen `<icon>` agar label statistik bersih. Semua verdict berlabel **estimasi — bukan rumus game**; tab Race live tetap tanpa UI. Test: 63 core + 19 advisor + 14 GUI = **126** | ✅ |
+| v0.8.1 | **Advisor penuh in-place, nol elemen tambahan** (permintaan user): seluruh panel/toggle/btn advisor dihapus — rekomendasi hanya teks + `title` pada elemen asli game (Cars/Supply/Manufacturers/Staff/Transfers). Penulisan preservasi-struktur: Transfers menulis text-node nama (link kontrak & flag hidup), Staff menulis span nama (br+span utuh). Helper `writeSelfText`/`writeFirstTextNode`/`saveTitle`/`restoreTitle`, `restoreTeamInPlace` restore-pertama sebelum captures + cleanup saat pindah halaman. Panel Setup/Strategy v0.7.3/v0.7.4 **dihentikan** (halaman `race` 100% bersih) menunggu desain in-place yang aman. Test: 63 core + 24 snapshot + 6 mailbox + 14 GUI + 14 advisor | ✅ |
 | — | race-strategy: sengaja manual selamanya | ⏳ |
 | v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0–v0.6.2 — account + cars + supply + manufacturers + autoload) |
 | v0.4 | Kalibrasi lap-time dari catatan user (tabel input sendiri, bukan scrape) | 🔜 |
@@ -181,19 +182,23 @@ Semua halaman yang direncanakan sudah dipetakan (v0.6.2): **Manufacturers**
 di atas dapat berubah bila iGP meredesign — jika capture gagal, pesan error
 muncul jelas di GUI. Fixture: `supply-*.html`, `manufacturers-*.html`,
 `staff.html`, `transfers.html`, `race.html` (24 test jsdom snapshot). Input
-strategi tetap **manual selalu** — advisor race v0.7.3 hanya MENAMBAHKAN
-panel estimasi read-only di tab Setup/Strategy pra-balapan, tidak pernah
-mengubah strategi/tabrakan dengan input game.
+strategi tetap **manual selalu** — panel estimasi race v0.7.3/v0.7.4
+**dihentikan pada v0.8.1**: halaman `race` kini 100% tanpa UI advisor
+(permintaan user: tanpa elemen tambahan; rekomendasi setup/strategy
+menunggu desain in-place yang aman).
 
 ## 5. Etika & batasan
 
 - **Risiko ToS milik user sepenuhnya.** `docs/COMPLIANCE.md` dicabut atas
   keputusan owner: user yang memakai userscript ini bertanggung jawab sendiri
   apabila akun terkena banned/pelanggaran ToS iGP Manager — bukan menyalahkan
-  projek ini. Advisor halaman Cars menulis ulang **teks label asli** tiap
-  baris stats (`#n Label · X DP`, tanpa elemen baru; angka & bar game tidak
-  diubah, teks asli di-restore saat cleanup), yang secara literal masuk
-  area "scripts" di ToS § V.J. Pola tulis-ulang yang sama dipakai dialog
-  Supply (biaya kartu + judul dialog) dan halaman Manufacturers (nama baris).
+  projek ini. Advisor menulis ulang **teks pada elemen asli game**
+  (tanpa elemen baru): halaman Cars (`#n Label · X DP` pada label baris),
+  dialog Supply (biaya kartu + judul dialog), halaman Manufacturers
+  (nama baris), halaman Staff (saran pada span nama driver + `title`
+  gaji/kontrak), dan halaman Transfers (peringkat pada text node nama —
+  link & flag tetap hidup). Teks/title asli selalu di-restore otomatis.
+  Halaman `race` 100% bersih sejak v0.8.1. Penulisan DOM ini secara
+  literal masuk area "scripts" di ToS § V.J.
 - Lisensi GPL-3.0-or-later mengikuti semangat A.C.A.S; kode dari A.C.A.S **tidak
   disalin** — hanya pola arsitektur (dari analisis, bukan dari copy kode).

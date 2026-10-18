@@ -88,59 +88,50 @@ python3 -m http.server 8787 -d docs   # lalu buka http://localhost:8787/ (landin
 
 Semua angka berasal dari **input Anda sendiri** — tidak ada asumsi data game.
 
-## Advisor in-page (v0.7.0, diperluas v0.7.3–0.8.0)
+## Advisor in-page (v0.7.0, diperluas v0.7.3–0.8.0, penuh in-place sejak v0.8.1)
 
-Userscript kini menempel **panel rekomendasi langsung di halaman iGP** yang
-Anda buka — hanya di halaman **studi** (`#pageId` `cars`, `manufacturers`,
-`staff`, dan `transfers`, termasuk dialog Supply terbuka), plus — sejak
-v0.7.3, atas permintaan user — halaman **pra-balapan** (`#pageId` `race`) tapi
-**hanya di tab Setup & Strategy**. Tab **Race live tidak pernah** mendapat UI
-apa pun (diverifikasi test snapshot innerHTML), dan halaman lain juga tidak.
-Sifatnya:
+Userscript **tidak menambahkan elemen apa pun** ke halaman iGP: tanpa panel,
+tanpa badge, tanpa tombol toggle. Semua rekomendasi **menyatu dengan elemen
+asli game** — hanya di halaman **studi** (`#pageId` `cars`, `manufacturers`,
+`staff`, dan `transfers`, termasuk dialog Supply terbuka). Rekomendasi ditulis
+sebagai **teks pada node asli** (peringkat `#n …`, tanda `★`) plus **detail di
+atribut `title` elemen yang sama**; angka, bar, link, flag, dan ikon game tidak
+pernah disentuh. Teks/title asli disimpan dan **di-restore otomatis** setiap
+re-render dan saat pindah halaman — tidak ada tombol untuk diklik. Halaman
+**pra-balapan dan Race live (`#pageId` `race`) tidak mendapat UI apa pun**;
+tab **Race live tidak pernah** tersentuh (diverifikasi test snapshot
+innerHTML), dan halaman lain juga tidak. Sifatnya:
 
-- **Supply (dialog Engine/Fuel/Tyres terbuka)** — membandingkan supplier aktif
-  dengan alternatif di dialog: Σ bonus stat, biaya per balapan, dan
-  nilai/biaya (bonus per 1jt). Supplier terbaik nilai & termurah ditandai.
-- **Manufacturers** — ranking engine (rating, biaya, rating per 1jt) dan
-  chassis (rating) dari baris yang tampil di pager halaman itu.
-- **Design points (halaman Cars)** — prioritas alokasi DP per atribut: gap
-  nilai atribut Anda terhadap **max rival liga** (`leagueDesignData`), dengan
-  usulan % porsi DP proporsional gap terbesar.
-- **Drivers & Staff (v0.7.2)** — kondisi tim aktif: ability/mental/health
-  tiap driver (+ estimasi pemulihan per jam; health <30% ditandai), gaji &
-  kontrak staff aktif, dan status pit crew (mis. terkunci sampai level 5).
-  Kartu staff di halaman ini hanya menampilkan bintang — panel **tidak
-  mengarang angka rating**; angka kandidat lengkap ada di halaman Transfers.
-- **Transfers (v0.7.2)** — pasar yang tampil di tabel: driver terbaik
-  (overall, fee, **overall per 1jt fee**, special ability) dan staff pasar
-  per peran **CD/TD/DR** (top-2 per peran dengan trait hijau = penguat
-  atribut / merah = kelemahan dari tooltip game). Pasar bisa berubah sendiri
-  (refresh lelang) — panel diberi catatan dan di-render ulang saat Anda
-  berinteraksi.
-- **Setup & Strategy pra-balapan (v0.7.3, diperkaya v0.7.4 dari capture practice
-  nyata)** — di tab **Setup**: nilai slider vs **bar ideal milik game** (titik
-  tengah bar sebagai estimasi; bar setebal track = ideal belum dipelajari —
-  ditulis jujur, bukan dikarang), **arah dari label game** (`decrease`/`increase`
-  — kelas ini hanya muncul setelah ada lap practice), kondisi mobil
-  (health/condition/engine; health <30% ditandai "kritis — repair dulu"), cuaca
-  dari c-head form setup, ringkasan **lap practice terakhir** (waktu + pemakaian
-  bensin/ban dari tabel game), dan kutipan komentar engineer game. Di tab
-  **Strategy**: ringkasan alokasi per driver — total lap stint vs laps balapan,
-  bensin tersedia vs kebutuhan (laps × fuel/lap game **presisi**, mis. 2.460 —
-  sisa buffer dalam liter & ekuivalen lap), susunan ban per stint + cek aturan
-  dua-compound liga (span `#rules`), jumlah pit, risk level, **push level** dan
-  **umur ban per compound** (`#dN-TyreLife`, mis. SS ±12 lap) milik game. Panel
-  bersifat **snapshot** saat dimuat — kalau Anda mengubah stint/slider,
-  buka ulang tab agar perhitungan ikut baru.
+- **Supply (dialog Engine/Fuel/Tyres terbuka)** — peringkat ditulis ke kartu
+  asli dialog (`#n · biaya ★`), verdict supplier aktif vs alternatif di judul
+  dialog: Σ bonus stat, biaya per balapan, dan nilai/biaya (bonus per 1jt).
+- **Manufacturers** — peringkat ditulis ke nama baris asli (`#n Nama`) engine
+  (rating, biaya, rating per 1jt) dan chassis (rating) dari baris yang tampil
+  di pager halaman itu.
+- **Design points (halaman Cars)** — label asli tiap baris ditulis ulang
+  (`#1 Fuel economy · 26 DP`): gap nilai atribut Anda terhadap **max rival
+  liga** (`leagueDesignData`), dengan usulan % porsi DP proporsional gap
+  terbesar; detail val/max/gap di `title` baris yang sama.
+- **Drivers & Staff (v0.7.2)** — kondisi tim aktif langsung pada kartu asli:
+  saran kesehatan/pemulihan driver ditempel pada **span nama yang sudah ada**
+  (struktur `br` + `span` dipertahankan) dengan detail di `title` container;
+  gaji & kontrak staff aktif di `title` header kartu. Kartu staff hanya
+  menampilkan bintang — **tidak ada angka rating karangan**; angka kandidat
+  lengkap ada di halaman Transfers.
+- **Transfers (v0.7.2)** — peringkat ditulis ke **text node nama** baris asli
+  (`#n Nama ★ rekomendasi` untuk peringkat 1): driver (overall, fee di
+  `title`) dan staff per peran; **link kontrak dan flag negara di dalam sel
+  tetap hidup** karena hanya text node yang ditulis ulang.
+- **Setup & Strategy pra-balapan** — panel estimasi v0.7.3/v0.7.4 **dihentikan**:
+  halaman `race` kini 100% bersih. Rekomendasi setup/strategy akan dirancang
+  ulang sebagai tulisan in-place bila ada pola aman (tanpa panel).
 
-Semua panel berlabel **"estimasi — bukan rumus game"**: heuristik transparan
-atas angka yang memang tampil, bukan kepastian performa. Ada tombol
-**I.G.P.A.S advisor** di kiri-bawah untuk menyembunyikan/menampilkan panel
-(preferensi tersimpan lokal; tombol hanya muncul saat ada panel yang
-terpasang). Advisor hanya **membaca** DOM yang tampak: tanpa klik, tanpa
-submit, tanpa jaringan, tanpa request mailbox, dan elemen game tidak pernah
-diubah — di tab Race live bahkan satu node pun tidak ditambahkan
-(diverifikasi test snapshot innerHTML).
+Semua tulisan berlabel **"estimasi — bukan rumus game"** di `title`: heuristik
+transparan atas angka yang memang tampil, bukan kepastian performa. Render
+**instan**: MutationObserver bereaksi di microtask yang sama saat game commit
+DOM (tanpa menunggu klik user), dengan restore-dulu agar adapter selalu
+membaca data murni. Advisor hanya **membaca** DOM yang tampak: tanpa klik,
+tanpa submit, tanpa jaringan, tanpa request mailbox.
 
 **Menu capture fixture (v0.7.1):** lewat menu userscript
 ("I.G.P.A.S: salin capture DOM halaman ini") Anda bisa menyalin DOM halaman
@@ -161,9 +152,10 @@ yang ada di bursa transfer?" dijawab sebagai **verdict eksplisit** di dua tempat
   (tab iGP di halaman **Transfers**) mengisi snapshot; _Bandingkan sekarang_
   me-render ulang panel. Ringkasan di atas tabel menunjukkan berapa baris yang
   lebih bagus / lebih buruk / sama / tak terbaca.
-- **Advisor in-page** — panel banding melekat di halaman **Teams**
-  (roster vs pasar), **Transfers** (pasar vs roster Anda), dan di dialog
-  **Supply** (supplier aktif vs alternatif).
+- **Advisor in-page** — tanpa panel banding terpisah: rekomendasi hanya
+  berupa peringkat `#n` + `★` pada teks asli dan verdict di `title`
+  (dialog **Supply**: supplier aktif vs alternatif; **Transfers**: peringkat
+  pasar per baris).
 
 Cara verdict dihitung (semuanya transparan dan selalu berlabel
 **estimasi — bukan rumus game**):
@@ -187,21 +179,21 @@ sehingga bisa dibandingkan, **tetapi ini BUKAN overall game** — game
 membulatkan tiap stat, jadi hasilnya beda tipis dari kolom _Overall/Fee_.
 Kartu staff di halaman Teams hanya menampilkan bintang (tanpa CSV), sehingga
 baris itu umumnya **"tak terbaca"** di sumbu rating dan verdict-nya jatuh ke
-sumbu gaji — panel menyebut jumlahnya terang-terangan. Fee tanda tangan
+sumbu gaji — disebut terang-terangan di Decision Compare. Fee tanda tangan
 ditampilkan sebagai info saja (tidak dinilai), karena biaya sekali bayar tidak
 sebanding dengan gaji per balapan.
 
 Semuanya tetap **read-only**: tidak ada klik/submit di elemen game, tidak ada
-jaringan, dan panel advisor in-page **tidak menambah permintaan mailbox** —
-ia membaca snapshot yang sudah Anda ambil lewat tombol Capture.
+jaringan, dan tulisan advisor in-page **tidak menambah permintaan mailbox** —
+ia hanya membaca DOM/snapshot yang sudah ada.
 
 ## Instal (dev)
 
 1. Pasang Tampermonkey/Violentmonkey.
 2. Dashboard → Create new script → tempel isi `src/igpas.user.js`.
-3. Buka igpmanager.com — halaman Cars/Manufacturers/Team (Overview &
-   Transfers) menampilkan panel **I.G.P.A.S advisor** (bisa disembunyikan);
-   halaman lain tetap senyap.
+3. Buka igpmanager.com — halaman Cars/Manufacturers/Staff/Transfers
+   menampilkan rekomendasi **langsung pada teks & judul elemen asli**
+   (tanpa panel/tombol); halaman lain dan seluruh halaman race tetap senyap.
 4. Buka <https://cnagnn.github.io/igpas/app/> — Command Center & alur capture.
 
 ## Pengembangan
