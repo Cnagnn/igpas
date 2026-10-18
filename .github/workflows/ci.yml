@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps (npm ci)
+        run: npm ci
+
+      - name: Syntax check (node --check)
+        run: npm run syntax
+
+      - name: Version sync check
+        run: npm run versions:check
+
+      - name: Lint (eslint)
+        run: npm run lint
+
+      - name: Format check (prettier)
+        run: npm run format:check
+
+      - name: Tests (105 tests)
+        run: npm test
+
+      - name: Userscript header sanity
+        run: |
+          echo "Checking @grant / @match / @version header..."
+          grep -q "@version" src/igpas.user.js
+          grep -q "@grant[[:space:]]*GM_getValue" src/igpas.user.js
+          grep -q "@match[[:space:]]*https://igpmanager.com" src/igpas.user.js
+          # Guard: tidak ada network/eval di userscript (kecuali test/docs)
+          if grep -R --include="*.user.js" -nE 'fetch\(|XMLHttpRequest|GM_xmlhttpRequest|eval\(|new Function\(' src/; then
+            echo "::error::userscript mengandung fetch/XHR/eval — harus 0 (lihat docs/COMPLIANCE.md)"
+            exit 1
+          fi
+          if grep -R --include="*.user.js" -n 'unsafeWindow' src/; then
+            echo "::error::userscript mengandung unsafeWindow — harus 0"
+            exit 1
+          fi
+          echo "Header & guard OK"

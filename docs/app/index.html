@@ -53,7 +53,22 @@
     #igpas-connection button { background: var(--pink); }
     #igpas-snap button#igpas-snap-capture-supply { background: var(--green); }
     #igpas-snap button#igpas-snap-capture-manufacturers { background: var(--blue); }
+    #igpas-snap button#igpas-snap-capture-staff { background: var(--yellow); }
+    #igpas-snap button#igpas-snap-capture-transfers { background: var(--pink); }
+    #igpas-compare button { background: var(--blue); }
+    #igpas-compare button#igpas-compare-run { background: var(--green); }
     button#ig-lab-example, button#ig-str-demo { background: var(--card); }
+
+    .cmp-better { background: #d9f7e4; }
+    .cmp-worse { background: #ffe4e4; }
+    .cmp-equal { background: #eef1f4; }
+    .cmp-unknown { background: #f0eee9; color: var(--muted); }
+    .cmp-chip { display: inline-block; padding: 2px 8px; border: 2px solid var(--ink);
+                border-radius: 9px; font-weight: 800; font-size: 11px; white-space: nowrap; }
+    .cmp-axis { font-weight: 600; opacity: .75; }
+    .cmp-detail { display: block; font-size: 11px; color: var(--muted); font-weight: 600;
+                  margin-top: 2px; }
+    .cmp-summary { margin: 0 0 12px; font-weight: 700; }
 
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
     @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
@@ -151,6 +166,8 @@
             <button id="igpas-snap-capture">📥 Capture now (request ke tab iGP)</button>
             <button id="igpas-snap-capture-supply">🏭 Capture supply (dialog Supply terbuka)</button>
             <button id="igpas-snap-capture-manufacturers">🔧 Capture manufacturers (halaman Manufacturers)</button>
+            <button id="igpas-snap-capture-staff">👥 Capture team (halaman Drivers &amp; Staff)</button>
+            <button id="igpas-snap-capture-transfers">🔁 Capture market (halaman Transfers)</button>
             <button id="igpas-snap-clear">🗑️ Hapus snapshot</button>
             <span class="hint" id="igpas-snap-status" style="margin:0"></span>
         </div>
@@ -171,6 +188,38 @@
         <div class="snapcard" style="margin-top:16px">
             <h3>🔧 Manufacturers — Engines &amp; Chassis</h3>
             <div id="igpas-snap-manufacturer-body"><span class="hint">belum ada</span></div>
+        </div>
+        <div class="grid2" style="margin-top:16px">
+            <div class="snapcard">
+                <h3>👥 Team — roster aktif</h3>
+                <div id="igpas-snap-team-body"><span class="hint">belum ada</span></div>
+            </div>
+            <div class="snapcard">
+                <h3>🔁 Market — pasar transfer</h3>
+                <div id="igpas-snap-market-body"><span class="hint">belum ada</span></div>
+            </div>
+        </div>
+    </section>
+
+    <section id="igpas-compare">
+        <h2>⚖️ Decision Compare — lebih bagus / lebih buruk / sama</h2>
+        <p class="hint">Membandingkan <strong>roster &amp; supplier Anda</strong> dengan
+           <strong>pilihan di luar</strong> (pasar Transfers, alternatif dialog Supply).
+           Butuh dua snapshot: <em>team</em> (dari halaman Drivers &amp; Staff) dan
+           <em>market</em> (dari halaman Transfers). Keduanya diambil lewat satu
+           permintaan baca-saja ke tab iGP — tidak ada polling, tidak ada aksi ke situs.
+           Semua angka diambil apa adanya dari DOM; yang tidak tampil ditulis
+           <em>tak terbaca</em>, tidak dikarang. Label <strong>estimasi — bukan
+           rumus game</strong> berlaku untuk seluruh verdict.</p>
+        <div class="igpas-snap-actions">
+            <button id="igpas-compare-capture-team">👥 Ambil roster (tab iGP: Drivers &amp; Staff)</button>
+            <button id="igpas-compare-capture-market">🔁 Ambil pasar (tab iGP: Transfers)</button>
+            <button id="igpas-compare-run">⚖️ Bandingkan sekarang</button>
+            <span class="hint" id="igpas-compare-status" style="margin:0"></span>
+        </div>
+        <div class="snapcard">
+            <h3>Roster &amp; supplier vs pasar</h3>
+            <div id="igpas-compare-body"><span class="hint">belum ada snapshot — ambil roster &amp; pasar dulu.</span></div>
         </div>
     </section>
 

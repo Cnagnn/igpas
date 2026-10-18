@@ -1,10 +1,31 @@
-# Konteks lokal agent — jangan dipublish
+# Deps & logs (keep lockfile for reproducible CI)
+node_modules/
+*.log
+npm-debug.log*
+coverage/
+.nyc_output/
+
+# OS & editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/settings.json
+.idea/
+
+# Env lokal
+.env
+.env.local
+
+# Konteks agent lokal — jangan dipublish
 .opencode-context.md
 .opencode-jce/
 .opencode/
+.claude/
+.factory/
 
-# Sanity umum
-node_modules/
-*.log
-.DS_Store
-Thumbs.db
+# Build output (kalau ada di masa depan)
+_site/
+dist/

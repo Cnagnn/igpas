@@ -1,1 +1,31 @@
-{"name":"igpas","version":"0.7.4","private":true,"scripts":{"test":"node test/core.test.js && node test/snapshots.test.js && node test/mailbox.test.js && node test/gui.test.js && node test/advisor.test.js"},"devDependencies":{"jsdom":"^30.1.3"}}
+{
+  "name": "igpas",
+  "version": "0.8.0",
+  "private": true,
+  "description": "I.G.P.A.S — iGP Analytics & Study System (userscript studi strategi iGP Manager, tanpa build step)",
+  "license": "GPL-3.0-or-later",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node test/core.test.js && node test/snapshots.test.js && node test/mailbox.test.js && node test/gui.test.js && node test/advisor.test.js",
+    "test:verbose": "npm test --silent 2>&1 | cat",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "syntax": "node --check src/igpas.user.js",
+    "versions:check": "node scripts/check-versions.mjs",
+    "verify": "npm run syntax && npm run lint && npm run format:check && npm run versions:check && npm test",
+    "dev": "python -m http.server 8787 --directory docs",
+    "prepare": "git config core.hooksPath scripts/githooks || true"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.3",
+    "eslint": "^9.18.0",
+    "@eslint/js": "^9.18.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.4.2"
+  }
+}

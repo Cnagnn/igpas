@@ -1,0 +1,11 @@
+node_modules
+package-lock.json
+test/fixtures
+docs
+.opencode*
+
+# Userscript ini adalah artefak distribusi yang dirawat tangan: indentasi 4 spasi
+# sudah dideklarasikan di .editorconfig ([*.user.js] indent_size = 4) dan tabrakan
+# dengan printWidth default prettier akan menulis ulang ribuan baris tanpanya
+# manfaat. Konsistensinya dijaga eslint (no-undef/no-eval) + review.
+src/igpas.user.js

@@ -10,15 +10,15 @@ sebagai userscript. Terinspirasi arsitektur [A.C.A.S](https://psyyke.github.io/A
 
 ## Fitur (v0.2)
 
-| Kalkulator | Input | Output |
-|---|---|---|
-| Fuel planner | laps remaining, fuel/lap, fuel kini, reserve, kapasitas tangki | total butuh, fuel tambah, laps left on fuel, over-tank |
-| Tire projection | wear kini, wear/lap, horizon lap | tabel proyeksi wear per lap |
-| Tire life | wear kini, wear/lap, threshold | laps sampai threshold |
-| Pit window | fuel-laps left, reserve, tire-laps, margin | latest pit lap, rekomendasi, faktor pembatas |
-| Stint splitter | total laps, tire life, pit loss | jumlah stop, distribusi stint, biaya waktu |
-| **Strategy recommendation** (v0.2) | fuel-laps, tyre-laps, reserve, pit loss, margin | keputusan pit (plan/pit-soon/pit-now) + alasan |
-| **Ranking mobil/manufaktur** (v0.2) | item + rating kriteria 0–10 + bobot | skor & juara, transparan Σ(rating×bobot)/Σbobot |
+| Kalkulator                          | Input                                                          | Output                                                 |
+| ----------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------ |
+| Fuel planner                        | laps remaining, fuel/lap, fuel kini, reserve, kapasitas tangki | total butuh, fuel tambah, laps left on fuel, over-tank |
+| Tire projection                     | wear kini, wear/lap, horizon lap                               | tabel proyeksi wear per lap                            |
+| Tire life                           | wear kini, wear/lap, threshold                                 | laps sampai threshold                                  |
+| Pit window                          | fuel-laps left, reserve, tire-laps, margin                     | latest pit lap, rekomendasi, faktor pembatas           |
+| Stint splitter                      | total laps, tire life, pit loss                                | jumlah stop, distribusi stint, biaya waktu             |
+| **Strategy recommendation** (v0.2)  | fuel-laps, tyre-laps, reserve, pit loss, margin                | keputusan pit (plan/pit-soon/pit-now) + alasan         |
+| **Ranking mobil/manufaktur** (v0.2) | item + rating kriteria 0–10 + bobot                            | skor & juara, transparan Σ(rating×bobot)/Σbobot        |
 
 Profil setup per sirkuit tersimpan lokal (GM storage) dan dirender langsung
 di **Command Center**. Sejak v0.7.0, tab iGP **tidak lagi 100% senyap**:
@@ -28,19 +28,19 @@ userscript menambahkan **Advisor in-page** di halaman studi (lihat di bawah)
 **Autoload akun, mobil & supply (v0.4.0 → v0.6.2)** — snapshot dimuat **otomatis
 setiap Command Center dibuka** (dan saat kembali ke tab itu dengan jeda ≥30 dtk):
 satu permintaan **baca-saja per aktivasi** ke tab iGP — bukan polling halaman
-game. Seksi **Account & Car Snapshot**: klik *Capture now* untuk menyegarkan
-kapan pun (header akun = semua halaman; atribut mobil = halaman *Cars* saja):
+game. Seksi **Account & Car Snapshot**: klik _Capture now_ untuk menyegarkan
+kapan pun (header akun = semua halaman; atribut mobil = halaman _Cars_ saja):
 nama/level/rank/saldo/token, 8 atribut mobil, design points, bonus supplier, id
 supplier engine/fuel/tyre. **Capture supply (v0.5.0)**: buka dialog Supply di
-halaman *Cars* (klik tile Engines/Fuel/Tyres — Anda yang membukanya) lalu klik
-*Capture supply* → snapshot supplier aktif + semua alternatif (bonus stat &
+halaman _Cars_ (klik tile Engines/Fuel/Tyres — Anda yang membukanya) lalu klik
+_Capture supply_ → snapshot supplier aktif + semua alternatif (bonus stat &
 biaya per balapan, id gambar + eId) untuk engine, fuel, dan tyres — tersimpan
 per tipe (merge). Gate-nya **dialog terbuka** (`.supplyDialog`), bukan URL —
 asal dialog Supply tampil di tab iGP, capture bekerja dari halaman/varian URL
 mana pun. **Capture manufacturers (v0.6.2)**: buka halaman
-*Manufacturers* (`p=manufacturers`) di tab iGP — tab **engines** atau
+_Manufacturers_ (`p=manufacturers`) di tab iGP — tab **engines** atau
 **chassis**, keduanya selalu terbaca karena kedua tabel ada di DOM — lalu klik
-*Capture manufacturers* → snapshot daftar engine (name, rating, biaya/balapan,
+_Capture manufacturers_ → snapshot daftar engine (name, rating, biaya/balapan,
 stats terlihat/disembunyikan, customers) & chassis (name, rating, customers)
 plus total halaman pager. **Deteksi berbasis DOM, bukan URL** — ketiga bentuk
 URL bekerja sama: `…/app/p=manufacturers`, `…&tab=engines`, dan `…&tab=chassis`
@@ -63,10 +63,11 @@ Struktur ala A.C.A.S: **tab 1** GUI Command Center (ter-host GitHub Pages),
    **Connection** tab 1 menampilkan badge sensor begitu tab iGP menjawab.
 3. Di GUI: panel **Strategy Recommendations** dan **Data Lab**
    (ranking mobil & manufaktur) siap dipakai. Seksi **Account & Car Snapshot**
-   **autoload** saat halaman dibuka (v0.5.1); **Capture now** / *Request data
-   from tabs* tetap tersedia untuk menyegarkan manual.
+   **autoload** saat halaman dibuka (v0.5.1); **Capture now** / _Request data
+   from tabs_ tetap tersedia untuk menyegarkan manual.
 
 Fallback dev lokal (opsional):
+
 ```bash
 python3 -m http.server 8787 -d docs   # lalu buka http://localhost:8787/ (landing) atau /app/
 ```
@@ -79,7 +80,7 @@ python3 -m http.server 8787 -d docs   # lalu buka http://localhost:8787/ (landin
 
 Semua angka berasal dari **input Anda sendiri** — tidak ada asumsi data game.
 
-## Advisor in-page (v0.7.0, diperluas v0.7.3–0.7.4)
+## Advisor in-page (v0.7.0, diperluas v0.7.3–0.8.0)
 
 Userscript kini menempel **panel rekomendasi langsung di halaman iGP** yang
 Anda buka — hanya di halaman **studi** (`#pageId` `cars`, `manufacturers`,
@@ -141,6 +142,51 @@ Develop/Design) bisa didukung advisor. Tidak ada UI yang ditambahkan ke
 halaman oleh fitur ini dan tidak ada pengiriman otomatis; Anda yang
 memilih menempelkan hasilnya.
 
+## Perbandingan keputusan (v0.8.0)
+
+Pertanyaan "staff/driver saya **lebih bagus, lebih buruk, atau sama** dengan
+yang ada di bursa transfer?" dijawab sebagai **verdict eksplisit** di dua tempat:
+
+- **Command Center → Decision Compare** — panel yang membandingkan seluruh
+  roster (driver + staff CD/TD/DR) dan supplier dengan pilihan di luar. Tombol
+  _Ambil roster_ (tab iGP di halaman **Drivers & Staff**) dan _Ambil pasar_
+  (tab iGP di halaman **Transfers**) mengisi snapshot; _Bandingkan sekarang_
+  me-render ulang panel. Ringkasan di atas tabel menunjukkan berapa baris yang
+  lebih bagus / lebih buruk / sama / tak terbaca.
+- **Advisor in-page** — panel banding melekat di halaman **Teams**
+  (roster vs pasar), **Transfers** (pasar vs roster Anda), dan di dialog
+  **Supply** (supplier aktif vs alternatif).
+
+Cara verdict dihitung (semuanya transparan dan selalu berlabel
+**estimasi — bukan rumus game**):
+
+| Simbol        | Arti                                                         |
+| ------------- | ------------------------------------------------------------ |
+| ▲ lebih bagus | nilai Anda di atas pembanding (atau biaya Anda di bawahnya)  |
+| ▼ lebih buruk | nilai Anda di bawah pembanding (atau biaya Anda di atasnya)  |
+| ≈ sama        | selisih ≤ 2% (toleransi bisa diatur pemanggil)               |
+| ? tak terbaca | salah satu sisi tidak menampilkan angka — **tidak dikarang** |
+
+Dua sumbu dilaporkan terpisah: **rating** (pembanding = nilai tertinggi di
+pasar; naik = lebih bagus) dan **biaya per balapan** (pembanding = termurah;
+turun = lebih bagus). Verdict akhir memakai sumbu rating bila kedua sisi punya
+angka, selainnya biaya. Peran dinormalisasi (`Chief Designer` ↔ `CD`) agar
+roster halaman Teams sebanding dengan kode di halaman Transfers.
+
+**Soal angkanya — jujur:** sisi rating memakai _indeks 12-stat_ (rata-rata 12
+angka CSV pada kolom rating game). Bentuk angka ini identik di kedua halaman
+sehingga bisa dibandingkan, **tetapi ini BUKAN overall game** — game
+membulatkan tiap stat, jadi hasilnya beda tipis dari kolom _Overall/Fee_.
+Kartu staff di halaman Teams hanya menampilkan bintang (tanpa CSV), sehingga
+baris itu umumnya **"tak terbaca"** di sumbu rating dan verdict-nya jatuh ke
+sumbu gaji — panel menyebut jumlahnya terang-terangan. Fee tanda tangan
+ditampilkan sebagai info saja (tidak dinilai), karena biaya sekali bayar tidak
+sebanding dengan gaji per balapan.
+
+Semuanya tetap **read-only**: tidak ada klik/submit di elemen game, tidak ada
+jaringan, dan panel advisor in-page **tidak menambah permintaan mailbox** —
+ia membaca snapshot yang sudah Anda ambil lewat tombol Capture.
+
 ## Instal (dev)
 
 1. Pasang Tampermonkey/Violentmonkey.
@@ -170,6 +216,36 @@ npm install        # dev deps (jsdom)
 npm test           # core + snapshots + mailbox + gui
 node --check src/igpas.user.js
 ```
+
+## Quality & CI
+
+Satu perintah gate penuh:
+
+```bash
+npm run verify     # syntax + lint + format:check + versions:check + npm test
+```
+
+| Gate         | Perintah                 | Catatan                                            |
+| ------------ | ------------------------ | -------------------------------------------------- |
+| Syntax       | `npm run syntax`         | `node --check src/igpas.user.js`                   |
+| Lint         | `npm run lint`           | `eslint .` — fix: `npm run lint:fix`               |
+| Format       | `npm run format:check`   | `prettier --check .` — fix: `npm run format`       |
+| Version sync | `npm run versions:check` | cek `@version` + `const VERSION` vs `package.json` |
+| Tests        | `npm test`               | 126 tests                                          |
+
+CI (`ci.yml`) menjalankan semua gate + guard userscript
+(`fetch`/`XHR`/`GM_xmlhttpRequest`/`eval`/`unsafeWindow` harus 0 di `src/`).
+
+Pages (`pages.yml`) hanya deploy `docs/` setelah `verify` hijau.
+Release (`release.yml`) terpicu pada tag `v*.*.*` dan memvalidasi tag vs `package.json`.
+
+Husky opsional lokal:
+
+```bash
+npm run prepare   # aktifkan pre-commit (syntax + lint + versions)
+```
+
+Lihat `CONTRIBUTING.md` untuk workflow adapter baru & konvensi.
 
 ## Lisensi
 

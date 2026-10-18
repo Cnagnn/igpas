@@ -102,6 +102,19 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
       `#dN-TyreLife` (JSON game), push level `select[name=pushLevel]`. Tanpa
       aritmetika baru di luar model v0.7.3; disiplin read-only & tab Race live
       bersih dijaga test yang sama.
+    - **v0.8.0 - panel perbandingan keputusan (permintaan user)**: advisor &
+      Command Center kini menampilkan verdict **lebih bagus / lebih buruk /
+      sama** roster & supplier aktif terhadap pilihan di luar (pasar Transfers,
+      alternatif dialog Supply). Sumber angka **hanya kolom/atribut yang
+      memang dirender game** (`data-overall`, `data-sort` fee/wage, CSV
+      `data-driver`/`data-staff` pada kolom rating); sisi yang tidak
+      menampilkan angka ditulis **"tak terbaca"** — tidak pernah dikarang agar
+      verdict bisa keluar. Panel roster-vs-pasar membaca **snapshot yang sudah
+      ada** (hasil tombol Capture CLI user) — advisor in-page tidak menambah
+      permintaan mailbox apa pun. Indeks 12-stat dari CSV adalah **heuristik
+      eksplisit** (CSV dibulatkan per stat oleh game, jadi angkanya beda tipis
+      dari kolom Overall/Fee) dan selalu dilabeli "bukan overall game"; seluruh
+      verdict tetap **estimasi — bukan rumus game**, keputusan transfer milik user.
     - Tanpa distribusi ulang data orang lain; snapshot hanya di storage browser user.
     - Bukan: background polling halaman game, server-side scraping, atau pembacaan
       data race LIVE (lap/posisi/fuel saat sesi berjalan, kapan pun) — panel race
@@ -115,14 +128,15 @@ EULA (/eula) juga terincorporate via ToS § I — direktur saat menyentuh "the S
   `@require` **0**; `unsafeWindow` **0** (`node test`, `node --check`, audit 2026-10-17).
 - Mailbox polling hanya membaca **GM storage kita sendiri** (`igpas:mb:*`) di browser
   user — bukan trafik/menuju server iGP.
-- Adapter v0.4.0–v0.7.4: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
+- Adapter v0.4.0–v0.8.0: `querySelectorAll`/`textContent`/`getAttribute` saja — tanpa klik,
   tanpa `fetch`, tanpa XHR, tanpa akses `unsafeWindow`. Fixture pengujian dari DOM
-  halaman nyata yang disanitasi (`test/fixtures/*.html`); suite: 51 core + 24 snapshot
+  halaman nyata yang disanitasi (`test/fixtures/*.html`); suite: 63 core + 24 snapshot
   (akun, mobil, supply, manufacturers, staff, transfers, race setup/strategy) +
-  6 mailbox + 8 GUI + 16 advisor (jsdom) = **105**.
-- Version: userscript kini 0.7.4 (estimasi setup & strategi pra-balapan di tab
-  Setup/Strategy diperkaya data practice — arah label game, umur ban, push level,
-  fuel presisi — sumber = capture live tersanitasi; tab Race live tetap tanpa UI;
+  6 mailbox + 14 GUI + 19 advisor (jsdom) = **126**.
+- Version: userscript kini 0.8.0 (panel perbandingan keputusan roster/supplier vs
+  pasar: verdict lebih bagus / lebih buruk / sama dari angka DOM yang benar-benar
+  tampil; angka yang tidak tampil ditulis "tak terbaca", tidak dikarang; seluruh
+  verdict berlabel estimasi — bukan rumus game; tab Race live tetap tanpa UI;
   zero automation & network); landing/etika disclaimer diperbarui pada commit terkait.
 
 ## Rekomendasi yang belum dilakukan (kembali ke user)

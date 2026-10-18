@@ -1,0 +1,14 @@
+#!/bin/sh
+# Local pre-commit guard — CI is source of truth.
+# Enable: npm run prepare  (sets git config core.hooksPath)
+if ! command -v npm >/dev/null 2>&1; then
+  echo "[pre-commit] npm not found — skip"
+  exit 0
+fi
+echo "[pre-commit] syntax..."
+npm run syntax --silent || exit 1
+echo "[pre-commit] lint..."
+npm run lint --silent || exit 1
+echo "[pre-commit] versions..."
+node scripts/check-versions.mjs || exit 1
+echo "[pre-commit] OK"

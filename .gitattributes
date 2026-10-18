@@ -1,0 +1,17 @@
+# Normalisasi line-ending: LF di repo, checkout sesuai OS
+* text=auto eol=lf
+
+# Pastikan userscript & source tetap LF
+*.js text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Binary — jangan di-diff
+*.png binary
+*.jpg binary
+*.webp binary
