@@ -187,8 +187,11 @@ mengubah strategi/tabrakan dengan input game.
 
 ## 5. Etika & batasan
 
-- Peringatan ToS iGP Manager tetap berlaku untuk *fitur apapun yang aktif saat
-  balapan*. Kerangka ini dengan sengaja dibuat tidak mampu berinteraksi
-  dengan elemen game saat balapan.
+- **Risiko ToS milik user sepenuhnya.** `docs/COMPLIANCE.md` dicabut atas
+  keputusan owner: user yang memakai userscript ini bertanggung jawab sendiri
+  apabila akun terkena banned/pelanggaran ToS iGP Manager — bukan menyalahkan
+  projek ini. Badge inline halaman Cars menempel di dalam DOM game (append
+  badge milik sendiri; nilai & bar game tidak diubah), yang secara literal
+  masuk area "scripts" di ToS § V.J.
 - Lisensi GPL-3.0-or-later mengikuti semangat A.C.A.S; kode dari A.C.A.S **tidak
   disalin** — hanya pola arsitektur (dari analisis, bukan dari copy kode).

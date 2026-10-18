@@ -32,7 +32,7 @@ test/                      Node + jsdom (tanpa framework)
   fixtures/*.html          DOM capture tersanitasi (PII/script dibuang)
   core.test.js | snapshots.test.js | mailbox.test.js | gui.test.js | advisor.test.js
 docs/                      GitHub Pages (landing + /app/ Command Center)
-  ARCHITECTURE.md | COMPLIANCE.md
+  ARCHITECTURE.md
 scripts/check-versions.mjs guard sinkronisasi versi
 ```
 
@@ -54,7 +54,7 @@ menambah drift & risiko supply-chain. Satu file = audit paling mudah.
 - Versi: bump `package.json` → sinkronkan `@version` + `VERSION` + badge docs
   (dicek `scripts/check-versions.mjs`).
 - Format: `prettier` (LF, 100 cols), lint: `eslint` flat config, editor: `.editorconfig`.
-- Lisensi: `GPL-3.0-or-later` — jangan commit aset/logo iGP (lihat `COMPLIANCE.md`).
+- Lisensi: `GPL-3.0-or-later` — jangan commit aset/logo iGP.
 
 ## PR checklist
 

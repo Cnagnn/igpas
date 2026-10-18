@@ -6,7 +6,9 @@ sebagai userscript. Terinspirasi arsitektur [A.C.A.S](https://psyyke.github.io/A
 
 > ⚠️ **Alat studi — bukan alat balapan.** Tidak ada otomasi, tidak ada aksi ke
 > situs, tidak membantu kendali saat balapan live. Gunakan untuk analisis,
-> latihan berpikir strategi, dan evaluasi post-race. Patuhi ToS iGP Manager.
+> latihan berpikir strategi, dan evaluasi post-race. Risiko banned/pelanggaran
+> ToS iGP Manager **ditanggung penuh oleh user** — projek ini tidak bertanggung
+> jawab atas akun anda.
 
 ## Fitur (v0.2)
 
@@ -22,8 +24,10 @@ sebagai userscript. Terinspirasi arsitektur [A.C.A.S](https://psyyke.github.io/A
 
 Profil setup per sirkuit tersimpan lokal (GM storage) dan dirender langsung
 di **Command Center**. Sejak v0.7.0, tab iGP **tidak lagi 100% senyap**:
-userscript menambahkan **Advisor in-page** di halaman studi (lihat di bawah)
-— elemen milik sendiri, melekat di halaman, tanpa menyentuh elemen game.
+userscript menambahkan **Advisor in-page** di halaman studi (lihat di bawah).
+Di halaman Cars, badge usulan DP ditempel **di dalam baris asli tabel game**
+(append badge milik sendiri; nilai & bar game tidak diubah). Risiko ToS atas
+penempelan DOM ini **ditanggung user sepenuhnya**.
 
 **Autoload akun, mobil & supply (v0.4.0 → v0.6.2)** — snapshot dimuat **otomatis
 setiap Command Center dibuka** (dan saat kembali ke tab itu dengan jeda ≥30 dtk):
