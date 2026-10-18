@@ -965,8 +965,8 @@
     };
 
     /**
-     * Adapter read-only halaman iGP (Fase 3 — dipetakan dari DOM halaman nyata).
-     * Aturan main (ToS § V.F/V.J):
+     * Adapter halaman iGP (Fase 3 — dipetakan dari DOM halaman nyata).
+     * Aturan main (risiko ToS ditanggung user — COMPLIANCE.md dicabut):
      *  - HANYA membaca; tidak pernah menulis, mengklik, atau mengirim form.
      *  - Berjalan HANYA saat GUI meminta (read-once per klik Capture), tanpa polling.
      *  - pageId gate: adapter mobil hanya aktif di halaman Cars (p=cars) — bukan
@@ -2365,6 +2365,8 @@
             '.igpas-adv-axis{font-weight:400;opacity:.8}',
             '.igpas-adv-refname{color:#bcd8d2}',
             '.igpas-adv-cmp{margin-top:3px;font-size:10px;color:#bcd8d2}',
+            '.igpas-adv-inline{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:8px;background:#8fd6c6;color:#0b262b;font-size:10px;font-weight:700;white-space:nowrap;vertical-align:middle}',
+            '.igpas-adv-inline-head{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:8px;background:transparent;border:1px solid #8fd6c6;color:#8fd6c6;font-size:10px;font-weight:700;letter-spacing:.08em;vertical-align:middle}',
             '.igpas-adv-panel tr.igpas-adv-row-better td:first-child{border-left:3px solid #1f7a5c}',
             '.igpas-adv-panel tr.igpas-adv-row-worse td:first-child{border-left:3px solid #8c2f2f}',
             '.igpas-adv-panel tr.igpas-adv-row-unknown td{color:#a9a9a9}',
@@ -2373,6 +2375,7 @@
             'border:2px solid #0b262b;border-radius:20px;background:#0e2a30;color:#eaf6f3;',
             'font:700 12px Arial,Helvetica,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3)}',
             'body.igpas-adv-hide .igpas-adv-panel{display:none!important}',
+            'body.igpas-adv-hide .igpas-adv-inline,body.igpas-adv-hide .igpas-adv-inline-head{display:none!important}',
         ].join('');
 
         function styleEnsure() {
@@ -2439,38 +2442,71 @@
         }
         const scoreTxt = n => (n == null ? '—' : (Math.round(n * 10) / 10) + '%');
 
-        /* Halaman Cars: prioritas alokasi design points vs benchmark liga. */
+        /* Halaman Cars: prioritas alokasi design points vs benchmark liga.
+         * IN-PLACE (tanpa section terpisah saat sukses): badge usulan DP
+         * disisipkan ke dalam baris ASLI game (#wrap-{key} .attribute-rating-header).
+         * Hanya append node milik sendiri (.igpas-adv-inline) — nilai & bar game
+         * tidak pernah diubah/dihapus. Idempoten: bersihkan dulu sebelum sisip. */
         function mountDesign() {
-            const id = PREFIX + '-design';
+            const id = PREFIX + '-design'; // panel fallback hanya untuk jalur gagal
+            const cleanInline = () => {
+                const olds = document.querySelectorAll('.igpas-adv-inline, .igpas-adv-inline-head');
+                for (const el of olds) el.remove();
+            };
             const anchor = (pageId() === 'cars') ? document.getElementById('carAttributesDisplay') : null;
-            if (!anchor) { removeIfAny([id]); return; }
+            if (!anchor) { cleanInline(); removeIfAny([id]); return; }
             const data = IgpCarsAdapter.captures(document);
             const res = IGPCore.designPriority({
                 attrs: data && data.attrs,
                 best: data && data.best,
                 designPoints: data && data.designPoints,
             });
-            let body = '';
-            let note = '';
-            if (res.ok) {
-                const rows = res.values.ranked.map(r => {
-                    const best = r === res.values.ranked[0];
-                    return '<tr' + (best ? ' class="igpas-adv-best"' : '') + '>' +
-                        '<td>' + esc(r.label) + '</td><td>' + esc(r.val) + '</td>' +
-                        '<td>' + (r.max == null ? '—' : esc(r.max)) + '</td>' +
-                        '<td>' + (r.gap == null ? '—' : esc(r.gap)) + '</td>' +
-                        '<td>' + (r.sharePct != null ? r.sharePct + '%' : '—') + '</td></tr>';
-                }).join('');
-                body = '<table><thead><tr><th>Atribut</th><th>Nilai</th><th>Max liga</th><th>Gap</th><th>Usulan DP</th></tr></thead><tbody>' +
-                    rows + '</tbody></table>';
-                note = 'Total DP: ' + (res.values.designPoints != null ? esc(res.values.designPoints) : '?') +
-                    ' · heuristik selisih terhadap max liga — <strong>estimasi, bukan rumus game</strong>; ' +
-                    'porsi % = share gap terbesar. Uji hasil alokasimu sendiri di race time non-kritis.' +
-                    (res.values.unbenchmarked ? ' · ' + res.values.unbenchmarked + ' atribut tanpa benchmark liga.' : '');
-            } else {
-                note = esc(res.error) + '.';
+            if (!res.ok) {
+                // Gagal jujur: tanpa angka tidak ada badge; tampilkan note kecil
+                // (satu-satunya kasus panel terpisah masih dipakai di halaman Cars).
+                cleanInline();
+                anchor.insertAdjacentElement('afterend',
+                    panelEl(id, 'I.G.P.A.S · design points', 'Prioritas alokasi DP (estimasi)', '', esc(res.error) + '.'));
+                return;
             }
-            anchor.insertAdjacentElement('afterend', panelEl(id, 'I.G.P.A.S · design points', 'Prioritas alokasi DP (estimasi)', body, note));
+            // Sukses: pastikan tidak ada sisa panel error + badge lama.
+            removeIfAny([id]);
+            cleanInline();
+            const dpTotal = res.values.designPoints;
+            // Legenda ringkas di header game (append, bukan ganti isi).
+            try {
+                const head = document.querySelector('#carAttributes .c-head h2, #carAttributes .c-head');
+                if (head && !head.querySelector('.igpas-adv-inline-head')) {
+                    const legend = document.createElement('span');
+                    legend.className = 'igpas-adv-inline-head';
+                    legend.textContent = 'I.G.P.A.S · usulan DP (estimasi)';
+                    legend.title = 'Total DP: ' + (dpTotal != null ? dpTotal : '?') +
+                        ' · porsi % = share gap ke Max liga — estimasi, bukan rumus game.' +
+                        (res.values.unbenchmarked ? ' ' + res.values.unbenchmarked + ' atribut tanpa benchmark liga.' : '');
+                    head.appendChild(legend);
+                }
+            } catch { /* legenda opsional — badge per baris tetap jalan */ }
+            res.values.ranked.forEach((r, i) => {
+                if (r.key == null || !/^[A-Za-z0-9_-]+$/.test(String(r.key))) return;
+                let header = null;
+                try {
+                    const row = document.getElementById('wrap-' + r.key);
+                    header = row ? row.querySelector('.attribute-rating-header') : null;
+                } catch { header = null; }
+                if (!header) return;
+                const share = (r.sharePct != null ? r.sharePct : 0);
+                const dpEst = (dpTotal != null) ? Math.round(dpTotal * share / 100) : null;
+                const badge = document.createElement('span');
+                badge.className = 'igpas-adv-inline';
+                badge.textContent = '#' + (i + 1) + ' · ' +
+                    (dpEst != null ? dpEst + ' DP (' + share + '%)' : share + '%');
+                badge.title = 'Prioritas #' + (i + 1) + ' — ' + r.label + ': ' + r.val +
+                    ' → max liga ' + (r.max == null ? '—' : r.max) +
+                    ' (gap ' + (r.gap == null ? '—' : r.gap) + '). ' +
+                    'Usulan ' + (dpEst != null ? '±' + dpEst + ' DP dari ' + dpTotal + ' DP' : share + '% porsi gap') +
+                    ' — estimasi, bukan rumus game.';
+                header.appendChild(badge);
+            });
         }
 
         /* Dialog Supply (engine/fuel/tyre): bandingkan supplier aktif vs alternatif. */
@@ -3090,6 +3126,7 @@
                     PREFIX + '-tx-driver', PREFIX + '-tx-staff', PREFIX + '-tx-compare',
                     PREFIX + '-rsetup', PREFIX + '-rsetup-wrap',
                     PREFIX + '-rstrategy', PREFIX + '-rstrategy-wrap']);
+                for (const el of document.querySelectorAll('.igpas-adv-inline, .igpas-adv-inline-head')) el.remove();
                 return;
             }
             styleEnsure();
@@ -3104,10 +3141,11 @@
             } catch (e) {
                 if (typeof console !== 'undefined') console.warn('IGPAS advisor', e); // jangan pernah merusak halaman game
             }
-            // Toggle hanya tampil bila ada panel sungguhan — halaman race TANPA
-            // wadah tab Setup/Strategy (mis. konteks race live) dibiarkan 100%
-            // tanpa jejak UI, termasuk tanpa tombol advisor.
-            if (!document.querySelector('.igpas-adv-panel')) {
+            // Toggle hanya tampil bila ada UI sungguhan (panel ATAU badge inline
+            // design) — halaman race TANPA wadah tab Setup/Strategy
+            // (mis. konteks race live) dibiarkan 100% tanpa jejak UI,
+            // termasuk tanpa tombol advisor.
+            if (!document.querySelector('.igpas-adv-panel, .igpas-adv-inline')) {
                 removeIfAny([PREFIX + '-toggle']);
                 return;
             }
@@ -3158,7 +3196,7 @@
                 // Klik di dalam UI milik sendiri sudah ditangani langsung (toggle →
                 // applyHidden) — re-render penuh tidak menambah apa-apa.
                 if (ev && ev.type === 'click' && ev.target && typeof ev.target.closest === 'function') {
-                    if (ev.target.closest('.igpas-adv-panel, #' + PREFIX + '-toggle')) return;
+                    if (ev.target.closest('.igpas-adv-panel, .igpas-adv-inline, #' + PREFIX + '-toggle')) return;
                 }
                 if (pending) clearTimeout(pending);
                 pending = setTimeout(() => { pending = null; renderAll(); }, 250);

@@ -1,6 +1,6 @@
 // Test Advisor in-page (v0.7.0) — userscript sebenarnya atas fixture DOM nyata
 // (jsdom, runScripts outside-only). Verifikasi:
-//   - panel design (Cars) memakai benchmark leagueDesignData + label "estimasi";
+//   - badge design inline (Cars) di baris asli game + label "estimasi";
 //   - panel supply di dalam .supplyDialog saat dialog terbuka;
 //   - panel ranking engine+chassis di halaman Manufacturers;
 //   - TIDAK ada jejak UI advisor di halaman lain (race dsb.);
@@ -58,22 +58,23 @@ function t(name, fn) {
 
 const URL_IGP = "https://www.igpmanager.com/app/p=cars";
 
-t("Design advisor: panel tampil di halaman Cars dgn benchmark max liga + label estimasi", () => {
+t("Design advisor: badge inline di baris asli Cars + label estimasi", () => {
   const s = bootOn(load("cars.html"), URL_IGP);
-  const panel = s.doc.getElementById("igpas-adv-design");
-  assert(panel, "panel design tidak ada");
-  assert(
-    panel.previousElementSibling && panel.previousElementSibling.id === "carAttributesDisplay",
-    "panel tidak ditempel tepat setelah atribut mobil"
-  );
-  const txt = panel.textContent;
-  assert(
-    txt.indexOf("Max liga") >= 0,
-    "kolom max liga tidak tampil (benchmark leagueDesignData tidak terbaca)"
-  );
-  assert(/estimasi/i.test(txt), "label estimasi tidak tampil");
-  assert(/bukan rumus game/i.test(txt), "batasan heuristik tidak dinyatakan");
-  assert(/Usulan DP/i.test(txt), "kolom usulan DP tidak tampil");
+  // Sukses = tanpa section terpisah; rekomendasi menempel di baris game.
+  assert(!s.doc.getElementById("igpas-adv-design"), "panel terpisah masih ada (harusnya inline)");
+  const badges = s.doc.querySelectorAll('#carAttributesDisplay .attribute-rating-header .igpas-adv-inline');
+  assert(badges.length === 8, "badge inline harus 8 (satu per atribut), dapat " + badges.length);
+  const texts = Array.prototype.map.call(badges, b => b.textContent);
+  assert(texts.some(x => /^#1 ·/.test(x)), "badge peringkat 1 tidak ada (dapat: " + texts.join(' | ') + ")");
+  assert(texts.every(x => /^#\d+ ·/.test(x)), "format badge harus '#n · …' (dapat: " + texts.join(' | ') + ")");
+  const first = s.doc.querySelector('#carAttributesDisplay .attribute-row .igpas-adv-inline');
+  assert(/estimasi/i.test(first.title), "tooltip badge tanpa label estimasi");
+  assert(/max liga/i.test(first.title), "tooltip badge tanpa max liga");
+  const legend = s.doc.querySelector('#carAttributes .igpas-adv-inline-head');
+  assert(legend, "legenda header tidak ada");
+  assert(/estimasi/i.test(legend.textContent), "legenda tanpa label estimasi");
+  // Node game asli tidak berubah: nilai & bar tetap milik game.
+  assert(s.doc.querySelector('#wrap-acceleration .ratingVal').textContent.trim() === '53', "nilai game ikut berubah");
   s.close();
 });
 
