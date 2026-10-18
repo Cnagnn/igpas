@@ -681,7 +681,7 @@
                             return { boost: byClass('block-green'), weaken: byClass('block-red'), special: specials };
                         }
                     }
-                } catch (e) { /* fallback regex */ }
+                } catch { /* fallback regex */ }
             }
             const grab = pattern => {
                 const out = [];
@@ -825,10 +825,10 @@
     const memStore = new Map();
     const gm = typeof GM_getValue === 'function'
         ? {
-            get: (k, d) => { try { return GM_getValue(k, d); } catch (e) { return d; } },
-            set: (k, v) => { try { GM_setValue(k, v); } catch (e) { memStore.set(k, v); } },
-            del: (k) => { try { GM_deleteValue(k); } catch (e) { memStore.delete(k); } },
-            keys: () => { try { return GM_listValues() || []; } catch (e) { return []; } },
+            get: (k, d) => { try { return GM_getValue(k, d); } catch { return d; } },
+            set: (k, v) => { try { GM_setValue(k, v); } catch { memStore.set(k, v); } },
+            del: (k) => { try { GM_deleteValue(k); } catch { memStore.delete(k); } },
+            keys: () => { try { return GM_listValues() || []; } catch { return []; } },
         }
         : {
             get: (k, d) => (memStore.has(k) ? memStore.get(k) : d),
@@ -1016,7 +1016,7 @@
             const dpEl = doc.querySelector('#carsDesignPoints');
             const host = doc.querySelector('#carAttributes');
             let best = {};
-            try { best = JSON.parse(txt(doc, '#leagueDesignData') || '{}') || {}; } catch (e) { best = {}; }
+            try { best = JSON.parse(txt(doc, '#leagueDesignData') || '{}') || {}; } catch { best = {}; }
             const bonuses = [];
             for (const s of doc.querySelectorAll('#carAttributesBonuses .tooltip')) {
                 const m = (s.getAttribute('data-tip') || '').match(/^([A-Za-z ]+):\s*([+-]?\d+)$/);
@@ -1501,7 +1501,7 @@
             const jsonOf = id => {
                 const el = doc.getElementById(id);
                 if (!el) return null;
-                try { return JSON.parse(el.textContent || ''); } catch (e) { return null; }
+                try { return JSON.parse(el.textContent || ''); } catch { return null; }
             };
             return {
                 raceLaps: numOrNull(textOf('raceLaps')),
@@ -1553,7 +1553,7 @@
                     try {
                         const pid = target.getElementById ? target.getElementById('pageId') : null;
                         if (pid && pid.value) where = ' (halaman aktif: ' + pid.value + ')';
-                    } catch (e2) { /* biarkan tanpa konteks */ }
+                    } catch { /* biarkan tanpa konteks */ }
                     return { ok: false, error: 'halaman tidak cocok untuk ' + kind + where };
                 }
                 return { ok: true, data };
@@ -1625,7 +1625,7 @@
     const UI = (() => {
         let fields = []; // input elemen kalkulator (mode embedded)
 
-        const esc = s => String(s).replace(/[&<>"']/g, c =>
+        const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
             ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
         function calcHtml(calc) {
@@ -2127,11 +2127,11 @@
             const mfr = Storage.getSnapshot('manufacturer-data');
             const sCount = s ? ['engine', 'fuel', 'tyre'].filter(tp => s.data && s.data[tp]).length : 0;
             const mfrCount = mfr ? ['engines', 'chassis'].filter(k => mfr.data && mfr.data[k] && mfr.data[k].length).length : 0;
-            if (badge) badge.textContent =
+            if (badge) {badge.textContent =
                 (a ? 'akun ✓' : 'akun –') + ' · ' + (c ? 'mobil ✓' : 'mobil –') +
                 ' · supply ' + sCount + '/3' + ' · mfr ' + mfrCount + '/2' +
                 ' · tim ' + (Storage.getSnapshot('staff-data') ? '✓' : '–') +
-                ' · pasar ' + (Storage.getSnapshot('transfers-data') ? '✓' : '–');
+                ' · pasar ' + (Storage.getSnapshot('transfers-data') ? '✓' : '–');}
 
             if (a) {
                 acc.innerHTML =
@@ -2208,35 +2208,35 @@
             const cap = $('igpas-snap-capture');
             if (cap) cap.addEventListener('click', () => requestCollect(['account-data', 'car-data'], 'Capture'));
             const capSup = $('igpas-snap-capture-supply');
-            if (capSup) capSup.addEventListener('click', () =>
-                requestCollect(['supply-data'], 'Capture supply', ' — buka dialog Supply dulu di tab iGP'));
+            if (capSup) {capSup.addEventListener('click', () =>
+                requestCollect(['supply-data'], 'Capture supply', ' — buka dialog Supply dulu di tab iGP'));}
             const capMfr = $('igpas-snap-capture-manufacturers');
-            if (capMfr) capMfr.addEventListener('click', () =>
-                requestCollect(['manufacturer-data'], 'Capture manufacturers', ' — buka halaman Manufacturers dulu di tab iGP'));
+            if (capMfr) {capMfr.addEventListener('click', () =>
+                requestCollect(['manufacturer-data'], 'Capture manufacturers', ' — buka halaman Manufacturers dulu di tab iGP'));}
             const capTeam = $('igpas-snap-capture-staff');
-            if (capTeam) capTeam.addEventListener('click', () =>
-                requestCollect(['staff-data'], 'Capture team', ' — buka halaman Drivers & Staff dulu di tab iGP'));
+            if (capTeam) {capTeam.addEventListener('click', () =>
+                requestCollect(['staff-data'], 'Capture team', ' — buka halaman Drivers & Staff dulu di tab iGP'));}
             const capTx = $('igpas-snap-capture-transfers');
-            if (capTx) capTx.addEventListener('click', () =>
-                requestCollect(['transfers-data'], 'Capture market', ' — buka halaman Transfers dulu di tab iGP'));
+            if (capTx) {capTx.addEventListener('click', () =>
+                requestCollect(['transfers-data'], 'Capture market', ' — buka halaman Transfers dulu di tab iGP'));}
 
             // Decision Compare (v0.8.0): ambil kedua sisi lalu bandingkan.
             const cmpTeam = $('igpas-compare-capture-team');
-            if (cmpTeam) cmpTeam.addEventListener('click', () =>
-                requestCollect(['staff-data'], 'Roster', ' — buka halaman Drivers & Staff dulu di tab iGP'));
+            if (cmpTeam) {cmpTeam.addEventListener('click', () =>
+                requestCollect(['staff-data'], 'Roster', ' — buka halaman Drivers & Staff dulu di tab iGP'));}
             const cmpMarket = $('igpas-compare-capture-market');
-            if (cmpMarket) cmpMarket.addEventListener('click', () =>
-                requestCollect(['transfers-data'], 'Pasar', ' — buka halaman Transfers dulu di tab iGP'));
+            if (cmpMarket) {cmpMarket.addEventListener('click', () =>
+                requestCollect(['transfers-data'], 'Pasar', ' — buka halaman Transfers dulu di tab iGP'));}
             const cmpRun = $('igpas-compare-run');
             if (cmpRun) cmpRun.addEventListener('click', renderCompare);
 
             const clr = $('igpas-snap-clear');
-            if (clr) clr.addEventListener('click', () => {
+            if (clr) {clr.addEventListener('click', () => {
                 Storage.clearSnapshots();
                 const st = $('igpas-snap-status');
                 if (st) st.textContent = 'snapshot dihapus.';
                 renderSnapshots();
-            });
+            });}
 
             Mailbox.on('collect-result', p => {
                 const pay = (p && p.payload) || {};
@@ -2398,6 +2398,18 @@
             return el;
         }
 
+        /** Satu-satunya jalur mount ber-wrapper: ambil-atau-buat wrapper lalu pasang panel idempoten. */
+        function mountWrapped(anchor, idWrap, panel) {
+            let wrapEl = document.getElementById(idWrap);
+            if (!wrapEl) {
+                wrapEl = document.createElement('div');
+                wrapEl.id = idWrap;
+                wrapEl.style.clear = 'both'; // aman di bawah kolom float tab setup/strategy
+            }
+            wrapEl.appendChild(panel);
+            anchor.appendChild(wrapEl);
+        }
+
         function removeIfAny(ids) {
             for (const id of ids) {
                 const el = document.getElementById(id);
@@ -2412,7 +2424,7 @@
             equal: { sym: '≈', txt: 'sama', cls: 'igpas-adv-v-equal' },
             unknown: { sym: '?', txt: 'tak terbaca', cls: 'igpas-adv-v-unknown' },
         };
-        const ROLE_LABEL = { CD: 'Chief Designer', TD: 'Technical Director', DR: 'Doctor' };
+        const ROLE_LABEL = { CD: 'Chief Designer', TD: 'Technical Director', DR: 'Doctor', DRV: 'Driver' };
         function vChip(verdict, axisTxt) {
             const v = VERDICT[verdict] || VERDICT.unknown;
             return '<span class="igpas-adv-verdict ' + v.cls + '">' + v.sym + ' ' + esc(v.txt) +
@@ -2716,7 +2728,7 @@
                 } else {
                     const v = res.values;
                     const rows = v.rows.map(r => {
-                        const roleTxt = r.role === 'DRV' ? 'Driver' : (ROLE_LABEL[r.role] || r.role || '—');
+                        const roleTxt = ROLE_LABEL[r.role] || r.role || '—';
                         return '<tr class="igpas-adv-row-' + esc(r.verdict) + '">' +
                             '<td>' + esc(r.name) + '<span class="igpas-adv-tag">' + esc(roleTxt) + '</span></td>' +
                             '<td>' + vChip(r.rating.verdict, 'indeks stat') +
@@ -2894,7 +2906,7 @@
                 } else {
                     const v = res.values;
                     const rows = v.rows.map(r => {
-                        const roleTxt = r.role === 'DRV' ? 'Driver' : (ROLE_LABEL[r.role] || r.role || '—');
+                        const roleTxt = ROLE_LABEL[r.role] || r.role || '—';
                         return '<tr class="igpas-adv-row-' + esc(r.verdict) + '">' +
                             '<td>' + esc(roleTxt) + '</td>' +
                             '<td>' + esc(r.name) + '</td>' +
@@ -2994,14 +3006,7 @@
                     'bar penuh = belum dipelajari — bukan nol); selisih = sekarang − tengah bar, ' +
                     'arah semata. <strong>Estimasi — bukan rumus game</strong>.';
             }
-            let wrapEl = document.getElementById(idWrap);
-            if (!wrapEl) {
-                wrapEl = document.createElement('div');
-                wrapEl.id = idWrap;
-                wrapEl.style.clear = 'both'; // aman di bawah kolom float tab setup
-            }
-            wrapEl.appendChild(panelEl(id, 'I.G.P.A.S · race setup', 'Estimasi ideal setup (tab Setup)', body, note));
-            anchor.appendChild(wrapEl);
+            mountWrapped(anchor, idWrap, panelEl(id, 'I.G.P.A.S · race setup', 'Estimasi ideal setup (tab Setup)', body, note));
         }
 
         /* Tab Strategy halaman pra-balapan (v0.7.3, v0.7.4: push + umur ban): ringkas stint/fuel/two-tyre. */
@@ -3071,14 +3076,7 @@
                     'Panel = snapshot halaman saat dimuat/di-render ulang; jika Anda mengubah stint, ' +
                     'buka ulang tab agar perhitungan ikut baru. <strong>Estimasi — bukan rumus game</strong>.';
             }
-            let wrapEl = document.getElementById(idWrap);
-            if (!wrapEl) {
-                wrapEl = document.createElement('div');
-                wrapEl.id = idWrap;
-                wrapEl.style.clear = 'both';
-            }
-            wrapEl.appendChild(panelEl(id, 'I.G.P.A.S · race strategy', 'Ringkasan strategi (tab Strategy)', body, note));
-            anchor.appendChild(wrapEl);
+            mountWrapped(anchor, idWrap, panelEl(id, 'I.G.P.A.S · race strategy', 'Ringkasan strategi (tab Strategy)', body, note));
         }
 
         function renderAll() {
@@ -3143,10 +3141,25 @@
 
         function start() {
             if (typeof document === 'undefined' || !document.body) return;
+            if (start.started) return; // idempoten — aman dari double DOMContentLoaded
+            start.started = true;
             renderAll();
             // Re-render dipicu aksi user (buka dialog Supply, ganti tab/pager, pindah halaman).
             let pending = null;
-            const schedule = () => {
+            const schedule = (ev) => {
+                // Ketikan di field game (chat, pencarian, dsb.) bukan sinyal navigasi —
+                // lewati agar tiap keystroke tidak memicu DOM walk penuh (7× captures).
+                // Tombol Enter di atas link/button tetap menghasilkan 'click' → tetap ke-render.
+                if (ev && ev.type === 'keydown') {
+                    const ae = document.activeElement;
+                    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' ||
+                        ae.tagName === 'SELECT' || ae.isContentEditable)) return;
+                }
+                // Klik di dalam UI milik sendiri sudah ditangani langsung (toggle →
+                // applyHidden) — re-render penuh tidak menambah apa-apa.
+                if (ev && ev.type === 'click' && ev.target && typeof ev.target.closest === 'function') {
+                    if (ev.target.closest('.igpas-adv-panel, #' + PREFIX + '-toggle')) return;
+                }
                 if (pending) clearTimeout(pending);
                 pending = setTimeout(() => { pending = null; renderAll(); }, 250);
             };
