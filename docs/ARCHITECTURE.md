@@ -43,7 +43,11 @@ pembacaan langsung artefak.
 │          rankManufacturerItems, parseTraits,        │
 │          setupAdvice, summarizeStrategy,            │
 │          numberVerdict, compareRoster,              │
-│          compareSuppliers (v0.8.0)                  │
+│          compareSuppliers (v0.8.0),                 │
+│          parseLapTime, parseUseNumber,              │
+│          formatLapTime, summarizePracticeLaps,      │
+│          recommendRaceFuel, practiceTyreLife,       │
+│          describeTrack (v0.8.2)                     │
 ├─────────────────────────────────────────────────────┤
 │ Storage  (GM_getValue/GM_setValue + fallback memori │
 │          agar bisa dites di Node)                   │
@@ -81,9 +85,10 @@ pembacaan langsung artefak.
 │          Compare di Command Center                   │
 ├─────────────────────────────────────────────────────┤
 │ AdapterRegistry (account/car/supply/manufacturers/   │
-│   staff/transfers/race-setup/race-strategy-data      │
-│   ':ready'; race-strategy ':menunggu-map' — sengaja  │
-│   manual, tanpa selector fiktif)                     │
+│   staff/transfers/race-setup/race-strategy/         │
+│   race-track-data ':ready'; race-strategy           │
+│   ':menunggu-map' — sengaja manual, tanpa           │
+│   selector fiktif)                                  │
 │          | Boot (mount sesuai peran ROLE)           │
 └─────────────────────────────────────────────────────┘
 ```
@@ -127,6 +132,7 @@ Ini meniadakan risiko "invented data" dan membuat inti bisa di-unit-test.
 | v0.7.4 | **Konsumsi data practice nyata** (user mengirim capture live DOM sesudah 1 lap practice): fixture `race.html` **diganti total** dengan rekonstruksi tersanitasi capture itu (csrf + nama/ID pihak lain + id balapan + atribut pelacak + seluruh script eksekutabel dibuang; blok `type=application/json` game dipertahankan — inerten). **Perbaikan jangkar vs DOM nyata**: cuaca dibaca dari c-head `#dNSetupWrap` (`.waterLevelText` + teks `°C` dari `.weatherTemp`; `.raceWeatherBadge` ternyata TIDAK ada di halaman praktik nyata) dan nama driver via `#setup .driverNInclude .driverName` (di DOM nyata kedua blok nama berada di `#beginner-d1Comments` — tidak ada `#beginner-d2Comments`). **Anchor baru dikonsumsi**: kelas arah label slider game (`decrease`/`increase` → kolom "Arah (game)" — kelas ini hanya muncul setelah practice; mid-bar terbukti sejalan arah komentar engineer), baris practice terakhir `#dN-Laps` (lap/ride/susp/wing/pemakaian/waktu), umur ban `#dN-TyreLife` (`{"SS":12}` → "SS ±12 lap"; `[]` = belum ada), push level `select[name=pushLevel]`, fuel/lap presisi (`2.460` → kebutuhan ±155 L, sisa 19 L ≈7.7 lap). Tanpa aritmetika baru di luar model `summarizeStrategy`; test snapshot `#race` pre/post boot + zero-UI tetap hijau; **105 test** | ✅ |
 | v0.8.0 | **Perbandingan keputusan "lebih bagus / lebih buruk / sama"** (permintaan user): helper murni `numberVerdict` (toleransi "≈ sama" eksplisit; sisi kosong → `unknown`, tidak dikarang), `compareRoster` (roster aktif vs pasar; dua sumbu dilaporkan terpisah — rating naik = bagus dengan pembanding nilai tertinggi, gaji turun = bagus dengan pembanding termurah; peran dinormalisasi `CD`/`TD`/`DR` agar label Teams sebanding dengan kode Transfers; basis verdict + jumlah sisi tak terbaca dilaporkan), `compareSuppliers` (supplier aktif vs alternatif dialog yang sama), `Utils.statIndex` (rata-rata 12 angka CSV kolom rating — **identik di kedua halaman**, dilabeli *bukan overall game* karena CSV dibulatkan per stat) & `Utils.roleCode`. Advisor: panel banding di halaman Teams (baca snapshot `staff-data`+`transfers-data`, **0 permintaan baru**), di Transfers (pasar vs roster), dan di dialog Supply (aktif vs alternatif). Command Center: kartu snapshot tim & pasar + panel Decision Compare dengan tombol ambil/bandingkan. `parseTraits` kini membuang elemen `<icon>` agar label statistik bersih. Semua verdict berlabel **estimasi — bukan rumus game**; tab Race live tetap tanpa UI. Test: 63 core + 19 advisor + 14 GUI = **126** | ✅ |
 | v0.8.1 | **Advisor penuh in-place, nol elemen tambahan** (permintaan user): seluruh panel/toggle/btn advisor dihapus — rekomendasi hanya teks + `title` pada elemen asli game (Cars/Supply/Manufacturers/Staff/Transfers). Penulisan preservasi-struktur: Transfers menulis text-node nama (link kontrak & flag hidup), Staff menulis span nama (br+span utuh). Helper `writeSelfText`/`writeFirstTextNode`/`saveTitle`/`restoreTitle`, `restoreTeamInPlace` restore-pertama sebelum captures + cleanup saat pindah halaman. Panel Setup/Strategy v0.7.3/v0.7.4 **dihentikan** (halaman `race` 100% bersih) menunggu desain in-place yang aman. Test: 63 core + 24 snapshot + 6 mailbox + 14 GUI + 14 advisor | ✅ |
+| v0.8.2 | **Pembaca perilaku track + agregasi practice in-place** (permintaan user): `race-track-data` baca READ-ONLY tabel `.raceInfoTable` di div `#race` (overtaking/bumpiness/fuel/wear % + panjang km + laps judul; **tanpa tulis ke `#race`**), `race-setup-data` kini menyimpan **seluruh riwayat** `#dNLaps` (fuel/ban/waktu per lap + numerik + detik). Helper murni `parseLapTime`/`parseUseNumber`/`formatLapTime`/`summarizePracticeLaps` (fuel/lap, tyre/lap, timelap terbaik)/`recommendRaceFuel`/`practiceTyreLife`/`describeTrack` (hint estimasi). Mount in-place: Setup = suffix ringkas di span nama driver + `title` agregasi/track/arah slider, komentar engineer `title` saja (span merah utuh); Strategy = suffix fuel need + stint di komentar + `title` rincian, input `#dNAdvancedFuel` + span `#dNTotalLaps` `title` saja (nilai game tak diubah). Restore-pertama `restoreRaceInPlace`; `#race` diverifikasi tak bertanda. Test: 71 core + 24 snapshot + 6 mailbox + 14 GUI + 17 advisor | ✅ |
 | — | race-strategy: sengaja manual selamanya | ⏳ |
 | v0.3 | (Opsional, disetujui dulu) adapter DOM read-only — halaman **studi**, bukan race; probe multi-selector + timeout dengan pesan jelas saat situs berubah. **Prasyarat: sesi mapping halaman nyata + REA `analyze_web_bundle`** | ✅ (v0.4.0–v0.6.2 — account + cars + supply + manufacturers + autoload) |
 | v0.4 | Kalibrasi lap-time dari catatan user (tabel input sendiri, bukan scrape) | 🔜 |
@@ -145,7 +151,8 @@ Pemetaan selektor berasal dari **live DOM halaman iGP asli** (capture `document
 | `manufacturer-data` | halaman Manufacturers (`#pageId=manufacturers`) — kedua tabel selalu di DOM, tab aktif hanya display | `#engine-table` / `#chassis-table` → `tbody tr[data-nationality]`; nama: teks sel-1 (link `a[href*=id=]`, `<img>` flag tanpa teks); rating: sel-2 `.tooltip[data-tip="Rating: N%"]`; cost: `td.currency` ('500k'/'1m'); stats: `use[href$=#ios-eye]` (terlihat) vs `#ios-eye-off` (disembunyikan); customers: sel terakhir; total halaman: `.pager-last[rel]` |
 | `staff-data` | halaman Drivers & Staff (`#pageId=staff`) | driver: `#d1Pic`/`#d2Pic` `.driverName` (`<br>`→spasi) + href `id=definition`; `#driverStatsTable` per baris label (`Ability`/`Mental`/`Contract`/`Salary`) → kolom td per driver; health: `.trainingPreviewValue[data-val]` + `.trainingPreviewRate` (estimasi pemulihan/jam); CSV `data-driver` di `.hoverData` (**`statIndex` = `Utils.statIndex`**, sama bentuk dengan pasar utk `compareRoster`); staff aktif: `#staff .c-wrap` (`.c-head` peran, `.driverName` nama, gaji = angka pertama kartu, kontrak `span[id^=nStaffC]`; kartu TIDAK memuat CSV → rating sisi staff biasanya "tak terbaca", ditulis jujur); pit crew: `.pc-main-div[data-tip]` (terkunci); reserve: `#reserveStaff tbody tr` (hitung) |
 | `transfers-data` | halaman Transfers (`#pageId=transfers`) — kedua tabel selalu di DOM (tab aktif hanya display), isi bisa refresh otomatis (lelang) | `#driver-table`/`#staff-table` → `tbody tr[id*=_]`; nama `data-name`; overall `data-overall`; age/role: `td[2] data-sort` (angka / kode CD-TD-DR); fee/wage: `td[4]`/`td[5] data-sort`; trait: `td.hoverData[data-append]` (block-green/block-red utk staff, specialA* utk driver); **`statIndex` = `Utils.statIndex(hoverData[data-driver\|data-staff])`** (rata-rata 12 angka CSV — bentuk sama dengan sisi roster, dasar `compareRoster`); countdown: `#cdTransfersRefresh` |
-| `race-setup-data` | tab Setup halaman pra-balapan (`#pageId=race` + wadah `#setup`; v0.7.3–4) | cuaca di c-head `#dNSetupWrap`: `.waterLevelText` (hujan) + teks `°C` dari `.weatherTemp` (bukan `.raceWeatherBadge` — tidak ada di DOM praktik nyata), slider: `.setupSliderWrap[id^=dN]` → label `.setupSlider-label` + **kelas arah `decrease`/`increase`** (null bila belum practice), value `input[type=range][value]`, bar ideal `.setupSlider-idealRange` via **atribut style** (`calc(X% ± Npx)` → `parseSliderIdeal`); nama: `#setup .driverNInclude .driverName` (`<br>`→spasi; kedua blok nama = `#beginner-d1Comments`); kondisi: `#dN-SetupComments span[id$=HealthVal/ConditionVal/EngineVal]`; engineer: `.shrinkText`; practice: `#dN-Laps tbody tr` ≥4 td — jumlah + baris terakhir (lap/ride/susp/wing/bensin/ban/waktu) |
+| `race-setup-data` | tab Setup halaman pra-balapan (`#pageId=race` + wadah `#setup`; v0.7.3–4, riwayat penuh v0.8.2) | cuaca di c-head `#dNSetupWrap`: `.waterLevelText` (hujan) + teks `°C` dari `.weatherTemp` (bukan `.raceWeatherBadge` — tidak ada di DOM praktik nyata), slider: `.setupSliderWrap[id^=dN]` → label `.setupSlider-label` + **kelas arah `decrease`/`increase`** (null bila belum practice), value `input[type=range][value]`, bar ideal `.setupSlider-idealRange` via **atribut style** (`calc(X% ± Npx)` → `parseSliderIdeal`); nama: `#setup .driverNInclude .driverName` (`<br>`→spasi; kedua blok nama = `#beginner-d1Comments`); kondisi: `#dN-SetupComments span[id$=HealthVal/ConditionVal/EngineVal]`; engineer: `.shrinkText`; practice: `#dN-Laps tbody tr` ≥4 td — jumlah + baris terakhir (lap/ride/susp/wing/bensin/ban/waktu) + **riwayat penuh `practiceHistory` (fuel/ban numerik + `timeSec`) untuk agregasi fuel/lap, tyre/lap, timelap/stint** |
+| `race-track-data` | perilaku track pra-balapan (`#pageId=race` + div `#race`; v0.8.2, READ-ONLY — mount tak pernah menulis ke `#race`) | tabel `.raceInfoTable`: baris Overtaking/Road bumpiness/Fuel consumption/Tyre wear → `%` dari `.ratingBar div[style*=width]`; Circuit length → km; judul `.raceHeadTitle` → nama + laps `(N laps)` |
 | `race-strategy-data` | tab Strategy halaman pra-balapan (`#pageId=race` + wadah `#strategy`; v0.7.3–4) | `#raceLaps`; aturan liga: span `#rules` (JSON `refuelling`/`two_tyres`); strategi per driver: blok data **inerten** `script[type=application/json]#dN-StrategyJson` (stint/tyre/laps + `stints`=jumlah aktif, `pits`, `risk_level`); bensin: `#dN-FuelPrediction` (L/lap, presisi — mis. `2.460`) + input `#dN-AdvancedFuel` (atribut value); total versi game `#dN-TotalLaps`; umur ban `#dN-TyreLife` (JSON per compound; `[]` = belum ada); push level `select[name=pushLevel]` di `#dNstrategyAdvanced` (nilai terpilih game). Rekap punya game `#dN-SetupImpactHistory` masih kosong pra-practice — TIDAK dipakai |
 
 Aturan main adapter (bake-in, bukan kebijakan terpisah):
@@ -196,9 +203,12 @@ menunggu desain in-place yang aman).
   (tanpa elemen baru): halaman Cars (`#n Label · X DP` pada label baris),
   dialog Supply (biaya kartu + judul dialog), halaman Manufacturers
   (nama baris), halaman Staff (saran pada span nama driver + `title`
-  gaji/kontrak), dan halaman Transfers (peringkat pada text node nama —
-  link & flag tetap hidup). Teks/title asli selalu di-restore otomatis.
-  Halaman `race` 100% bersih sejak v0.8.1. Penulisan DOM ini secara
+  gaji/kontrak), halaman Transfers (peringkat pada text node nama —
+  link & flag tetap hidup), dan tab Setup/Strategy pra-balapan v0.8.2
+  (ringkasan practice + rekomendasi fuel/pit/ban pada nama driver,
+  komentar engineer/strategi, `title` fuel & total laps — div `#race`
+  tab Race live **tidak pernah ditulis**, hanya dibaca karakteristiknya).
+  Teks/title asli selalu di-restore otomatis. Penulisan DOM ini secara
   literal masuk area "scripts" di ToS § V.J.
 - Lisensi GPL-3.0-or-later mengikuti semangat A.C.A.S; kode dari A.C.A.S **tidak
   disalin** — hanya pola arsitektur (dari analisis, bukan dari copy kode).

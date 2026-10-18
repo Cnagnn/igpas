@@ -799,4 +799,79 @@ t("summarizeStrategy: strategi rusak / struktur tak dikenal → ok:false jujur",
   assert.ok(r.error && r.error.length > 3);
 });
 
+/* ---------- practice + track (v0.8.2: fuel/lap, tyre/lap, timelap/stint) ---------- */
+
+t("parseLapTime: m:ss.mmm → detik; tak terbaca → null", () => {
+  assert.strictEqual(IGPCore.parseLapTime("1:22.512"), 82.512);
+  assert.strictEqual(IGPCore.parseLapTime("1:07.850"), 67.85);
+  assert.strictEqual(IGPCore.parseLapTime("82.512"), 82.512);
+  assert.strictEqual(IGPCore.parseLapTime(""), null);
+  assert.strictEqual(IGPCore.parseLapTime(null), null);
+  assert.strictEqual(IGPCore.parseLapTime("—"), null);
+});
+
+t("parseUseNumber: '-2.4'/'-8%'/'2.460' → angka; kosong → null", () => {
+  assert.strictEqual(IGPCore.parseUseNumber("-2.4"), -2.4);
+  assert.strictEqual(IGPCore.parseUseNumber("-8%"), -8);
+  assert.strictEqual(IGPCore.parseUseNumber("2.460"), 2.46);
+  assert.strictEqual(IGPCore.parseUseNumber(""), null);
+  assert.strictEqual(IGPCore.parseUseNumber(null), null);
+});
+
+t("summarizePracticeLaps: 3 lap → fuel/lap, tyre/lap, terbaik", () => {
+  const r = IGPCore.summarizePracticeLaps([
+    { fuelUse: "-2.4", tyreUse: "-8%", time: "1:22.512" },
+    { fuelUse: "-2.3", tyreUse: "-8%", time: "1:21.900" },
+    { fuelUse: "-2.5", tyreUse: "-9%", time: "1:23.100" },
+  ]);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.values.count, 3);
+  assert.strictEqual(r.values.fuelAvg, 2.4); // (|2.4|+|2.3|+|2.5|)/3
+  assert.strictEqual(r.values.tyreAvg, 8.333);
+  assert.strictEqual(r.values.bestLap, "1:21.900");
+});
+
+t("summarizePracticeLaps: kosong / tak terbaca → ok:false", () => {
+  assert.strictEqual(IGPCore.summarizePracticeLaps([]).ok, false);
+  assert.strictEqual(
+    IGPCore.summarizePracticeLaps([{ fuelUse: "", tyreUse: "", time: "" }]).ok,
+    false
+  );
+});
+
+t("recommendRaceFuel: 63 lap × 2.4L → butuh 151.2L + reserve", () => {
+  const r = IGPCore.recommendRaceFuel({
+    raceLaps: 63,
+    fuelPerLap: 2.4,
+    advancedFuel: 174,
+    reserveLaps: 1,
+  });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.values.need, 151.2);
+  assert.strictEqual(r.values.total, 153.6);
+  assert.strictEqual(r.values.buffer, 22.8);
+});
+
+t("recommendRaceFuel: tanpa raceLaps/fuelPerLap → ok:false", () => {
+  assert.strictEqual(IGPCore.recommendRaceFuel({ raceLaps: null, fuelPerLap: 2.4 }).ok, false);
+  assert.strictEqual(IGPCore.recommendRaceFuel({ raceLaps: 63, fuelPerLap: null }).ok, false);
+});
+
+t("practiceTyreLife: 8%/lap → 10 lap pada threshold 80%", () => {
+  const r = IGPCore.practiceTyreLife({ tyrePerLap: 8, threshold: 80 });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.values.life, 10);
+  assert.strictEqual(IGPCore.practiceTyreLife({}).ok, false);
+});
+
+t("describeTrack: fuel+wear tinggi → hint BBM & stint pendek", () => {
+  const r = IGPCore.describeTrack({ overtaking: 70, bumpiness: 40, fuel: 80, wear: 45 });
+  assert.strictEqual(r.ok, true);
+  assert.ok(r.values.hints.some(h => /BBM/i.test(h)));
+  const w = IGPCore.describeTrack({ overtaking: 20, bumpiness: 70, fuel: 40, wear: 80 });
+  assert.ok(w.values.hints.some(h => /stint pendek/i.test(h)));
+  assert.ok(w.values.hints.some(h => /overtake/i.test(h)));
+  assert.strictEqual(IGPCore.describeTrack({}).ok, false);
+});
+
 console.log("\nSemua " + n + " test lulus ✔");

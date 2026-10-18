@@ -92,15 +92,17 @@ Semua angka berasal dari **input Anda sendiri** — tidak ada asumsi data game.
 
 Userscript **tidak menambahkan elemen apa pun** ke halaman iGP: tanpa panel,
 tanpa badge, tanpa tombol toggle. Semua rekomendasi **menyatu dengan elemen
-asli game** — hanya di halaman **studi** (`#pageId` `cars`, `manufacturers`,
-`staff`, dan `transfers`, termasuk dialog Supply terbuka). Rekomendasi ditulis
-sebagai **teks pada node asli** (peringkat `#n …`, tanda `★`) plus **detail di
+asli game** — di halaman **studi** (`#pageId` `cars`, `manufacturers`,
+`staff`, dan `transfers`, termasuk dialog Supply terbuka) serta tab
+**Setup/Strategy pra-balapan** (`#pageId` `race` + wadah `#setup`/`#strategy`;
+v0.8.2). Rekomendasi ditulis sebagai **teks pada node asli** (peringkat `#n …`,
+tanda `★`, ringkasan practice/fuel/stint) plus **detail di
 atribut `title` elemen yang sama**; angka, bar, link, flag, dan ikon game tidak
 pernah disentuh. Teks/title asli disimpan dan **di-restore otomatis** setiap
-re-render dan saat pindah halaman — tidak ada tombol untuk diklik. Halaman
-**pra-balapan dan Race live (`#pageId` `race`) tidak mendapat UI apa pun**;
-tab **Race live tidak pernah** tersentuh (diverifikasi test snapshot
-innerHTML), dan halaman lain juga tidak. Sifatnya:
+re-render dan saat pindah halaman — tidak ada tombol untuk diklik. Div
+**`#race` (tab Race live) tidak pernah ditulis** — hanya dibaca read-only
+untuk karakteristik trek (overtaking/bumpiness/fuel/wear + panjang sirkuit),
+dan halaman lain juga tidak. Sifatnya:
 
 - **Supply (dialog Engine/Fuel/Tyres terbuka)** — peringkat ditulis ke kartu
   asli dialog (`#n · biaya ★`), verdict supplier aktif vs alternatif di judul
@@ -122,9 +124,15 @@ innerHTML), dan halaman lain juga tidak. Sifatnya:
   (`#n Nama ★ rekomendasi` untuk peringkat 1): driver (overall, fee di
   `title`) dan staff per peran; **link kontrak dan flag negara di dalam sel
   tetap hidup** karena hanya text node yang ditulis ulang.
-- **Setup & Strategy pra-balapan** — panel estimasi v0.7.3/v0.7.4 **dihentikan**:
-  halaman `race` kini 100% bersih. Rekomendasi setup/strategy akan dirancang
-  ulang sebagai tulisan in-place bila ada pola aman (tanpa panel).
+- **Setup & Strategy pra-balapan (v0.8.2)** — pembaca perilaku track
+  (overtaking/bumpiness/fuel/wear + panjang sirkuit, read-only dari tab Race)
+  - agregasi **seluruh lap practice** menjadi fuel/lap, tyre %/lap, dan timelap
+    per stint. Setup: ringkasan practice di span nama driver + `title` agregasi,
+    hint trek, dan arah slider game; komentar engineer hanya `title` (span merah
+    utuh). Strategy: kebutuhan fuel (`raceLaps × fuel/lap` + reserve 1 lap vs
+    bensin terisi), saran stint dari umur ban game/practice, dan cek dua-compound
+    di komentar strategi + `title` fuel (`#dNAdvancedFuel`) & total laps
+    (nilai game tak diubah). Div `#race` tidak pernah ditulis.
 
 Semua tulisan berlabel **"estimasi — bukan rumus game"** di `title`: heuristik
 transparan atas angka yang memang tampil, bukan kepastian performa. Render
@@ -193,7 +201,9 @@ ia hanya membaca DOM/snapshot yang sudah ada.
 2. Dashboard → Create new script → tempel isi `src/igpas.user.js`.
 3. Buka igpmanager.com — halaman Cars/Manufacturers/Staff/Transfers
    menampilkan rekomendasi **langsung pada teks & judul elemen asli**
-   (tanpa panel/tombol); halaman lain dan seluruh halaman race tetap senyap.
+   (tanpa panel/tombol); tab Setup/Strategy pra-balapan menampilkan
+   ringkasan practice + fuel/pit/ban (div `#race` tak ditulis);
+   halaman lain tetap senyap.
 4. Buka <https://cnagnn.github.io/igpas/app/> — Command Center & alur capture.
 
 ## Pengembangan

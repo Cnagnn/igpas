@@ -448,6 +448,80 @@ t("Race tidak menyuntik elemen advisor", () => {
   s.close();
 });
 
+t(
+  "Race setup in-place: agregasi practice di nama driver + title engineer, #race tak ditulis",
+  () => {
+    const s = bootOn(load("race.html"), URL_RACE);
+    const raceBox = s.doc.getElementById("race");
+    assert(
+      raceBox && !raceBox.querySelector("[data-igpas-orig]"),
+      "#race ikut ditulis (live-race harus bersih)"
+    );
+    assert(!raceBox.querySelector("[data-igpas-title]"), "title #race ikut ditulis");
+    const span = s.doc.querySelector("#setup .driver1Include .driverName span:last-child");
+    assert(
+      span && /lap practice/.test(span.textContent),
+      "nama driver tanpa ringkasan practice: " + (span && span.textContent)
+    );
+    assert(/2\.4L\/lap/.test(span.textContent), "fuel/lap practice salah: " + span.textContent);
+    assert(/estimasi/i.test(span.getAttribute("title") || ""), "title nama tanpa estimasi");
+    const eng = s.doc.querySelector("#d1SetupComments .shrinkText");
+    assert(
+      eng && /estimasi/i.test(eng.getAttribute("title") || ""),
+      "title engineer tanpa estimasi"
+    );
+    assert(eng.querySelector(".red"), "struktur span merah engineer rusak");
+    s.close();
+  }
+);
+
+t("Race strategy in-place: fuel need + stint di komentar, title fuel & total", () => {
+  const s = bootOn(load("race.html"), URL_RACE);
+  const cmt = s.doc.querySelector("#d1StrategyComments .shrinkText");
+  assert(
+    cmt && /IGPAS:/.test(cmt.textContent),
+    "komentar strategi tanpa rekomendasi: " + (cmt && cmt.textContent)
+  );
+  assert(/butuh ±/.test(cmt.textContent), "fuel need tidak tampil: " + cmt.textContent);
+  assert(/estimasi/i.test(cmt.getAttribute("title") || ""), "title strategi tanpa estimasi");
+  const adv = s.doc.getElementById("d1AdvancedFuel");
+  assert(
+    adv && /Rekomendasi fuel/.test(adv.getAttribute("title") || ""),
+    "title fuel tanpa rekomendasi"
+  );
+  assert(adv.getAttribute("value") === "174", "nilai fuel game ikut berubah");
+  const tot = s.doc.getElementById("d1TotalLaps");
+  assert(
+    tot && /estimasi/i.test(tot.getAttribute("title") || ""),
+    "title total laps tanpa estimasi"
+  );
+  assert(tot.textContent.trim() === "64", "angka total game ikut berubah");
+  s.close();
+});
+
+t("Race practice multi-lap: rata-rata 3 lap benar + idempoten render", () => {
+  const base = new JSDOM(load("race.html"));
+  const bdoc = base.window.document;
+  const tbody = bdoc.querySelector("#d1Laps tbody");
+  tbody.innerHTML +=
+    '<tr><td class="ts-SS">2</td><td>50</td><td>50</td><td>50</td><td><span class="red">-2.3</span></td><td><span class="red">-8%</span></td><td>1:21.900</td></tr>';
+  tbody.innerHTML +=
+    '<tr><td class="ts-SS">3</td><td>50</td><td>50</td><td>50</td><td><span class="red">-2.5</span></td><td><span class="red">-9%</span></td><td>1:23.100</td></tr>';
+  const html = base.serialize();
+  base.window.close();
+  const s = bootOn(html, URL_RACE);
+  const span = s.doc.querySelector("#setup .driver1Include .driverName span:last-child");
+  assert(
+    span && /3 lap practice/.test(span.textContent),
+    "count 3 lap salah: " + (span && span.textContent)
+  );
+  assert(/2\.4L\/lap/.test(span.textContent), "avg fuel 2.4 salah: " + span.textContent);
+  assert(/terbaik 1:21\.900/.test(span.textContent), "best lap salah: " + span.textContent);
+  // Idempoten: suffix hanya sekali (tidak mengganda).
+  assert((span.textContent.match(/lap practice/g) || []).length === 1, "suffix mengganda");
+  s.close();
+});
+
 ta(
   "Render instan: baris Cars yang disuntik game async langsung berlabel tanpa aksi user",
   async () => {
