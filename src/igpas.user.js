@@ -1007,8 +1007,11 @@
             for (const row of doc.querySelectorAll('#carAttributesDisplay .attribute-row')) {
                 const key = (row.id || '').replace(/^wrap-/, '');
                 if (!key) continue; // baris form edit tidak punya id wrap-*
+                // Label tulisan advisor (data-igpas-orig) dikembalikan ke aslinya:
+                // snapshot menyimpan data game murni, bukan hasil tampilan.
+                const saved = row.getAttribute('data-igpas-orig');
                 attrs[key] = {
-                    label: txt(row, '.attribute-rating-header span:not(.ratingVal)'),
+                    label: (saved != null ? saved : txt(row, '.attribute-rating-header span:not(.ratingVal)')),
                     val: Number(txt(row, '.ratingVal')),
                 };
             }
@@ -1081,10 +1084,13 @@
                 const supType = (tip.match(/supplyType=([a-z]+)/i) || [])[1];
                 if (!eId || (supType && supType.toLowerCase() !== type)) continue;
                 const card = btn.closest('.inline-block') || btn.parentElement;
+                // Teks biaya tulisan advisor (data-igpas-orig) dikembalikan ke aslinya:
+                // snapshot menyimpan data game murni, bukan hasil tampilan.
+                const savedCost = btn.getAttribute('data-igpas-orig');
                 alternatives.push({
                     eId: parseInt(eId, 10),
                     supplierId: sid(card ? card.querySelector('img[src*="/supply/"]') : null),
-                    costPerRace: money(btn.textContent),
+                    costPerRace: money(savedCost != null ? savedCost : btn.textContent),
                     bonuses: card ? bonusesIn(card) : [],
                 });
             }
@@ -1153,9 +1159,12 @@
                     const idm = a ? (a.getAttribute('href') || '').match(/id=(\d+)/) : null;
                     const tip = tds[1] ? tds[1].querySelector('.tooltip[data-tip]') : null;
                     const rm = tip ? (tip.getAttribute('data-tip') || '').match(/^Rating:\s*(\d+)%$/) : null;
+                    // Nama tulisan advisor (data-igpas-orig) dikembalikan ke aslinya:
+                    // snapshot menyimpan data game murni, bukan hasil tampilan.
+                    const savedName = tr.getAttribute('data-igpas-orig');
                     const row = {
                         id: idm ? parseInt(idm[1], 10) : null,
-                        name: clean(tds[0].textContent), // teks saja — <a> kosong + <img> flag tidak menghasilkan teks
+                        name: (savedName != null ? savedName : clean(tds[0].textContent)), // teks saja — <a> kosong + <img> flag tidak menghasilkan teks
                         nationality: tr.getAttribute('data-nationality') || null,
                         ratingPct: rm ? parseInt(rm[1], 10) : null,
                     };
@@ -2365,8 +2374,6 @@
             '.igpas-adv-axis{font-weight:400;opacity:.8}',
             '.igpas-adv-refname{color:#bcd8d2}',
             '.igpas-adv-cmp{margin-top:3px;font-size:10px;color:#bcd8d2}',
-            '.igpas-adv-inline{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:8px;background:#8fd6c6;color:#0b262b;font-size:10px;font-weight:700;white-space:nowrap;vertical-align:middle}',
-            '.igpas-adv-inline-head{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:8px;background:transparent;border:1px solid #8fd6c6;color:#8fd6c6;font-size:10px;font-weight:700;letter-spacing:.08em;vertical-align:middle}',
             '.igpas-adv-panel tr.igpas-adv-row-better td:first-child{border-left:3px solid #1f7a5c}',
             '.igpas-adv-panel tr.igpas-adv-row-worse td:first-child{border-left:3px solid #8c2f2f}',
             '.igpas-adv-panel tr.igpas-adv-row-unknown td{color:#a9a9a9}',
@@ -2375,7 +2382,6 @@
             'border:2px solid #0b262b;border-radius:20px;background:#0e2a30;color:#eaf6f3;',
             'font:700 12px Arial,Helvetica,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3)}',
             'body.igpas-adv-hide .igpas-adv-panel{display:none!important}',
-            'body.igpas-adv-hide .igpas-adv-inline,body.igpas-adv-hide .igpas-adv-inline-head{display:none!important}',
         ].join('');
 
         function styleEnsure() {
@@ -2443,206 +2449,305 @@
         const scoreTxt = n => (n == null ? '—' : (Math.round(n * 10) / 10) + '%');
 
         /* Halaman Cars: prioritas alokasi design points vs benchmark liga.
-         * IN-PLACE (tanpa section terpisah saat sukses): badge usulan DP
-         * disisipkan ke dalam baris ASLI game (#wrap-{key} .attribute-rating-header).
-         * Hanya append node milik sendiri (.igpas-adv-inline) — nilai & bar game
-         * tidak pernah diubah/dihapus. Idempoten: bersihkan dulu sebelum sisip. */
+         * IN-PLACE PENUH (tanpa elemen baru): teks label ASLI tiap baris game
+         * ditulis ulang jadi "#n Label · X DP"; detail val/max/gap + label
+         * estimasi di atribut title baris yang sama. Angka & bar game tidak
+         * pernah disentuh. Teks asli disimpan di data-igpas-orig dan
+         * dikembalikan oleh restoreDesign() — captures selalu berjalan
+         * setelah restore sehingga adapter tidak pernah membaca hasil tulisan. */
+        function restoreDesign() {
+            const rows = document.querySelectorAll('#carAttributesDisplay .attribute-row[data-igpas-orig]');
+            for (const row of rows) {
+                try {
+                    const label = row.querySelector('.attribute-rating-header span:not(.ratingVal)');
+                    if (label) label.textContent = row.getAttribute('data-igpas-orig');
+                    const savedTitle = row.getAttribute('data-igpas-title');
+                    if (savedTitle != null) {
+                        const written = row.getAttribute('data-igpas-written-title');
+                        if (written == null || row.getAttribute('title') === written) {
+                            if (savedTitle === '') row.removeAttribute('title');
+                            else row.setAttribute('title', savedTitle);
+                        }
+                    } else {
+                        row.removeAttribute('title');
+                    }
+                } catch { /* jangan pernah merusak halaman game */ }
+                row.removeAttribute('data-igpas-orig');
+                row.removeAttribute('data-igpas-title');
+                row.removeAttribute('data-igpas-written-title');
+            }
+            // Sisa migrasi versi badge/panel: bersihkan tanpa menyentuh node game.
+            for (const el of document.querySelectorAll('.igpas-adv-inline, .igpas-adv-inline-head')) el.remove();
+            removeIfAny([PREFIX + '-design']);
+        }
         function mountDesign() {
-            const id = PREFIX + '-design'; // panel fallback hanya untuk jalur gagal
-            const cleanInline = () => {
-                const olds = document.querySelectorAll('.igpas-adv-inline, .igpas-adv-inline-head');
-                for (const el of olds) el.remove();
-            };
             const anchor = (pageId() === 'cars') ? document.getElementById('carAttributesDisplay') : null;
-            if (!anchor) { cleanInline(); removeIfAny([id]); return; }
+            if (!anchor) { restoreDesign(); return; }
+            restoreDesign(); // teks asli kembali dulu agar captures baca data murni
             const data = IgpCarsAdapter.captures(document);
             const res = IGPCore.designPriority({
                 attrs: data && data.attrs,
                 best: data && data.best,
                 designPoints: data && data.designPoints,
             });
-            if (!res.ok) {
-                // Gagal jujur: tanpa angka tidak ada badge; tampilkan note kecil
-                // (satu-satunya kasus panel terpisah masih dipakai di halaman Cars).
-                cleanInline();
-                anchor.insertAdjacentElement('afterend',
-                    panelEl(id, 'I.G.P.A.S · design points', 'Prioritas alokasi DP (estimasi)', '', esc(res.error) + '.'));
-                return;
-            }
-            // Sukses: pastikan tidak ada sisa panel error + badge lama.
-            removeIfAny([id]);
-            cleanInline();
+            // Gagal jujur: tanpa angka, tanpa modifikasi apa pun (tanpa panel).
+            if (!res.ok) return;
             const dpTotal = res.values.designPoints;
-            // Legenda ringkas di header game (append, bukan ganti isi).
-            try {
-                const head = document.querySelector('#carAttributes .c-head h2, #carAttributes .c-head');
-                if (head && !head.querySelector('.igpas-adv-inline-head')) {
-                    const legend = document.createElement('span');
-                    legend.className = 'igpas-adv-inline-head';
-                    legend.textContent = 'I.G.P.A.S · usulan DP (estimasi)';
-                    legend.title = 'Total DP: ' + (dpTotal != null ? dpTotal : '?') +
-                        ' · porsi % = share gap ke Max liga — estimasi, bukan rumus game.' +
-                        (res.values.unbenchmarked ? ' ' + res.values.unbenchmarked + ' atribut tanpa benchmark liga.' : '');
-                    head.appendChild(legend);
-                }
-            } catch { /* legenda opsional — badge per baris tetap jalan */ }
             res.values.ranked.forEach((r, i) => {
                 if (r.key == null || !/^[A-Za-z0-9_-]+$/.test(String(r.key))) return;
-                let header = null;
-                try {
-                    const row = document.getElementById('wrap-' + r.key);
-                    header = row ? row.querySelector('.attribute-rating-header') : null;
-                } catch { header = null; }
-                if (!header) return;
+                let row = null;
+                try { row = document.getElementById('wrap-' + r.key); } catch { row = null; }
+                if (!row) return;
+                const label = row.querySelector('.attribute-rating-header span:not(.ratingVal)');
+                if (!label) return;
+                const orig = label.textContent;
                 const share = (r.sharePct != null ? r.sharePct : 0);
                 const dpEst = (dpTotal != null) ? Math.round(dpTotal * share / 100) : null;
-                const badge = document.createElement('span');
-                badge.className = 'igpas-adv-inline';
-                badge.textContent = '#' + (i + 1) + ' · ' +
-                    (dpEst != null ? dpEst + ' DP (' + share + '%)' : share + '%');
-                badge.title = 'Prioritas #' + (i + 1) + ' — ' + r.label + ': ' + r.val +
+                row.setAttribute('data-igpas-orig', orig);
+                row.setAttribute('data-igpas-title',
+                    row.hasAttribute('title') ? row.getAttribute('title') : '');
+                label.textContent = '#' + (i + 1) + ' ' + orig + (dpEst != null ? ' · ' + dpEst + ' DP' : '');
+                const advisorTitle = 'Prioritas #' + (i + 1) + ' — ' + (r.label || orig) + ': ' + r.val +
                     ' → max liga ' + (r.max == null ? '—' : r.max) +
                     ' (gap ' + (r.gap == null ? '—' : r.gap) + '). ' +
                     'Usulan ' + (dpEst != null ? '±' + dpEst + ' DP dari ' + dpTotal + ' DP' : share + '% porsi gap') +
                     ' — estimasi, bukan rumus game.';
-                header.appendChild(badge);
+                row.setAttribute('title', advisorTitle);
+                row.setAttribute('data-igpas-written-title', advisorTitle);
             });
         }
 
-        /* Dialog Supply (engine/fuel/tyre): bandingkan supplier aktif vs alternatif. */
+        /* Dialog Supply (engine/fuel/tyre): peringkat alternatif + verdict aktif.
+         * IN-PLACE PENUH (tanpa elemen baru): teks biaya tiap kartu alternatif
+         * ditulis ulang jadi "#n · 350k" (+ ★ nilai terbaik / · termurah);
+         * judul dialog ("Engine supply") ditulis ulang dengan verdict vs
+         * alternatif. Detail Σ bonus/nilai/1M + label estimasi di atribut title
+         * kartu yang sama. Teks asli disimpan di data-igpas-orig dan
+         * dikembalikan oleh restoreSupply() — captures selalu berjalan setelah
+         * restore sehingga adapter tidak pernah membaca hasil tulisan. */
+        function restoreSupply() {
+            // Cakupan STRICT dialog: data-igpas-* milik Cars/Manufacturers
+            // tidak boleh tersentuh (renderAll me-mount berurutan).
+            // Tanpa dialog = tidak ada node tersisa untuk dibersihkan.
+            const dlg = document.querySelector('.supplyDialog');
+            if (!dlg) return;
+            for (const link of dlg.querySelectorAll('a[data-igpas-orig]')) {
+                try {
+                    // Restore the first non-empty text node, even if the game
+                    // replaced the advisor text in-place before cleanup.
+                    const nd = Array.from(link.childNodes).find(n =>
+                        n.nodeType === 3 && n.textContent.trim() !== '');
+                    if (nd) nd.textContent = link.getAttribute('data-igpas-orig');
+                } catch { /* jangan pernah merusak halaman game */ }
+                link.removeAttribute('data-igpas-orig');
+            }
+            const h2 = dlg.querySelector('.dialog-subhead-content h2[data-igpas-orig]');
+            if (h2) {
+                try { h2.textContent = h2.getAttribute('data-igpas-orig'); }
+                catch { /* abaikan */ }
+                h2.removeAttribute('data-igpas-orig');
+            }
+            for (const el of dlg.querySelectorAll('[data-igpas-title]')) {
+                try {
+                    const saved = el.getAttribute('data-igpas-title');
+                    const written = el.getAttribute('data-igpas-written-title');
+                    // Jangan menimpa title baru milik game jika game telah
+                    // memperbarui node yang sama setelah advisor menulisnya.
+                    if (written == null || el.getAttribute('title') === written) {
+                        if (saved === '') el.removeAttribute('title');
+                        else el.setAttribute('title', saved);
+                    }
+                } catch { /* abaikan */ }
+                el.removeAttribute('data-igpas-title');
+                el.removeAttribute('data-igpas-written-title');
+            }
+        }
         function mountSupply() {
-            const id = PREFIX + '-supply';
-            const idCmp = PREFIX + '-supply-compare';
+            // Sisa migrasi versi panel: bersihkan tanpa menyentuh node game.
+            removeIfAny([PREFIX + '-supply', PREFIX + '-supply-compare']);
             const dlg = document.querySelector('.supplyDialog');
-            if (!dlg) { removeIfAny([id, idCmp]); return; }
+            if (!dlg) { restoreSupply(); return; }
+            restoreSupply(); // teks asli kembali dulu agar captures baca data murni
             const s = IgpSupplyAdapter.captures(document);
-            let body = '';
-            let note = '';
-            if (!s) {
-                note = 'Dialog Supply terbuka tapi tidak terbaca (varian DOM baru?). Tidak ada rekomendasi — jangan dianggap data.';
-            } else {
-                const cur = s.current || {};
-                const res = IGPCore.rankSuppliers({ items: s.alternatives });
-                if (res.ok) {
-                    const rows = res.values.ranked.map(r => {
-                        const isBest = r.valuePerCost != null && r.id === res.values.bestValueId;
-                        const isCheap = !isBest && res.values.cheapestId != null && r.id === res.values.cheapestId;
-                        return '<tr' + (isBest ? ' class="igpas-adv-best"' : '') + '>' +
-                            '<td>Supplier #' + esc(r.id != null ? r.id : '?') +
-                            (isBest ? '<span class="igpas-adv-tag">terbaik nilai</span>' : '') +
-                            (isCheap ? '<span class="igpas-adv-tag">termurah</span>' : '') + '</td>' +
-                            '<td>' + (r.value == null ? '—' : esc((r.value > 0 ? '+' : '') + r.value)) + '</td>' +
-                            '<td>' + fmtMoney(r.cost) + '</td>' +
-                            '<td>' + (r.valuePerCost == null ? '—' : esc(r.valuePerCost)) + '</td></tr>';
-                    }).join('');
-                    body = '<p class="igpas-adv-note">Aktif: supplier #' +
-                        esc(cur.supplierId != null ? cur.supplierId : '?') + ' · ' +
-                        fmtMoney(cur.costPerRace) + '/race — dibandingkan dengan alternatif di dialog ini:</p>' +
-                        '<table><thead><tr><th>Alternatif</th><th>Σ bonus</th><th>Biaya</th><th>Nilai/1M</th></tr></thead><tbody>' +
-                        rows + '</tbody></table>';
-                } else {
-                    note = esc(res.error) + '. Alternatif mungkin tidak tampil di dialog ini.';
+            if (!s || !s.current || !Array.isArray(s.alternatives) || !s.alternatives.length) return;
+            const rank = IGPCore.rankSuppliers({ items: s.alternatives });
+            // Gagal jujur: tanpa angka, tanpa modifikasi apa pun (tanpa panel).
+            if (!rank.ok) return;
+            const cmp = IGPCore.compareSuppliers({ current: s.current, alternatives: s.alternatives });
+            const bestId = rank.values.bestValueId;
+            const cheapId = rank.values.cheapestId;
+            // Peta kartu per eId — parsing identik adapter (anti substring eId=1 vs eId=10).
+            const cards = new Map();
+            for (const btn of dlg.querySelectorAll('a[data-tip*="supplyType="]')) {
+                const tip = btn.getAttribute('data-tip') || '';
+                const eId = (tip.match(/eId=(\d+)/) || [])[1];
+                if (!eId || cards.has(eId)) continue;
+                cards.set(eId, { link: btn, card: btn.closest('.inline-block') || btn.parentElement });
+            }
+            const n = rank.values.ranked.length;
+            rank.values.ranked.forEach((r, i) => {
+                if (r.eId == null) return;
+                const hit = cards.get(String(r.eId));
+                if (!hit || !hit.link) return;
+                const link = hit.link, card = hit.card;
+                let costNode = null;
+                try {
+                    for (const nd of link.childNodes) {
+                        if (nd.nodeType === 3 && nd.textContent.trim() !== '') { costNode = nd; break; }
+                    }
+                } catch { costNode = null; }
+                if (!costNode) return;
+                const orig = costNode.textContent;
+                const isBest = bestId != null && r.id === bestId;
+                const isCheap = !isBest && cheapId != null && r.id === cheapId;
+                link.setAttribute('data-igpas-orig', orig);
+                costNode.textContent = '#' + (i + 1) + ' · ' + orig.trim() +
+                    (isBest ? ' ★' : '') + (isCheap ? ' · termurah' : '');
+                if (card) {
+                    // Penanda title selalu dipasang ('' = semula tanpa title) agar
+                    // restore presisi tanpa menyapu title milik game.
+                    card.setAttribute('data-igpas-title',
+                        card.hasAttribute('title') ? card.getAttribute('title') : '');
+                    const advisorTitle = '#' + (i + 1) + ' dari ' + n +
+                        (isBest ? ' · nilai terbaik' : '') + (isCheap ? ' · termurah' : '') +
+                        ' — Σ bonus ' + (r.value == null ? '—' : (r.value > 0 ? '+' : '') + r.value) +
+                        ' · ' + fmtMoney(r.cost) + '/race · nilai/1M ' +
+                        (r.valuePerCost == null ? '—' : r.valuePerCost) +
+                        ' — estimasi, bukan rumus game.';
+                    card.setAttribute('title', advisorTitle);
+                    card.setAttribute('data-igpas-written-title', advisorTitle);
                 }
-                note += (note ? ' ' : '') +
-                    'Σ bonus = jumlah nilai semua stat bonus (stat berbeda tidak disetarakan rumus game). ' +
-                    'Nilai/1M = bonus per 1jt biaya — heuristik estimasi; kombinasi terbaik tetap perlu Anda uji.';
+            });
+            // Verdict supplier aktif ditulis ke judul dialog (tanpa elemen baru).
+            if (cmp.ok) {
+                const h2 = dlg.querySelector('.dialog-subhead-content h2');
+                if (h2) {
+                    const kata = v => (v === 'better' ? 'unggul' : v === 'worse' ? 'kalah' : v === 'equal' ? 'setara' : null);
+                    const parts = [];
+                    const kb = kata(cmp.values.bonus.verdict);
+                    const kc = kata(cmp.values.cost.verdict);
+                    if (kb) parts.push('bonus ' + kb);
+                    if (kc) parts.push('biaya ' + kc);
+                    if (parts.length) {
+                        const origH2 = h2.textContent;
+                        const v = cmp.values;
+                        h2.setAttribute('data-igpas-orig', origH2);
+                        h2.setAttribute('data-igpas-title',
+                            h2.hasAttribute('title') ? h2.getAttribute('title') : '');
+                        h2.textContent = origH2 + ' · ' + parts.join(', ') + ' vs alternatif';
+                        const advisorTitle = 'Supplier aktif #' +
+                            (s.current.supplierId != null ? s.current.supplierId : '?') +
+                            ': Σ bonus ' + (v.current.bonus == null ? '—' : (v.current.bonus > 0 ? '+' : '') + v.current.bonus) +
+                            ' · ' + fmtMoney(v.current.cost) + '/race. Alternatif ' + n +
+                            ': bonus tertinggi Σ' + (v.bestBonus ? (v.bestBonus.value > 0 ? '+' : '') + v.bestBonus.value + ' (#' + v.bestBonus.id + ')' : '—') +
+                            ', termurah ' + (v.cheapest ? fmtMoney(v.cheapest.value) + ' (#' + v.cheapest.id + ')' : '—') +
+                            '. Kesimpulan: ' + v.basis + ' ' + v.verdict + ' — estimasi, bukan rumus game.';
+                        h2.setAttribute('title', advisorTitle);
+                        h2.setAttribute('data-igpas-written-title', advisorTitle);
+                    }
+                }
             }
-            dlg.appendChild(panelEl(id, 'I.G.P.A.S · supply' + (s ? ' · ' + s.type : ''), 'Rekomendasi supplier (estimasi)', body, note));
-            mountSupplyCompare(s);
         }
 
-        /* Supplier AKTIF vs alternatif di dialog yang sama (v0.8.0) —
-           satu halaman, satu snapshot: tidak perlu data dari luar. */
-        function mountSupplyCompare(s) {
-            const id = PREFIX + '-supply-compare';
-            const dlg = document.querySelector('.supplyDialog');
-            if (!dlg || !s) { removeIfAny([id]); return; }
-            if (!s.current || !Array.isArray(s.alternatives) || !s.alternatives.length) { removeIfAny([id]); return; }
-            const res = IGPCore.compareSuppliers({ current: s.current, alternatives: s.alternatives });
-            let body = '';
-            let note = '';
-            if (!res.ok) {
-                note = esc(res.error) + '.';
-            } else {
-                const v = res.values;
-                const sumTxt = x => (x == null ? '—' : (x > 0 ? '+' : '') + x);
-                body = '<table><thead><tr><th>Sumbu</th><th>Supplier aktif</th><th>Pembanding di dialog</th><th>Verdict</th></tr></thead><tbody>' +
-                    '<tr><td>Σ bonus</td><td>' + esc(sumTxt(v.current.bonus)) + '</td>' +
-                    '<td>' + (v.bestBonus ? esc(sumTxt(v.bestBonus.value)) +
-                        ' <span class="igpas-adv-refname">#' + esc(v.bestBonus.id != null ? v.bestBonus.id : '?') + '</span>' : '—') +
-                    '</td><td>' + vChip(v.bonus.verdict, 'naik = bagus') + '</td></tr>' +
-                    '<tr><td>Biaya/balapan</td><td>' + fmtMoney(v.current.cost) + '</td>' +
-                    '<td>' + (v.cheapest ? fmtMoney(v.cheapest.value) +
-                        ' <span class="igpas-adv-refname">#' + esc(v.cheapest.id != null ? v.cheapest.id : '?') + '</span>' : '—') +
-                    '</td><td>' + vChip(v.cost.verdict, 'turun = bagus') + '</td></tr>' +
-                    '</tbody></table>';
-                note = 'Verdict akhir memakai sumbu ' + esc(v.basis) + ' (sumbu lain tetap ditampilkan apa adanya). ' +
-                    'Pembanding = Σ bonus TERTINGGI dan biaya TERENDAH di antara alternatif dialog ini — ' +
-                    'bukan pasar luar. Σ bonus menjumlahkan stat berbeda tanpa bobot rumus game, jadi ini ' +
-                    '<strong>perbandingan, bukan kepastian performa — estimasi, bukan rumus game</strong>.';
+        /* Halaman Manufacturers: peringkat ditulis ke kolom nama tiap baris.
+         * IN-PLACE PENUH (tanpa elemen baru): teks nama asli tiap baris game
+         * ditulis ulang jadi "#n Nama" (+ ★ nilai terbaik engine); detail
+         * rating/biaya/rating-per-1M + label estimasi di atribut title baris
+         * yang sama. Link, flag, rating, dan kolom lain tidak disentuh.
+         * Teks asli disimpan di data-igpas-orig dan dikembalikan oleh
+         * restoreManufacturers() — captures selalu berjalan setelah restore
+         * sehingga adapter tidak pernah membaca hasil tulisan. */
+        function restoreManufacturers() {
+            for (const tid of ['engine-table', 'chassis-table']) {
+                let table = null;
+                try { table = document.getElementById(tid); } catch { table = null; }
+                if (!table) continue;
+                for (const tr of table.querySelectorAll('tr[data-igpas-orig]')) {
+                    try {
+                        const tds = tr.querySelectorAll('td');
+                        if (tds.length) {
+                            const nd = Array.from(tds[0].childNodes).find(n =>
+                                n.nodeType === 3 && n.textContent.trim() !== '');
+                            if (nd) nd.textContent = tr.getAttribute('data-igpas-orig');
+                        }
+                        const savedTitle = tr.getAttribute('data-igpas-title');
+                        if (savedTitle != null) {
+                            const written = tr.getAttribute('data-igpas-written-title');
+                            if (written == null || tr.getAttribute('title') === written) {
+                                if (savedTitle === '') tr.removeAttribute('title');
+                                else tr.setAttribute('title', savedTitle);
+                            }
+                        } else {
+                            tr.removeAttribute('title');
+                        }
+                    } catch { /* jangan pernah merusak halaman game */ }
+                    tr.removeAttribute('data-igpas-orig');
+                    tr.removeAttribute('data-igpas-title');
+                    tr.removeAttribute('data-igpas-written-title');
+                }
             }
-            dlg.appendChild(panelEl(id, 'I.G.P.A.S · supply vs aktif', 'Supplier aktif vs alternatif dialog', body, note));
         }
-
-        /* Halaman Manufacturers: ranking engine & chassis yang tampil di pager ini. */
+        function writeMfgRanks(table, ranked, bestValueId, withCost) {
+            if (!table || !ranked) return;
+            // Peta baris per id manufacturer (href d=brand&id=…) — anti duplikat.
+            const byId = new Map();
+            for (const tr of table.querySelectorAll('tbody tr')) {
+                const tds = tr.querySelectorAll('td');
+                if (tds.length < 2) continue;
+                const a = tds[0].querySelector('a[href]');
+                const idm = a ? (a.getAttribute('href') || '').match(/id=(\d+)/) : null;
+                if (idm && !byId.has(idm[1])) byId.set(idm[1], tr);
+            }
+            const written = new Set();
+            ranked.forEach((r, i) => {
+                if (r.id == null) return;
+                const tr = byId.get(String(r.id));
+                if (!tr || written.has(tr)) return;
+                const tds = tr.querySelectorAll('td');
+                if (!tds.length) return;
+                let nameNode = null;
+                try {
+                    for (const nd of tds[0].childNodes) {
+                        if (nd.nodeType === 3 && nd.textContent.trim() !== '') { nameNode = nd; break; }
+                    }
+                } catch { nameNode = null; }
+                if (!nameNode) return;
+                const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+                const orig = clean(tds[0].textContent);
+                const star = withCost && bestValueId != null && r.id === bestValueId &&
+                    i !== 0 ? ' ★' : '';
+                tr.setAttribute('data-igpas-orig', orig);
+                tr.setAttribute('data-igpas-title',
+                    tr.hasAttribute('title') ? tr.getAttribute('title') : '');
+                nameNode.textContent = '#' + (i + 1) + ' ' + orig + star;
+                const advisorTitle = '#' + (i + 1) + ' · ' + orig +
+                    (star ? ' · nilai terbaik' : '') + ': rating ' + r.rating + '%' +
+                    (withCost ? ' · ' + fmtMoney(r.cost) + '/race · rating/1M ' +
+                        (r.ratingPerCost == null ? '—' : r.ratingPerCost) : '') +
+                    ' — estimasi, bukan rumus game.';
+                tr.setAttribute('title', advisorTitle);
+                tr.setAttribute('data-igpas-written-title', advisorTitle);
+                written.add(tr);
+            });
+        }
         function mountManufacturers() {
-            const idE = PREFIX + '-mfg-engine';
-            const idC = PREFIX + '-mfg-chassis';
-            if (pageId() !== 'manufacturers') { removeIfAny([idE, idC]); return; }
+            // Sisa migrasi versi panel: bersihkan tanpa menyentuh node game.
+            removeIfAny([PREFIX + '-mfg-engine', PREFIX + '-mfg-chassis']);
+            if (pageId() !== 'manufacturers') { restoreManufacturers(); return; }
+            restoreManufacturers(); // teks asli kembali dulu agar captures baca data murni
             const m = IgpManufacturersAdapter.captures(document);
-            const pages = (m && m.totalPages) || {};
-            const pagerNote = (m && m.totalPages)
-                ? 'Baris yang tampil di pager ini saja' +
-                  (pages.engines != null ? ' · engine ' + pages.engines + ' hal.' : '') +
-                  (pages.chassis != null ? ' · chassis ' + pages.chassis + ' hal.' : '') + '.'
-                : 'Baris yang tampil di pager ini saja.';
-            // Engines: rating + biaya/race → rating per 1M.
+            // Engines: rating + biaya/race → rating per 1M. Gagal jujur per tabel:
+            // tanpa angka, tabel itu tanpa modifikasi apa pun (tanpa panel).
             const et = document.getElementById('engine-table');
             if (et) {
                 const res = IGPCore.rankManufacturerItems({ items: m ? m.engines : [], withCost: true });
-                let body = '';
-                const note = pagerNote + ' Rating% dari tooltip tabel; rating/1M = heuristik estimasi — bukan rumus game.';
-                if (res.ok) {
-                    const rows = res.values.ranked.slice(0, 5).map((r, i) => {
-                        const tag =
-                            (res.values.bestRatingId === r.id ? '<span class="igpas-adv-tag">rating tertinggi</span>' : '') +
-                            (res.values.bestValueId === r.id ? '<span class="igpas-adv-tag">nilai terbaik</span>' : '');
-                        return '<tr' + (i === 0 ? ' class="igpas-adv-best"' : '') + '>' +
-                            '<td>' + (i + 1) + '. ' + esc(r.name) + tag + '</td>' +
-                            '<td>' + esc(r.rating) + '%</td><td>' + fmtMoney(r.cost) + '</td>' +
-                            '<td>' + (r.ratingPerCost == null ? '—' : esc(r.ratingPerCost)) + '</td></tr>';
-                    }).join('');
-                    body = '<table><thead><tr><th>Engine</th><th>Rating</th><th>Biaya</th><th>Rating/1M</th></tr></thead><tbody>' +
-                        rows + '</tbody></table>';
-                } else {
-                    body = '<p class="igpas-adv-note">' + esc(res.error) + '.</p>';
-                }
-                et.insertAdjacentElement('beforebegin',
-                    panelEl(idE, 'I.G.P.A.S · manufacturers', 'Ranking engine halaman ini (estimasi)', body, note));
-            } else {
-                removeIfAny([idE]);
+                if (res.ok) writeMfgRanks(et, res.values.ranked, res.values.bestValueId, true);
             }
-            // Chassis: rating (+customers) — tanpa biaya.
+            // Chassis: rating saja — tanpa biaya.
             const ct = document.getElementById('chassis-table');
             if (ct) {
                 const res = IGPCore.rankManufacturerItems({ items: m ? m.chassis : [], withCost: false });
-                let body = '';
-                if (res.ok) {
-                    const rows = res.values.ranked.slice(0, 5).map((r, i) => {
-                        const tag = res.values.bestRatingId === r.id ? '<span class="igpas-adv-tag">rating tertinggi</span>' : '';
-                        return '<tr' + (i === 0 ? ' class="igpas-adv-best"' : '') + '>' +
-                            '<td>' + (i + 1) + '. ' + esc(r.name) + tag + '</td>' +
-                            '<td>' + esc(r.rating) + '%</td></tr>';
-                    }).join('');
-                    body = '<table><thead><tr><th>Chassis</th><th>Rating</th></tr></thead><tbody>' + rows + '</tbody></table>';
-                } else {
-                    body = '<p class="igpas-adv-note">' + esc(res.error) + '.</p>';
-                }
-                const note = pagerNote + ' Heuristik estimasi — bukan rumus game.';
-                const rebuilt = panelEl(idC, 'I.G.P.A.S · manufacturers', 'Ranking chassis halaman ini (estimasi)', body, note);
-                ct.insertAdjacentElement('beforebegin', rebuilt);
-            } else {
-                removeIfAny([idC]);
+                if (res.ok) writeMfgRanks(ct, res.values.ranked, null, false);
             }
         }
 
@@ -3115,6 +3220,86 @@
             mountWrapped(anchor, idWrap, panelEl(id, 'I.G.P.A.S · race strategy', 'Ringkasan strategi (tab Strategy)', body, note));
         }
 
+        /* Render instan 0ms (v0.8.0): konten game datang async (AJAX) setelah DOM
+         * awal — menunggu klik user + debounce 250ms bikin rekomendasi telat.
+         * MutationObserver bereaksi di microtask yang sama saat game commit DOM
+         * (±0ms, sebelum paint berikutnya), tanpa debounce.
+         * Anti-loop: observer DIPUTUS selama renderAll (tulisan label/title +
+         * panel milik sendiri tidak direkam), disambung lagi setelahnya;
+         * mutasi yang lolos tetap disaring relevance (UI milik sendiri &
+         * atribut tulisan advisor diabaikan). */
+        let renderObserver = null;
+        let renderObserving = false;
+        const WATCH_SEL = '#carAttributesDisplay, #carAttributes, #carsDesignPoints,' +
+            ' #leagueDesignData, #carAttributesBonuses, .carsSuppliers, .supplyDialog,' +
+            ' #engine-table, #chassis-table, #drivers, #staff, #driverStatsTable,' +
+            ' #driver-table, #staff-table, #cdTransfersRefresh, #setup, #strategy, #pageId';
+        function observeOff() {
+            if (renderObserver && renderObserving) {
+                try { renderObserver.disconnect(); } catch { /* abaikan */ }
+                renderObserving = false;
+            }
+        }
+        function observeOn() {
+            if (renderObserver || typeof MutationObserver === 'undefined') {
+                if (!renderObserver || renderObserving) return;
+            } else {
+                try { renderObserver = new MutationObserver(onMutations); }
+                catch { renderObserver = null; }
+                if (!renderObserver) return; // fallback: debounce klik/user-aksi tetap jalan
+            }
+            if (renderObserving || typeof document === 'undefined' || !document.body) return;
+            try {
+                renderObserver.observe(document.body,
+                    { childList: true, subtree: true, characterData: true, attributes: true });
+                renderObserving = true;
+            } catch { /* observer opsional — fallback debounce tetap jalan */ }
+        }
+        function mutationRelevant(m) {
+            if (!m) return false;
+            const own = el => !!(el && el.closest && el.closest('.igpas-adv-panel, #' + PREFIX + '-toggle'));
+            const t = m.target;
+            if (m.type === 'attributes' && t && t.nodeType === 1) {
+                if (own(t)) return false;
+                const an = m.attributeName;
+                if (an === 'data-igpas-orig' || an === 'data-igpas-title') return false;
+                // Title tulisan advisor di elemen game bertanda (baris Cars,
+                // baris Manufacturers, kartu/judul Supply) — bukan sinyal game.
+                if (an === 'title' && t.closest && t.closest('[data-igpas-orig], [data-igpas-title]')) return false;
+                if (t === document.body) return false; // class igpas-adv-hide milik sendiri
+            }
+            if (m.type === 'characterData') {
+                const p = t && t.parentElement;
+                if (!p || own(p)) return false;
+                try { return !!(p.closest && p.closest(WATCH_SEL)); }
+                catch { return false; }
+            }
+            if (t && t.nodeType === 1 && !own(t)) {
+                try { if (t.closest && t.closest(WATCH_SEL)) return true; }
+                catch { /* abaikan */ }
+            }
+            if (m.type === 'childList') {
+                const lists = [m.addedNodes, m.removedNodes];
+                for (const list of lists) {
+                    for (const n of (list || [])) {
+                        if (!n || n.nodeType !== 1 || own(n)) continue;
+                        try {
+                            if (n.matches && n.matches(WATCH_SEL)) return true;
+                            if (n.querySelector && n.querySelector(WATCH_SEL)) return true;
+                        } catch { /* abaikan */ }
+                    }
+                }
+            }
+            return false;
+        }
+        function onMutations(muts) {
+            for (const m of (muts || [])) {
+                let hit = false;
+                try { hit = mutationRelevant(m); } catch { hit = false; }
+                if (hit) { renderAll(); return; } // sinkron, tanpa debounce
+            }
+        }
+
         function renderAll() {
             if (typeof document === 'undefined' || !document.body) return;
             const pid = pageId();
@@ -3126,9 +3311,12 @@
                     PREFIX + '-tx-driver', PREFIX + '-tx-staff', PREFIX + '-tx-compare',
                     PREFIX + '-rsetup', PREFIX + '-rsetup-wrap',
                     PREFIX + '-rstrategy', PREFIX + '-rstrategy-wrap']);
-                for (const el of document.querySelectorAll('.igpas-adv-inline, .igpas-adv-inline-head')) el.remove();
+                restoreDesign(); // kembalikan teks label asli (tanpa elemen baru)
+                restoreSupply(); // kembalikan teks biaya kartu + judul dialog
+                restoreManufacturers(); // kembalikan teks nama baris
                 return;
             }
+            observeOff(); // tulisan sendiri (label/panel) tidak memicu observer
             styleEnsure();
             try {
                 mountDesign();
@@ -3141,12 +3329,15 @@
             } catch (e) {
                 if (typeof console !== 'undefined') console.warn('IGPAS advisor', e); // jangan pernah merusak halaman game
             }
-            // Toggle hanya tampil bila ada UI sungguhan (panel ATAU badge inline
-            // design) — halaman race TANPA wadah tab Setup/Strategy
+            // Toggle hanya tampil bila ada UI sungguhan (panel ATAU tulisan
+            // in-place — halaman race TANPA wadah tab Setup/Strategy
             // (mis. konteks race live) dibiarkan 100% tanpa jejak UI,
-            // termasuk tanpa tombol advisor.
-            if (!document.querySelector('.igpas-adv-panel, .igpas-adv-inline')) {
+            // termasuk tanpa tombol advisor. Panel milik sendiri tidak pernah
+            // memakai data-igpas-orig, jadi selektor ini murni milik tulisan
+            // di elemen game.
+            if (!document.querySelector('.igpas-adv-panel, [data-igpas-orig]')) {
                 removeIfAny([PREFIX + '-toggle']);
+                observeOn();
                 return;
             }
             if (!document.getElementById(PREFIX + '-toggle')) {
@@ -3158,11 +3349,15 @@
                 btn.addEventListener('click', () => {
                     const pref = gm.get(Keys.advisor, null) || {};
                     gm.set(Keys.advisor, { hidden: !pref.hidden });
-                    applyHidden();
+                    if (applyHidden()) return; // disembunyikan → restore* jalan di applyHidden
+                    try { renderAll(); } catch (e) { // ditampilkan → tulis ulang semua in-place
+                        if (typeof console !== 'undefined') console.warn('IGPAS advisor', e);
+                    }
                 });
                 document.body.appendChild(btn);
             }
             applyHidden();
+            observeOn();
         }
 
         function applyHidden() {
@@ -3175,6 +3370,9 @@
                 btn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
                 btn.textContent = (hidden ? '▸ ' : '▾ ') + 'I.G.P.A.S advisor';
             }
+            // Sembunyi = semua tulisan in-place dikembalikan (tak ada elemen untuk di-hide).
+            if (hidden) { restoreDesign(); restoreSupply(); restoreManufacturers(); }
+            return hidden;
         }
 
         function start() {
@@ -3182,7 +3380,10 @@
             if (start.started) return; // idempoten — aman dari double DOMContentLoaded
             start.started = true;
             renderAll();
-            // Re-render dipicu aksi user (buka dialog Supply, ganti tab/pager, pindah halaman).
+            observeOn(); // jaga observer tetap tersambung setelah render awal
+            // Re-render dipicu DUA jalur: (1) observer instan saat DOM game berubah
+            // (0ms, tanpa debounce); (2) fallback debounce 250ms untuk navigasi yang
+            // tidak menyentuh DOM terawasi (popstate/hashchange/klik antar-halaman).
             let pending = null;
             const schedule = (ev) => {
                 // Ketikan di field game (chat, pencarian, dsb.) bukan sinyal navigasi —
@@ -3196,7 +3397,7 @@
                 // Klik di dalam UI milik sendiri sudah ditangani langsung (toggle →
                 // applyHidden) — re-render penuh tidak menambah apa-apa.
                 if (ev && ev.type === 'click' && ev.target && typeof ev.target.closest === 'function') {
-                    if (ev.target.closest('.igpas-adv-panel, .igpas-adv-inline, #' + PREFIX + '-toggle')) return;
+                    if (ev.target.closest('.igpas-adv-panel, #' + PREFIX + '-toggle')) return;
                 }
                 if (pending) clearTimeout(pending);
                 pending = setTimeout(() => { pending = null; renderAll(); }, 250);

@@ -1,6 +1,6 @@
 // Test Advisor in-page (v0.7.0) — userscript sebenarnya atas fixture DOM nyata
 // (jsdom, runScripts outside-only). Verifikasi:
-//   - badge design inline (Cars) di baris asli game + label "estimasi";
+//   - label design (Cars) ditulis ulang in-place di baris asli + label "estimasi";
 //   - panel supply di dalam .supplyDialog saat dialog terbuka;
 //   - panel ranking engine+chassis di halaman Manufacturers;
 //   - TIDAK ada jejak UI advisor di halaman lain (race dsb.);
@@ -45,6 +45,7 @@ function assert(ok, msg) {
 
 let pass = 0,
   fail = 0;
+const asyncTests = [];
 function t(name, fn) {
   try {
     fn();
@@ -55,83 +56,253 @@ function t(name, fn) {
     console.error("  ✗ " + name + " — " + e.message);
   }
 }
+function ta(name, fn) {
+  asyncTests.push([name, fn]);
+}
 
 const URL_IGP = "https://www.igpmanager.com/app/p=cars";
 
-t("Design advisor: badge inline di baris asli Cars + label estimasi", () => {
+t("Design advisor: peringkat ditulis ke label asli Cars, tanpa elemen baru", () => {
   const s = bootOn(load("cars.html"), URL_IGP);
-  // Sukses = tanpa section terpisah; rekomendasi menempel di baris game.
-  assert(!s.doc.getElementById("igpas-adv-design"), "panel terpisah masih ada (harusnya inline)");
-  const badges = s.doc.querySelectorAll('#carAttributesDisplay .attribute-rating-header .igpas-adv-inline');
-  assert(badges.length === 8, "badge inline harus 8 (satu per atribut), dapat " + badges.length);
-  const texts = Array.prototype.map.call(badges, b => b.textContent);
-  assert(texts.some(x => /^#1 ·/.test(x)), "badge peringkat 1 tidak ada (dapat: " + texts.join(' | ') + ")");
-  assert(texts.every(x => /^#\d+ ·/.test(x)), "format badge harus '#n · …' (dapat: " + texts.join(' | ') + ")");
-  const first = s.doc.querySelector('#carAttributesDisplay .attribute-row .igpas-adv-inline');
-  assert(/estimasi/i.test(first.title), "tooltip badge tanpa label estimasi");
-  assert(/max liga/i.test(first.title), "tooltip badge tanpa max liga");
-  const legend = s.doc.querySelector('#carAttributes .igpas-adv-inline-head');
-  assert(legend, "legenda header tidak ada");
-  assert(/estimasi/i.test(legend.textContent), "legenda tanpa label estimasi");
-  // Node game asli tidak berubah: nilai & bar tetap milik game.
-  assert(s.doc.querySelector('#wrap-acceleration .ratingVal').textContent.trim() === '53', "nilai game ikut berubah");
+  // Tanpa section/badge baru: satu-satunya elemen advisor = toggle (+ style di head).
+  assert(!s.doc.querySelector("section.igpas-adv-panel"), "panel terpisah masih ada");
+  assert(!s.doc.querySelector(".igpas-adv-inline"), "badge sisa versi lama masih ada");
+  const rows = s.doc.querySelectorAll("#carAttributesDisplay .attribute-row");
+  assert(rows.length === 8, "baris asli harus tetap 8, dapat " + rows.length);
+  const labels = Array.prototype.map.call(
+    rows,
+    r => r.querySelector(".attribute-rating-header span:not(.ratingVal)").textContent
+  );
+  assert(
+    labels.every(x => /^#\d+ /.test(x)),
+    "semua label harus diawali peringkat (dapat: " + labels.join(" | ") + ")"
+  );
+  assert(labels.filter(x => /^#1 /.test(x)).length === 1, "harus tepat satu peringkat #1");
+  assert(
+    /^#1 Fuel economy · 26 DP$/.test(labels.filter(x => /^#1 /.test(x))[0]),
+    "peringkat #1 harus Fuel economy ±26 DP (dapat: " + labels.join(" | ") + ")"
+  );
+  // Teks asli tersimpan untuk restore; angka & bar game tidak disentuh.
+  assert(
+    s.doc.querySelector("#wrap-acceleration").getAttribute("data-igpas-orig") === "Acceleration",
+    "teks asli tidak disimpan di data-igpas-orig"
+  );
+  assert(
+    s.doc.querySelector("#wrap-acceleration .ratingVal").textContent.trim() === "53",
+    "nilai game ikut berubah"
+  );
+  assert(
+    s.doc.querySelector("#wrap-acceleration .ratingBar div").getAttribute("style") === "width:18%",
+    "bar game ikut berubah"
+  );
+  // Detail + estimasi di title baris yang sama.
+  const t1 = s.doc.querySelector("#wrap-fuel_economy").getAttribute("title");
+  assert(/max liga/i.test(t1), "title tanpa max liga");
+  assert(/estimasi/i.test(t1), "title tanpa label estimasi");
   s.close();
 });
 
-t("Supply advisor: panel di dalam dialog Supply terbuka (engine) + tanda terbaik", () => {
+t("Supply advisor: peringkat ditulis ke kartu asli dialog (engine), tanpa elemen baru", () => {
   const s = bootOn(load("supply-engine.html"), URL_IGP);
-  const panel = s.doc.getElementById("igpas-adv-supply");
-  assert(panel, "panel supply tidak ada");
-  assert(panel.closest(".supplyDialog"), "panel tidak berada di dalam dialog Supply");
-  const txt = panel.textContent;
-  assert(txt.indexOf("Σ bonus") >= 0, "kolom Σ bonus tidak tampil");
-  assert(/aktif:\s*supplier\s*#/i.test(txt), "supplier aktif tidak disebut");
-  assert(/estimasi/i.test(txt), "label estimasi tidak tampil");
-  assert(/terbaik nilai|termurah/.test(txt), "tanda terbaik/termurah tidak tampil");
+  // Tanpa panel terpisah: satu-satunya elemen advisor = toggle (+ style di head).
+  assert(!s.doc.querySelector("section.igpas-adv-panel"), "panel terpisah masih ada");
+  const links = Array.prototype.slice.call(s.doc.querySelectorAll(".supplyDialog a.btn.confirm"));
+  assert(links.length === 5, "kartu alternatif harus 5, dapat " + links.length);
+  const texts = links.map(a => {
+    for (const nd of a.childNodes) {
+      if (nd.nodeType === 3 && nd.textContent.trim() !== "") return nd.textContent;
+    }
+    return "";
+  });
+  assert(
+    texts.every(x => /^#\d+ /.test(x)),
+    "semua biaya harus diawali peringkat (dapat: " + texts.join(" | ") + ")"
+  );
+  assert(texts.filter(x => /^#1 /.test(x)).length === 1, "harus tepat satu peringkat #1");
+  // Σ6/400k = nilai/1M tertinggi → #1 + ★; termurah 350k → #2 + penanda.
+  assert(
+    texts.some(x => /^#1 · 400k ★$/.test(x)),
+    "peringkat #1 harus supplier #6 400k ★ (dapat: " + texts.join(" | ") + ")"
+  );
+  assert(
+    texts.some(x => /^#2 · 350k · termurah$/.test(x)),
+    "termurah harus #2 350k (dapat: " + texts.join(" | ") + ")"
+  );
+  // Teks asli tersimpan; ikon & data-tip game tidak disentuh.
+  const first = links[0];
+  assert(
+    first.getAttribute("data-igpas-orig") === "350k",
+    "biaya asli tidak disimpan di data-igpas-orig"
+  );
+  assert(first.querySelector('img[src*="/img/cash2-64.webp"]'), "ikon biaya game hilang");
+  assert(/eId=1/.test(first.getAttribute("data-tip") || ""), "data-tip game ikut berubah");
+  // Detail + estimasi di title kartu yang sama.
+  const card = first.closest(".inline-block");
+  assert(/Σ bonus \+5/.test(card.getAttribute("title") || ""), "title tanpa Σ bonus");
+  assert(/nilai\/1M/.test(card.getAttribute("title") || ""), "title tanpa nilai/1M");
+  assert(/estimasi/i.test(card.getAttribute("title") || ""), "title tanpa label estimasi");
+  // Verdict aktif ditulis ke judul dialog asli.
+  const h2 = s.doc.querySelector(".dialog-subhead-content h2");
+  assert(
+    h2.textContent === "Engine supply · bonus kalah, biaya kalah vs alternatif",
+    "judul verdict salah: " + h2.textContent
+  );
+  assert(
+    /Supplier aktif #2/.test(h2.getAttribute("title") || ""),
+    "title judul tanpa supplier aktif"
+  );
+  assert(
+    /350 rb.*#1/.test(h2.getAttribute("title") || ""),
+    "title judul tanpa pembanding termurah"
+  );
+  assert(/estimasi/i.test(h2.getAttribute("title") || ""), "title judul tanpa label estimasi");
   s.close();
 });
 
-t("Supply advisor: dialog Fuel — panel tampil dengan tipe fuel", () => {
+t("Supply advisor: dialog Fuel — peringkat in-place + tipe fuel", () => {
   const s = bootOn(load("supply-fuel.html"), URL_IGP);
-  const panel = s.doc.getElementById("igpas-adv-supply");
-  assert(panel && panel.closest(".supplyDialog"), "panel supply fuel tidak ada di dialog");
-  assert(/supply\s*·\s*fuel/i.test(panel.textContent), "tipe fuel tidak tercantum di panel");
+  assert(!s.doc.querySelector("section.igpas-adv-panel"), "panel terpisah masih ada");
+  const texts = Array.prototype.map.call(
+    s.doc.querySelectorAll(".supplyDialog a.btn.confirm"),
+    a => {
+      for (const nd of a.childNodes) {
+        if (nd.nodeType === 3 && nd.textContent.trim() !== "") return nd.textContent;
+      }
+      return "";
+    }
+  );
+  assert(texts.length === 4, "kartu fuel harus 4, dapat " + texts.length);
+  assert(
+    texts.every(x => /^#\d+ /.test(x)),
+    "label tanpa peringkat: " + texts.join(" | ")
+  );
+  // Semua Σ2 → urut biaya: 30k #1 ★, 35k #2, 40k #3, 60k #4.
+  assert(
+    texts.some(x => /^#1 · 30k ★$/.test(x)),
+    "peringkat #1 fuel salah: " + texts.join(" | ")
+  );
+  const h2 = s.doc.querySelector(".dialog-subhead-content h2");
+  assert(
+    /^Fuel supply/.test(h2.textContent),
+    "judul dialog fuel berubah tak dikenal: " + h2.textContent
+  );
   s.close();
 });
 
-t("Supply advisor: dialog Tyre — panel tampil dengan tipe tyre", () => {
+t("Supply advisor: dialog Tyre — peringkat in-place + tipe tyre", () => {
   const s = bootOn(load("supply-tyre.html"), URL_IGP);
-  const panel = s.doc.getElementById("igpas-adv-supply");
-  assert(panel && panel.closest(".supplyDialog"), "panel supply tyre tidak ada di dialog");
-  assert(/supply\s*·\s*tyre/i.test(panel.textContent), "tipe tyre tidak tercantum di panel");
+  assert(!s.doc.querySelector("section.igpas-adv-panel"), "panel terpisah masih ada");
+  const texts = Array.prototype.map.call(
+    s.doc.querySelectorAll(".supplyDialog a.btn.confirm"),
+    a => {
+      for (const nd of a.childNodes) {
+        if (nd.nodeType === 3 && nd.textContent.trim() !== "") return nd.textContent;
+      }
+      return "";
+    }
+  );
+  assert(texts.length === 4, "kartu tyre harus 4, dapat " + texts.length);
+  assert(
+    texts.every(x => /^#\d+ /.test(x)),
+    "label tanpa peringkat: " + texts.join(" | ")
+  );
+  // Σ4/60k → #1 ★; termurah 50k → #2 + penanda.
+  assert(
+    texts.some(x => /^#1 · 60k ★$/.test(x)),
+    "peringkat #1 tyre salah: " + texts.join(" | ")
+  );
+  assert(
+    texts.some(x => /^#2 · 50k · termurah$/.test(x)),
+    "termurah tyre salah: " + texts.join(" | ")
+  );
+  const h2 = s.doc.querySelector(".dialog-subhead-content h2");
+  assert(
+    /^Tyre supply/.test(h2.textContent),
+    "judul dialog tyre berubah tak dikenal: " + h2.textContent
+  );
   s.close();
 });
 
-t("Manufacturers advisor: ranking engine & chassis di halaman manufacturers", () => {
-  const s = bootOn(
-    load("manufacturers-engines.html"),
-    "https://www.igpmanager.com/app/p=manufacturers"
-  );
-  const pe = s.doc.getElementById("igpas-adv-mfg-engine");
-  const pc = s.doc.getElementById("igpas-adv-mfg-chassis");
-  assert(
-    pe && pe.nextElementSibling && pe.nextElementSibling.id === "engine-table",
-    "panel engine tidak tepat sebelum tabel engine"
-  );
-  assert(
-    pc && pc.nextElementSibling && pc.nextElementSibling.id === "chassis-table",
-    "panel chassis tidak tepat sebelum tabel chassis"
-  );
-  const txtE = pe.textContent;
-  assert(txtE.indexOf("Rating/1M") >= 0, "kolom efisiensi engine tidak tampil");
-  assert(/estimasi/i.test(txtE), "label estimasi tidak tampil");
-  assert(/pager/i.test(txtE), "batasan pager tidak dijelaskan");
-  assert(
-    pc.textContent.indexOf("rating tertinggi") >= 0 || pc.textContent.indexOf("Rating") >= 0,
-    "konten ranking chassis kosong"
-  );
-  s.close();
-});
+t(
+  "Manufacturers advisor: peringkat ditulis ke baris asli engine & chassis, tanpa elemen baru",
+  () => {
+    const s = bootOn(
+      load("manufacturers-engines.html"),
+      "https://www.igpmanager.com/app/p=manufacturers"
+    );
+    assert(!s.doc.querySelector("section.igpas-adv-panel"), "panel terpisah masih ada");
+    for (const tid of ["engine-table", "chassis-table"]) {
+      const rows = s.doc.querySelectorAll("#" + tid + " tbody tr");
+      assert(rows.length > 0, "tabel " + tid + " kosong");
+      const names = Array.prototype.map.call(rows, tr => {
+        const tds = tr.querySelectorAll("td");
+        for (const nd of tds[0].childNodes) {
+          if (nd.nodeType === 3 && nd.textContent.trim() !== "") return nd.textContent;
+        }
+        return "";
+      });
+      assert(
+        names.every(x => /^#\d+ /.test(x)),
+        tid + ": baris tanpa peringkat (" + names.slice(0, 3).join(" | ") + "…)"
+      );
+      assert(
+        names.filter(x => /^#1 /.test(x)).length === 1,
+        tid + ": harus tepat satu peringkat #1"
+      );
+    }
+    // Engine: rating 100 + rating/1M tertinggi → CAVEIRA #1.
+    const engNames = Array.prototype.map.call(
+      s.doc.querySelectorAll("#engine-table tbody tr td:first-child"),
+      td => {
+        for (const nd of td.childNodes) {
+          if (nd.nodeType === 3 && nd.textContent.trim() !== "") return nd.textContent;
+        }
+        return "";
+      }
+    );
+    assert(
+      engNames.some(x => /^#1 CAVEIRA$/.test(x)),
+      "peringkat #1 engine harus CAVEIRA (dapat: " +
+        engNames
+          .filter(x => /^#\d+ /.test(x))
+          .slice(0, 5)
+          .join(" | ") +
+        ")"
+    );
+    // Chassis: rating tertinggi → '0 failures' #1 (urutan nama lokal).
+    const chNames = Array.prototype.map.call(
+      s.doc.querySelectorAll("#chassis-table tbody tr td:first-child"),
+      td => {
+        for (const nd of td.childNodes) {
+          if (nd.nodeType === 3 && nd.textContent.trim() !== "") return nd.textContent;
+        }
+        return "";
+      }
+    );
+    assert(
+      chNames.some(x => /^#1 0 failures$/.test(x)),
+      "peringkat #1 chassis salah (dapat: " + chNames.filter(y => /^#1 /.test(y)).join(" | ") + ")"
+    );
+    // Nama asli tersimpan; link, flag, rating game tidak disentuh.
+    const caveira = Array.prototype.slice
+      .call(s.doc.querySelectorAll("#engine-table tbody tr"))
+      .filter(tr => /^#1 /.test(tr.textContent))[0];
+    assert(
+      caveira.getAttribute("data-igpas-orig") === "CAVEIRA",
+      "nama asli tidak disimpan di data-igpas-orig"
+    );
+    assert(caveira.querySelector('a[href*="id="]'), "link game hilang");
+    assert(
+      /Rating: 100%/.test(caveira.querySelector(".tooltip").getAttribute("data-tip") || ""),
+      "rating game ikut berubah"
+    );
+    // Detail + estimasi di title baris yang sama.
+    assert(/rating 100%/.test(caveira.getAttribute("title") || ""), "title tanpa rating");
+    assert(/rating\/1M/.test(caveira.getAttribute("title") || ""), "title engine tanpa rating/1M");
+    assert(/estimasi/i.test(caveira.getAttribute("title") || ""), "title tanpa label estimasi");
+    s.close();
+  }
+);
 
 t(
   "Keamanan: halaman lain (race tanpa wadah tab/unknown) tidak mendapat UI advisor sedikit pun",
@@ -299,23 +470,23 @@ t("Transfers advisor: panel staff pasar per peran (CD/TD/DR + spesialisasi hijau
 
 const URL_TRANSFERS = "https://www.igpmanager.com/app/p=transfers";
 
-t("Banding supply: supplier aktif vs alternatif dialog (dua sumbu + verdict)", () => {
+t("Banding supply: verdict aktif vs alternatif tertulis di judul dialog (dua sumbu)", () => {
   const s = bootOn(load("supply-engine.html"), URL_IGP);
-  const panel = s.doc.getElementById("igpas-adv-supply-compare");
-  assert(panel, "panel banding supply tidak ada");
-  assert(panel.closest(".supplyDialog"), "panel banding tidak di dalam dialog Supply");
-  const txt = panel.textContent;
-  assert(txt.indexOf("Supplier aktif") >= 0, "kolom supplier aktif tidak tampil");
+  assert(!s.doc.getElementById("igpas-adv-supply-compare"), "panel banding lama masih ada");
+  const h2 = s.doc.querySelector(".dialog-subhead-content h2");
+  // aktif Σ4 vs terbaik Σ6 (#6) → bonus kalah; aktif 500k vs termurah 350k (#1) → biaya kalah.
   assert(
-    txt.indexOf("Σ bonus") >= 0 && txt.indexOf("Biaya/balapan") >= 0,
-    "dua sumbu tidak tampil"
+    h2.textContent.indexOf("bonus kalah") >= 0,
+    "verdict Σ bonus tidak muncul di judul: " + h2.textContent
   );
-  // aktif: 10 + (−6) = 4; alternatif terbaik #6 = 10 + (−4) = 6 → lebih buruk
-  assert(/▼ lebih buruk/.test(txt), "verdict Σ bonus (aktif 4 vs 6) tidak muncul");
-  // aktif 500k vs termurah #1 350k → lebih buruk juga
-  assert(txt.indexOf("350 rb") >= 0, "pembanding biaya termurah tidak tampil");
-  assert(/estimasi, bukan rumus game/i.test(txt), "batasan heuristik tidak dinyatakan");
-  assert(/#1/.test(txt) && /rb|jt/.test(txt), "pembanding terformat tidak tampil");
+  assert(
+    h2.textContent.indexOf("biaya kalah") >= 0,
+    "verdict biaya tidak muncul di judul: " + h2.textContent
+  );
+  const title = h2.getAttribute("title") || "";
+  assert(title.indexOf("350 rb") >= 0, "pembanding biaya termurah tidak tampil di title");
+  assert(/estimasi, bukan rumus game/i.test(title), "batasan heuristik tidak dinyatakan di title");
+  assert(/#6/.test(title), "pembanding bonus terbaik tidak tampil di title");
   s.close();
 });
 
@@ -540,12 +711,74 @@ t("Race: zero panel lain + mailbox tetap senyap di halaman race", () => {
   s.close();
 });
 
-console.log(
-  (fail ? "\n" : "") +
-    (pass + fail) +
-    " test advisor, " +
-    fail +
-    " gagal" +
-    (fail ? "" : " — semua lulus ✔")
+ta(
+  "Render instan: baris Cars yang disuntik game async langsung berlabel tanpa aksi user",
+  async () => {
+    // Bangun fixture render-async: tabel kosong (game belum commit DOM).
+    const base = new JSDOM(load("cars.html"));
+    const bdoc = base.window.document;
+    const rowsHtml = bdoc.getElementById("carAttributesDisplay").innerHTML;
+    assert(
+      (rowsHtml.match(/attribute-row/g) || []).length >= 8,
+      "pra-kondisi fixture: butuh 8 baris"
+    );
+    bdoc.getElementById("carAttributesDisplay").innerHTML = "";
+    const s = bootOn(base.serialize(), URL_IGP);
+    base.window.close();
+    const disp = s.doc.getElementById("carAttributesDisplay");
+    assert(disp && disp.children.length === 0, "pra-kondisi: tabel harus kosong");
+    assert(
+      !s.doc.querySelector(".attribute-row[data-igpas-orig]"),
+      "pra-kondisi: belum ada tulisan"
+    );
+    // Game commit DOM async (satu innerHTML, tanpa klik/keyboard/navigasi dari user).
+    disp.innerHTML = rowsHtml;
+    // Tunggu antrean observer jsdom — tanpa memanggil renderAll manual.
+    await new Promise(r => setTimeout(r, 100));
+    const labels = Array.prototype.map.call(
+      s.doc.querySelectorAll(
+        "#carAttributesDisplay .attribute-row .attribute-rating-header span:not(.ratingVal)"
+      ),
+      el => el.textContent
+    );
+    assert(labels.length === 8, "observer tidak me-render: " + labels.length + " label");
+    assert(
+      labels.every(x => /^#\d+ /.test(x)),
+      "label tanpa peringkat: " + labels.join(" | ")
+    );
+    const first = labels.filter(x => /^#1 /.test(x))[0] || "";
+    assert(/^#1 Fuel economy · 26 DP$/.test(first), "prioritas #1 salah: " + labels.join(" | "));
+    // Stabil: tidak ada loop render (satu pass tambahan tidak mengubah hasil).
+    await new Promise(r => setTimeout(r, 100));
+    const labels2 = Array.prototype.map.call(
+      s.doc.querySelectorAll(
+        "#carAttributesDisplay .attribute-row .attribute-rating-header span:not(.ratingVal)"
+      ),
+      el => el.textContent
+    );
+    assert(labels2.join("|") === labels.join("|"), "label berubah sendiri (loop observer?)");
+    s.close();
+  }
 );
-process.exit(fail ? 1 : 0);
+
+(async () => {
+  for (const [name, fn] of asyncTests) {
+    try {
+      await fn();
+      pass++;
+      console.log("  ✔ " + name);
+    } catch (e) {
+      fail++;
+      console.error("  ✗ " + name + " — " + e.message);
+    }
+  }
+  console.log(
+    (fail ? "\n" : "") +
+      (pass + fail) +
+      " test advisor, " +
+      fail +
+      " gagal" +
+      (fail ? "" : " — semua lulus ✔")
+  );
+  process.exit(fail ? 1 : 0);
+})();

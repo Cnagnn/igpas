@@ -190,8 +190,10 @@ mengubah strategi/tabrakan dengan input game.
 - **Risiko ToS milik user sepenuhnya.** `docs/COMPLIANCE.md` dicabut atas
   keputusan owner: user yang memakai userscript ini bertanggung jawab sendiri
   apabila akun terkena banned/pelanggaran ToS iGP Manager — bukan menyalahkan
-  projek ini. Badge inline halaman Cars menempel di dalam DOM game (append
-  badge milik sendiri; nilai & bar game tidak diubah), yang secara literal
-  masuk area "scripts" di ToS § V.J.
+  projek ini. Advisor halaman Cars menulis ulang **teks label asli** tiap
+  baris stats (`#n Label · X DP`, tanpa elemen baru; angka & bar game tidak
+  diubah, teks asli di-restore saat cleanup), yang secara literal masuk
+  area "scripts" di ToS § V.J. Pola tulis-ulang yang sama dipakai dialog
+  Supply (biaya kartu + judul dialog) dan halaman Manufacturers (nama baris).
 - Lisensi GPL-3.0-or-later mengikuti semangat A.C.A.S; kode dari A.C.A.S **tidak
   disalin** — hanya pola arsitektur (dari analisis, bukan dari copy kode).

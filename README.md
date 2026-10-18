@@ -25,9 +25,13 @@ sebagai userscript. Terinspirasi arsitektur [A.C.A.S](https://psyyke.github.io/A
 Profil setup per sirkuit tersimpan lokal (GM storage) dan dirender langsung
 di **Command Center**. Sejak v0.7.0, tab iGP **tidak lagi 100% senyap**:
 userscript menambahkan **Advisor in-page** di halaman studi (lihat di bawah).
-Di halaman Cars, badge usulan DP ditempel **di dalam baris asli tabel game**
-(append badge milik sendiri; nilai & bar game tidak diubah). Risiko ToS atas
-penempelan DOM ini **ditanggung user sepenuhnya**.
+Di halaman Cars, **teks label asli tiap baris stats ditulis ulang**
+(`#1 Fuel economy · 26 DP`) — tanpa elemen baru; angka & bar game tidak
+disentuh, teks asli dikembalikan otomatis saat cleanup. Pola yang sama
+berlaku di dialog Supply (biaya kartu ditulis `#n · 350k ★`, verdict aktif
+di judul dialog) dan halaman Manufacturers (nama baris ditulis `#n Nama`).
+Risiko ToS atas
+modifikasi DOM ini **ditanggung user sepenuhnya**.
 
 **Autoload akun, mobil & supply (v0.4.0 → v0.6.2)** — snapshot dimuat **otomatis
 setiap Command Center dibuka** (dan saat kembali ke tab itu dengan jeda ≥30 dtk):
