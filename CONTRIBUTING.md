@@ -13,13 +13,13 @@ npm run dev      # http://localhost:8787/  (docs/)
 
 ## Quality gate (wajib hijau sebelum PR)
 
-| Gate         | Perintah                 | Catatan                                               |
-| ------------ | ------------------------ | ----------------------------------------------------- |
-| Syntax       | `npm run syntax`         | `node --check src/igpas.user.js`                      |
-| Lint         | `npm run lint`           | `eslint .` (fix: `npm run lint:fix`)                  |
-| Format       | `npm run format:check`   | `prettier --check .` (fix: `npm run format`)          |
-| Version sync | `npm run versions:check` | source: `package.json` → `@version` + `const VERSION` |
-| Tests        | `npm test`               | 105 tests (core+snapshots+mailbox+gui+advisor)        |
+| Gate         | Perintah                 | Catatan                                                             |
+| ------------ | ------------------------ | ------------------------------------------------------------------- |
+| Syntax       | `npm run syntax`         | `node --check src/igpas.user.js`                                    |
+| Lint         | `npm run lint`           | `eslint .` (fix: `npm run lint:fix`)                                |
+| Format       | `npm run format:check`   | `prettier --check .` (fix: `npm run format`)                        |
+| Version sync | `npm run versions:check` | source: `package.json` → `@version` + `const VERSION`               |
+| Tests        | `npm test`               | 126 tests (63 core + 24 snapshot + 6 mailbox + 14 gui + 19 advisor) |
 
 CI (`ci.yml`) menjalankan semua gate + **header/guard** userscript
 (`fetch`/`XHR`/`GM_xmlhttpRequest`/`eval`/`unsafeWindow` harus 0 di `src/`).

@@ -212,10 +212,13 @@ docs/ARCHITECTURE.md     blueprint + peta pola A.C.A.S → I.G.P.A.S
 Jalankan verifikasi:
 
 ```bash
-npm install        # dev deps (jsdom)
-npm test           # core + snapshots + mailbox + gui
+npm install        # dev deps (jsdom + eslint + prettier) — butuh Node >= 22.22.2
+npm test           # core + snapshots + mailbox + gui + advisor
 node --check src/igpas.user.js
 ```
+
+> **Node ≥ 22.22.2** (lihat `.nvmrc`). `jsdom@30` menarik `undici@8` yang
+> mensyaratkan Node ≥ 22.19 — di Node 20 test suite gagal saat `require`.
 
 ## Quality & CI
 

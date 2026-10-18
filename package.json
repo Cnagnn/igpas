@@ -6,7 +6,7 @@
   "license": "GPL-3.0-or-later",
   "type": "commonjs",
   "engines": {
-    "node": ">=18"
+    "node": ">=22.22.2"
   },
   "scripts": {
     "test": "node test/core.test.js && node test/snapshots.test.js && node test/mailbox.test.js && node test/gui.test.js && node test/advisor.test.js",
