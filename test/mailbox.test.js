@@ -97,6 +97,18 @@ t("paket basi (>30 dtk): dibersihkan janitor tanpa dispatch", () => {
   assert(!has("t5"), "paket basi tidak dibersihkan");
 });
 
+t("read-once: poll berulang tidak memicu handler dua kali", () => {
+  let n = 0;
+  Mailbox.on("read-once", () => {
+    n++;
+  });
+  put("t7", pkt("read-once", { id: "t7" }));
+  Mailbox.pollOnce();
+  Mailbox.pollOnce();
+  assert(n === 1, "handler dipanggil " + n + "× (harus 1)");
+  assert(!has("t7"), "paket read-once tidak dihapus");
+});
+
 t("nilai rusak (bukan objek): dibersihkan", () => {
   store.set("igpas:mb:t6", "not-a-packet");
   Mailbox.pollOnce();

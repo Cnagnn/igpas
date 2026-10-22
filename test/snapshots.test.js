@@ -43,6 +43,8 @@ const mfrChsDoc = new JSDOM(
   fs.readFileSync(path.join(__dirname, "fixtures/manufacturers-chassis.html"), "utf8")
 ).window.document;
 const blankDoc = new JSDOM("<html><body></body></html>").window.document;
+const raceDoc = new JSDOM(fs.readFileSync(path.join(__dirname, "fixtures/race.html"), "utf8"))
+  .window.document;
 
 t("car-data: gate pageId — halaman lain ditolak", () => {
   const r = AdapterRegistry.capture("car-data", blankDoc);
@@ -251,6 +253,78 @@ t("adapter belum ada -> pesan error jujur", () => {
   if (!/belum tersedia/.test(r.error)) throw new Error(r.error);
 });
 
+/* ---------- race data (pra-balapan) — snapshot v0.8.4 ---------- */
+
+t("race-setup-data: gate pageId + cuaca/slider/practice terbaca", () => {
+  eq(AdapterRegistry.capture("race-setup-data", blankDoc).ok, false);
+  const r = AdapterRegistry.capture("race-setup-data", raceDoc);
+  eq(r.ok, true);
+  eq(r.data.weather, { rainText: "0mm", tempText: "5°C" });
+  eq(r.data.drivers.length, 2);
+  const d = r.data.drivers[0];
+  eq(d.name, "Andi Pratama");
+  eq(
+    d.sliders.map(s => s.key),
+    ["ride", "suspension", "aerodynamics"]
+  );
+  eq(d.sliders[0].value, 50);
+  eq(d.sliders[0].ideal, { left: 0, width: 85 });
+  eq(d.sliders[0].dir, "decrease");
+  eq(d.practiceLaps, 1);
+  eq(d.practiceLast.time, "1:22.512");
+  eq(d.practiceHistory[0].timeSec, 82.512);
+  eq(d.practiceHistory[0].fuelNum, -2.4);
+});
+
+t("race-setup-data: slider memakai nilai hidup, bukan atribut basi", () => {
+  const doc = new JSDOM(fs.readFileSync(path.join(__dirname, "fixtures/race.html"), "utf8")).window
+    .document;
+  const input = doc.querySelector("#setup .setupSliderWrap input");
+  eq(input.getAttribute("value"), "50"); // atribut tetap nilai awal
+  input.value = "60"; // game menggeser slider → properti berubah
+  const r = AdapterRegistry.capture("race-setup-data", doc);
+  eq(r.data.drivers[0].sliders[0].value, 60);
+});
+
+t("race-strategy-data: gate + strategy/fuel/tyre-life/push level", () => {
+  eq(AdapterRegistry.capture("race-strategy-data", blankDoc).ok, false);
+  const r = AdapterRegistry.capture("race-strategy-data", raceDoc);
+  eq(r.ok, true);
+  eq(r.data.raceLaps, 63);
+  eq(r.data.rules.two_tyres, "1");
+  const d = r.data.drivers[0];
+  eq(d.strategy.stints, 4);
+  eq(d.strategy.stint["1"].tyre, "M");
+  eq(d.fuelPerLap, 2.46);
+  eq(d.advancedFuel, 174);
+  eq(d.totalLapsGame, 64);
+  eq(d.tyreLife, { SS: 12 });
+  eq(d.pushLevel, 60);
+});
+
+t("race-strategy-data: advancedFuel memakai nilai hidup input", () => {
+  const doc = new JSDOM(fs.readFileSync(path.join(__dirname, "fixtures/race.html"), "utf8")).window
+    .document;
+  const adv = doc.getElementById("d1AdvancedFuel");
+  eq(adv.getAttribute("value"), "174");
+  adv.value = "200";
+  const r = AdapterRegistry.capture("race-strategy-data", doc);
+  eq(r.data.drivers[0].advancedFuel, 200);
+});
+
+t("race-track-data: gate + karakteristik & panjang sirkuit", () => {
+  eq(AdapterRegistry.capture("race-track-data", blankDoc).ok, false);
+  const r = AdapterRegistry.capture("race-track-data", raceDoc);
+  eq(r.ok, true);
+  eq(r.data.name, "Circuit Nordvik");
+  eq(r.data.laps, 63);
+  eq(r.data.overtaking, 70);
+  eq(r.data.bumpiness, 40);
+  eq(r.data.fuel, 80);
+  eq(r.data.wear, 45);
+  eq(r.data.lengthKm, 4.341);
+});
+
 t("status registry jujur (ready vs menunggu-map)", () => {
   eq(
     AdapterRegistry.status(),
@@ -277,6 +351,19 @@ t("Storage: mergeSnapshot supply per tipe", () => {
   eq(s.data.engine.type, "engine");
   Storage.clearSnapshots();
   eq(Storage.getSnapshot("supply-data"), null);
+});
+
+t("Storage: snapshot lebih tua dari TTL (30 hari) diabaikan & dibersihkan", () => {
+  Storage.clearSnapshots();
+  const realNow = Date.now;
+  Date.now = () => realNow() - 31 * 24 * 60 * 60 * 1000; // simpan seolah 31 hari lalu
+  Storage.saveSnapshot("account-data", { manager: "Lama" });
+  Date.now = realNow;
+  eq(Storage.getSnapshot("account-data"), null);
+  // Snapshot baru tetap terbaca normal.
+  Storage.saveSnapshot("car-data", { carType: "Baru" });
+  eq(Storage.getSnapshot("car-data").data.carType, "Baru");
+  Storage.clearSnapshots();
 });
 
 console.log(pass + fail + " test, " + fail + " gagal");

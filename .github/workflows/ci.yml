@@ -41,22 +41,14 @@ jobs:
       - name: Format check (prettier)
         run: npm run format:check
 
-      - name: Tests (126 tests)
+      - name: Tests (157 tests)
         run: npm test
 
-      - name: Userscript header sanity
+      - name: Userscript header + guards
         run: |
-          echo "Checking @grant / @match / @version header..."
+          echo "Checking @version / @match header..."
           grep -q "@version" src/igpas.user.js
           grep -q "@grant[[:space:]]*GM_getValue" src/igpas.user.js
           grep -q "@match[[:space:]]*https://igpmanager.com" src/igpas.user.js
-          # Guard: tidak ada network/eval di userscript (kecuali test/docs)
-          if grep -R --include="*.user.js" -nE 'fetch\(|XMLHttpRequest|GM_xmlhttpRequest|eval\(|new Function\(' src/; then
-            echo "::error::userscript mengandung fetch/XHR/eval — harus 0 (lihat docs/COMPLIANCE.md)"
-            exit 1
-          fi
-          if grep -R --include="*.user.js" -n 'unsafeWindow' src/; then
-            echo "::error::userscript mengandung unsafeWindow — harus 0"
-            exit 1
-          fi
-          echo "Header & guard OK"
+          # @grant lengkap + tanpa network/eval/unsafeWindow (dipakai juga di verify lokal)
+          npm run guards:check

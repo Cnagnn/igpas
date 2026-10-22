@@ -17,7 +17,8 @@
     "format:check": "prettier --check .",
     "syntax": "node --check src/igpas.user.js",
     "versions:check": "node scripts/check-versions.mjs",
-    "verify": "npm run syntax && npm run lint && npm run format:check && npm run versions:check && npm test",
+    "guards:check": "node scripts/check-guards.mjs",
+    "verify": "npm run syntax && npm run lint && npm run format:check && npm run versions:check && npm run guards:check && npm test",
     "dev": "python -m http.server 8787 --directory docs",
     "prepare": "git config core.hooksPath scripts/githooks || true"
   },

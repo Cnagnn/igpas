@@ -1072,6 +1072,10 @@
         advisor: 'igpas:advisor',     // { hidden: Boolean } — preferensi UI advisor in-page
     });
 
+    // Snapshot akun/tim berisi nama & gaji (data game, tetap PII): jangan
+    // disimpan selamanya. Lewat TTL = dianggap tidak ada + dibersihkan saat dibaca.
+    const SNAPSHOT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 hari
+
     const Storage = {
         getProfiles() {
             const all = gm.get(Keys.profiles, null);
@@ -1097,7 +1101,15 @@
             if (!Utils.isSafeKind(kind)) return null;
             const all = gm.get(Keys.snapshots, null) || Object.create(null);
             if (!all || typeof all !== 'object') return null;
-            return all[kind] || null;
+            const rec = all[kind] || null;
+            if (!rec || typeof rec !== 'object') return null;
+            if (Number.isFinite(rec.ts) && (Date.now() - rec.ts) > SNAPSHOT_TTL_MS) {
+                const next = Object.assign(Object.create(null), all);
+                delete next[kind];
+                gm.set(Keys.snapshots, next);
+                return null;
+            }
+            return rec;
         },
         saveSnapshot(kind, data) {
             if (!Utils.isSafeKind(kind)) return;
@@ -1654,7 +1666,10 @@
                     sliders.push({
                         key: idm ? idm[1].toLowerCase() : null,
                         label: lblEl ? clean(lblEl.textContent) : null,
-                        value: numOrNull(input ? input.getAttribute('value')
+                        // `.value` = nilai hidup (game mengubah properti saat slider
+                        // digeser); atribut `value` bisa tetap nilai awal.
+                        value: numOrNull(input
+                            ? ((String(input.value).trim() !== '') ? input.value : input.getAttribute('value'))
                             : (valEl ? valEl.textContent : null)),
                         ideal: IGPCore.parseSliderIdeal(irange ? irange.getAttribute('style') : null),
                         dir: dir,
@@ -1747,10 +1762,6 @@
                 const el = doc.getElementById(id);
                 return el ? el.textContent : null;
             };
-            const attrOf = (id, a) => {
-                const el = doc.getElementById(id);
-                return el ? el.getAttribute(a) : null;
-            };
             const jsonOf = id => {
                 const el = doc.getElementById(id);
                 if (!el) return null;
@@ -1763,7 +1774,11 @@
                     num: n,
                     strategy: jsonOf('d' + n + 'StrategyJson'),
                     fuelPerLap: numOrNull(textOf('d' + n + 'FuelPrediction')),
-                    advancedFuel: numOrNull(attrOf('d' + n + 'AdvancedFuel', 'value')),
+                    // Sama seperti slider: properti `.value` = angka hidup yang
+                    // diubah game; atribut bisa tertinggal di nilai awal.
+                    advancedFuel: (el => (el
+                        ? numOrNull(String(el.value).trim() !== '' ? el.value : el.getAttribute('value'))
+                        : null))(doc.getElementById('d' + n + 'AdvancedFuel')),
                     totalLapsGame: numOrNull(textOf('d' + n + 'TotalLaps')),
                     // Umur ban per compound dari game ({"SS":12}); [] / {} / hilang = belum ada.
                     tyreLife: jsonOf('d' + n + 'TyreLife'),
@@ -2937,7 +2952,14 @@
                 } catch { nameNode = null; }
                 if (!nameNode) return;
                 const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
-                const orig = clean(tds[0].textContent);
+                // Teks milik text-node ini saja — BUKAN seluruh sel. Bila nama
+                // dipecah ke anak elemen (mis. text node "Akina" + <span>SpeedStars</span>),
+                // memakai textContent sel membuat nama tergandakan dan restore
+                // menyuntik teks gabungan ke text node.
+                const rawName = nameNode.textContent;
+                const orig = clean(rawName);
+                const fullName = clean(tds[0].textContent) || orig;
+                if (!orig) return;
                 const star = withCost && bestValueId != null && r.id === bestValueId &&
                     i !== 0 ? ' ★' : '';
                 tr.setAttribute('data-igpas-orig', orig);
@@ -2945,7 +2967,7 @@
                     tr.hasAttribute('title') ? tr.getAttribute('title') : '');
                 nameNode.textContent = '#' + (i + 1) + ' ' + orig + star;
                 tr.setAttribute('data-igpas-written', nameNode.textContent);
-                const advisorTitle = '#' + (i + 1) + ' · ' + orig +
+                const advisorTitle = '#' + (i + 1) + ' · ' + fullName +
                     (star ? ' · nilai terbaik' : '') + ': rating ' + r.rating + '%' +
                     (withCost ? ' · ' + fmtMoney(r.cost) + '/race · rating/1M ' +
                         (r.ratingPerCost == null ? '—' : r.ratingPerCost) : '') +
@@ -3471,11 +3493,22 @@
                 pending = setTimeout(() => { pending = null; renderAll(); }, 250);
             };
             document.addEventListener('click', schedule, true);
+            // Fuel widget: spinner/ketikan memicu `input` berturut-turut. Debounce
+            // agar satu DOM walk penuh (7× captures) per jeda, bukan per event;
+            // `change` (commit/blur) tetap langsung.
+            let fuelPending = null;
+            const scheduleFuel = () => {
+                if (fuelPending) clearTimeout(fuelPending);
+                fuelPending = setTimeout(() => { fuelPending = null; renderAll(); }, 140);
+            };
             document.addEventListener('input', ev => {
-                if (ev.target && /^d[12]AdvancedFuel$/.test(ev.target.id)) renderAll();
+                if (ev.target && /^d[12]AdvancedFuel$/.test(ev.target.id)) scheduleFuel();
             }, true);
             document.addEventListener('change', ev => {
-                if (ev.target && /^d[12]AdvancedFuel$/.test(ev.target.id)) renderAll();
+                if (ev.target && /^d[12]AdvancedFuel$/.test(ev.target.id)) {
+                    if (fuelPending) { clearTimeout(fuelPending); fuelPending = null; }
+                    renderAll();
+                }
             }, true);
             document.addEventListener('keydown', schedule, true);
             window.addEventListener('popstate', schedule);
@@ -3603,7 +3636,11 @@
             // v0.7.2 Team/Transfers; sejak v0.7.3 (permintaan user) tab Setup/Strategy
             // pra-balapan dengan estimasi. Tab Race live & elemen game tidak disentuh).
             if (ROLE === 'sensor' && typeof Advisor !== 'undefined') Advisor.start();
-            if (ROLE === 'gui' && typeof GuiMaster !== 'undefined') GuiMaster.mount();
+            // GUI hanya hidup di halaman harness (marker versi). `@match
+            // http://localhost/*` tetap ada untuk `python3 -m http.server -d docs`,
+            // tapi tab localhost lain tidak boleh disuntik UI/mailbox GUI.
+            if (ROLE === 'gui' && typeof GuiMaster !== 'undefined' &&
+                document.getElementById('igpas-gui-version')) GuiMaster.mount();
             // v0.7.1: menu Tampermonkey utk salin capture DOM (redaksi PII) — tanpa UI halaman.
             if (typeof PageCapture !== 'undefined') PageCapture.install();
         };

@@ -507,6 +507,44 @@ t("Race tidak menyuntik elemen advisor", () => {
   s.close();
 });
 
+ta("Race live (#race): innerHTML identik sebelum/sesudah boot & re-render", async () => {
+  const s = bootOn(load("race.html"), URL_RACE, ["race"]);
+  assert(s.before.race != null, "snapshot #race tidak tersedia");
+  // Render ulang penuh (navigasi user) tidak boleh menyentuh tab Race live.
+  s.doc.body.dispatchEvent(new s.win.Event("click", { bubbles: true }));
+  await new Promise(r => setTimeout(r, 300));
+  assert(
+    s.doc.getElementById("race").innerHTML === s.before.race,
+    "#race berubah setelah render (live-race harus read-only)"
+  );
+  s.close();
+});
+
+ta("Restore manufacturers: nama asli kembali persis, tanpa penggandaan", async () => {
+  const s = bootOn(
+    load("manufacturers-engines.html"),
+    "https://www.igpmanager.com/app/p=manufacturers"
+  );
+  const rows = Array.prototype.slice.call(s.doc.querySelectorAll("#engine-table tbody tr"));
+  const tr = rows.filter(x => /Akina SpeedStars/.test(x.textContent))[0];
+  assert(tr, "baris Akina tidak ditemukan");
+  const td = tr.querySelector("td");
+  assert(/^#\d+ /.test(td.textContent), "ranking tidak tertulis: " + td.textContent);
+  s.doc.getElementById("pageId").value = "cars";
+  s.doc.getElementById("engine-table").appendChild(s.doc.createElement("div"));
+  await new Promise(r => setTimeout(r, 25));
+  assert(
+    td.textContent.trim() === "Akina SpeedStars",
+    "restore manufacturers salah: " + JSON.stringify(td.textContent)
+  );
+  assert(
+    td.textContent.split("Akina SpeedStars").length === 2,
+    "nama tergandakan setelah restore: " + td.textContent
+  );
+  assert(!tr.hasAttribute("data-igpas-orig"), "data-igpas-orig tertinggal");
+  s.close();
+});
+
 t(
   "Race setup in-place: agregasi practice di nama driver + title engineer, #race tak ditulis",
   () => {
@@ -624,8 +662,10 @@ ta("Race strategy: widget Fuel asli utuh, reaktif, idempoten, restore bersih", a
   );
 
   // Reaktif: input game berubah → label ikut, tanpa menggandakan suffix.
+  // (input di-debounce 140 ms agar spinner tidak memicu render per event)
   adv.value = "200";
   adv.dispatchEvent(new s.win.Event("input", { bubbles: true }));
+  await new Promise(r => setTimeout(r, 200));
   const afterInput = labelOf().textContent;
   assert(/terisi 200 L \(\+46\.4 L\)/.test(afterInput), "label tidak reaktif: " + afterInput);
   assert((afterInput.match(/estimasi/g) || []).length === 1, "suffix estimasi mengganda");

@@ -237,19 +237,20 @@ node --check src/igpas.user.js
 Satu perintah gate penuh:
 
 ```bash
-npm run verify     # syntax + lint + format:check + versions:check + npm test
+npm run verify     # syntax + lint + format:check + versions:check + guards:check + npm test
 ```
 
-| Gate         | Perintah                 | Catatan                                            |
-| ------------ | ------------------------ | -------------------------------------------------- |
-| Syntax       | `npm run syntax`         | `node --check src/igpas.user.js`                   |
-| Lint         | `npm run lint`           | `eslint .` — fix: `npm run lint:fix`               |
-| Format       | `npm run format:check`   | `prettier --check .` — fix: `npm run format`       |
-| Version sync | `npm run versions:check` | cek `@version` + `const VERSION` vs `package.json` |
-| Tests        | `npm test`               | 126 tests                                          |
+| Gate                                     | Perintah                 | Catatan                                                      |
+| ---------------------------------------- | ------------------------ | ------------------------------------------------------------ |
+| Syntax                                   | `npm run syntax`         | `node --check src/igpas.user.js`                             |
+| Lint                                     | `npm run lint`           | `eslint .` — fix: `npm run lint:fix`                         |
+| Format                                   | `npm run format:check`   | `prettier --check .` — fix: `npm run format`                 |
+| Version sync                             | `npm run versions:check` | cek `@version` + `const VERSION` vs `package.json`,          |
+| `docs/index.html` & lockfile (hard-fail) |
+| Guards                                   | `npm run guards:check`   | `@grant` lengkap + tanpa `fetch`/`XHR`/`eval`/`unsafeWindow` |
+| Tests                                    | `npm test`               | 157 tests                                                    |
 
-CI (`ci.yml`) menjalankan semua gate + guard userscript
-(`fetch`/`XHR`/`GM_xmlhttpRequest`/`eval`/`unsafeWindow` harus 0 di `src/`).
+CI (`ci.yml`) menjalankan semua gate (`npm run verify`), termasuk guard userscript.
 
 Pages (`pages.yml`) hanya deploy `docs/` setelah `verify` hijau.
 Release (`release.yml`) terpicu pada tag `v*.*.*` dan memvalidasi tag vs `package.json`.
