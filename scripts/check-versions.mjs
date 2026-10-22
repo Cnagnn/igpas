@@ -88,17 +88,13 @@ shouldContain(
   /GUI v([0-9]+\.[0-9]+\.[0-9]+)/,
   "docs/app GUI version (test fixture)"
 );
-// ARCHITECTURE/COMPLIANCE sering menyebut versi — cek longgar
+// ARCHITECTURE/PRIVACY sering menyebut versi — cek longgar
 shouldContain(
   "docs/ARCHITECTURE.md",
   /Versi saat ini\s+([0-9]+\.[0-9]+\.[0-9]+)/,
   "ARCHITECTURE version"
 );
-shouldContain(
-  "docs/COMPLIANCE.md",
-  /Versi[^\n]*?([0-9]+\.[0-9]+\.[0-9]+)/,
-  "COMPLIANCE version mention"
-);
+shouldContain("docs/PRIVACY.md", /v([0-9]+\.[0-9]+\.[0-9]+)/, "PRIVACY version mention");
 
 if (warnings.length) {
   console.log("\nWarnings:");

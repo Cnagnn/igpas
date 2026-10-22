@@ -1,15 +1,15 @@
 {
   "name": "igpas",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "private": true,
-  "description": "I.G.P.A.S — iGP Analytics & Study System (userscript studi strategi iGP Manager, tanpa build step)",
+  "description": "I.G.P.A.S \u2014 iGP Analytics & Study System (userscript studi strategi iGP Manager, tanpa build step)",
   "license": "GPL-3.0-or-later",
   "type": "commonjs",
   "engines": {
     "node": ">=22.22.2"
   },
   "scripts": {
-    "test": "node test/core.test.js && node test/snapshots.test.js && node test/mailbox.test.js && node test/gui.test.js && node test/advisor.test.js",
+    "test": "node test/core.test.js && node test/snapshots.test.js && node test/storage.test.js && node test/capture.test.js && node test/mailbox.test.js && node test/gui.test.js && node test/advisor.test.js",
     "test:verbose": "npm test --silent 2>&1 | cat",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

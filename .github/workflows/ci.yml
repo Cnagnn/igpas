@@ -5,7 +5,6 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,38 +16,24 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 = minimum yang didukung jsdom 30 (^22.22.2); 24 = versi dev (.nvmrc).
+        node-version: [22, 24]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: ${{ matrix.node-version }}
           cache: npm
 
       - name: Install deps (npm ci)
         run: npm ci
 
-      - name: Syntax check (node --check)
-        run: npm run syntax
-
-      - name: Version sync check
-        run: npm run versions:check
-
-      - name: Lint (eslint)
-        run: npm run lint
-
-      - name: Format check (prettier)
-        run: npm run format:check
-
-      - name: Tests (157 tests)
-        run: npm test
-
-      - name: Userscript header + guards
-        run: |
-          echo "Checking @version / @match header..."
-          grep -q "@version" src/igpas.user.js
-          grep -q "@grant[[:space:]]*GM_getValue" src/igpas.user.js
-          grep -q "@match[[:space:]]*https://igpmanager.com" src/igpas.user.js
-          # @grant lengkap + tanpa network/eval/unsafeWindow (dipakai juga di verify lokal)
-          npm run guards:check
+      # Satu gerbang tunggal: syntax + lint + format + versions + guards + tests.
+      # Jumlah test sengaja tidak di-hardcode di sini (drift berulang).
+      - name: Verify (syntax + lint + format + versions + guards + tests)
+        run: npm run verify
