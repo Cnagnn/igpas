@@ -849,7 +849,7 @@ t("recommendRaceFuel: 63 lap × 2.4L → butuh 151.2L + reserve", () => {
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.values.need, 151.2);
   assert.strictEqual(r.values.total, 153.6);
-  assert.strictEqual(r.values.buffer, 22.8);
+  assert.strictEqual(r.values.buffer, 20.4); // 174 − (151.2 + 1×2.4)
 });
 
 t("recommendRaceFuel: tanpa raceLaps/fuelPerLap → ok:false", () => {
@@ -872,6 +872,161 @@ t("describeTrack: fuel+wear tinggi → hint BBM & stint pendek", () => {
   assert.ok(w.values.hints.some(h => /stint pendek/i.test(h)));
   assert.ok(w.values.hints.some(h => /overtake/i.test(h)));
   assert.strictEqual(IGPCore.describeTrack({}).ok, false);
+});
+
+/* ---------- regresi v0.8.4: null bukan 0 (kalkulator jujur) ---------- */
+
+t("numOrNull: spasi kosong → null; angka 0 tetap 0", () => {
+  assert.strictEqual(Utils.numOrNull("   "), null);
+  assert.strictEqual(Utils.numOrNull(""), null);
+  assert.strictEqual(Utils.numOrNull(null), null);
+  assert.strictEqual(Utils.numOrNull(" 0 "), 0);
+  assert.strictEqual(Utils.numOrNull(0), 0);
+});
+
+t("calcFuel: field kosong → ok:false (bukan '0 L')", () => {
+  assert.strictEqual(
+    IGPCore.calcFuel({
+      lapsRemaining: null,
+      fuelPerLap: "1.2",
+      currentFuel: null,
+      reserveLaps: null,
+    }).ok,
+    false
+  );
+  assert.strictEqual(
+    IGPCore.calcFuel({ lapsRemaining: " ", fuelPerLap: 1, currentFuel: 1 }).ok,
+    false
+  );
+  assert.strictEqual(
+    IGPCore.calcFuel({ lapsRemaining: 5, fuelPerLap: 1, currentFuel: null }).ok,
+    false
+  );
+  assert.strictEqual(
+    IGPCore.calcFuel({ lapsRemaining: 5, fuelPerLap: 1, currentFuel: 1, reserveLaps: -1 }).ok,
+    false
+  );
+});
+
+t("projectTireWear/lapsToThreshold: field kosong → ok:false", () => {
+  assert.strictEqual(
+    IGPCore.projectTireWear({ currentWearPct: null, wearPerLapPct: 2, lapsCount: 5 }).ok,
+    false
+  );
+  assert.strictEqual(
+    IGPCore.projectTireWear({ currentWearPct: 10, wearPerLapPct: 2, lapsCount: null }).ok,
+    false
+  );
+  assert.strictEqual(
+    IGPCore.lapsToThreshold({ currentWearPct: 10, wearPerLapPct: 2, thresholdPct: null }).ok,
+    false
+  );
+});
+
+t("pitWindow/stintSplit/strategyRecommendation: null & negatif ditolak", () => {
+  assert.strictEqual(IGPCore.pitWindow({ lapsLeftOnFuel: null, reserveLaps: 0 }).ok, false);
+  assert.strictEqual(IGPCore.pitWindow({ lapsLeftOnFuel: 10, reserveLaps: -1 }).ok, false);
+  assert.strictEqual(IGPCore.pitWindow({ lapsLeftOnFuel: 10, marginLaps: -2 }).ok, false);
+  assert.strictEqual(
+    IGPCore.stintSplit({ totalLaps: 30, tireLifeLaps: 10, pitLossLaps: -1 }).ok,
+    false
+  );
+  assert.strictEqual(
+    IGPCore.strategyRecommendation({ lapsLeftOnFuel: null, tyreLapsLeft: 5 }).ok,
+    false
+  );
+});
+
+t("summarizeStrategy: stints null/spasi/0 → ok:false (bukan 0 stint)", () => {
+  const stint = { stint: { 1: { tyre: "M", laps: 16 }, 2: { tyre: "M", laps: 16 } }, pits: 1 };
+  assert.strictEqual(
+    IGPCore.summarizeStrategy({ strategy: { ...stint, stints: null }, raceLaps: 63 }).ok,
+    false
+  );
+  assert.strictEqual(
+    IGPCore.summarizeStrategy({ strategy: { ...stint, stints: "  " }, raceLaps: 63 }).ok,
+    false
+  );
+  assert.strictEqual(
+    IGPCore.summarizeStrategy({ strategy: { ...stint, stints: 0 }, raceLaps: 63 }).ok,
+    false
+  );
+});
+
+t("summarizeStrategy: lap stint tak terbaca → lapsShort null + unknownLaps", () => {
+  const r = IGPCore.summarizeStrategy({
+    strategy: { stint: { 1: { tyre: "M", laps: 16 }, 2: { tyre: "M" } }, stints: 2, pits: 1 },
+    raceLaps: 40,
+  });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.values.lapsTotal, 16);
+  assert.strictEqual(r.values.unknownLaps, 1);
+  assert.strictEqual(r.values.lapsShort, null);
+});
+
+t("compareRoster: role tak terbaca tidak dibandingkan lintas peran", () => {
+  const r = IGPCore.compareRoster({
+    current: [{ name: "X", role: null, rating: 50 }],
+    market: [{ name: "Mekanik", role: "mechanic", rating: 99 }],
+  });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.values.rows[0].verdict, "unknown");
+});
+
+t("designPriority: designPoints null → null (bukan 0 DP)", () => {
+  const r = IGPCore.designPriority({
+    attrs: { a: { val: 10 } },
+    best: { a: { max: 20 } },
+    designPoints: null,
+  });
+  assert.strictEqual(r.values.designPoints, null);
+  const z = IGPCore.designPriority({
+    attrs: { a: { val: 10 } },
+    best: { a: { max: 20 } },
+    designPoints: 0,
+  });
+  assert.strictEqual(z.values.designPoints, 0);
+});
+
+t("recommendRaceFuel: reserve wajib eksplisit; buffer dihitung vs total", () => {
+  assert.strictEqual(IGPCore.recommendRaceFuel({ raceLaps: 63, fuelPerLap: 2.4 }).ok, false);
+  assert.strictEqual(
+    IGPCore.recommendRaceFuel({ raceLaps: 63, fuelPerLap: 2.4, reserveLaps: -1 }).ok,
+    false
+  );
+  const tanpa = IGPCore.recommendRaceFuel({
+    raceLaps: 63,
+    fuelPerLap: 2.4,
+    advancedFuel: 152.4,
+    reserveLaps: 0,
+  });
+  assert.strictEqual(tanpa.values.total, 151.2);
+  assert.strictEqual(tanpa.values.buffer, 1.2);
+  const pakai = IGPCore.recommendRaceFuel({
+    raceLaps: 63,
+    fuelPerLap: 2.4,
+    advancedFuel: 152.4,
+    reserveLaps: 1,
+  });
+  assert.strictEqual(pakai.values.total, 153.6);
+  assert.strictEqual(pakai.values.buffer, -1.2); // terisi kurang dari total
+});
+
+t("formatLapTime: pembulatan milidetik tidak menghasilkan .1000", () => {
+  assert.strictEqual(IGPCore.formatLapTime(82.9996), "1:23.000");
+  assert.strictEqual(IGPCore.formatLapTime(59.9999), "1:00.000");
+  assert.strictEqual(IGPCore.formatLapTime(82.512), "1:22.512");
+});
+
+t("summarizePracticeLaps: NaN/Infinity dilewati, count = lap yang menyumbang", () => {
+  const r = IGPCore.summarizePracticeLaps([
+    { fuelUse: 2.4, tyreUse: NaN, timeSec: Infinity },
+    { fuelUse: null, tyreUse: "", timeSec: 82 },
+  ]);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.values.fuelLaps, 1);
+  assert.strictEqual(r.values.timeLaps, 1);
+  assert.strictEqual(r.values.count, 2);
 });
 
 console.log("\nSemua " + n + " test lulus ✔");

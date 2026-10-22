@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.8.3
+// @version      0.8.4
 // @description  Race strategy study calculators + read-only study advice (account, car, supply, manufacturers, team, transfers) and pre-race setup/strategy estimate panels (ids `Setup`/`Strategy` tabs only — never the live Race tab). Study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + catatan studi read-only (akun, mobil, supply, manufacturers, tim, transfers) + estimasi setup & strategi pra-balapan (hanya tab Setup/Strategy — bukan tab Race live). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
@@ -15,13 +15,16 @@
 // @grant        GM_setValue
 // @grant        GM_deleteValue
 // @grant        GM_listValues
+// @grant        GM_registerMenuCommand
+// @grant        GM_setClipboard
+// @grant        GM_notification
 // @run-at       document-idle
 // ==/UserScript==
 
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.8.3';
+    const VERSION = '0.8.4';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -33,7 +36,9 @@
     /* -- utils bersama (dedup helper) -- */
     const Utils = Object.freeze({
       numOrNull(v) {
-        return v != null && String(v) !== '' && Number.isFinite(Number(v)) ? Number(v) : null;
+        // Trim dulu: field DOM yang hanya berisi spasi ("   ") bukan angka 0.
+        const s = (v == null) ? '' : String(v).trim();
+        return s !== '' && Number.isFinite(Number(s)) ? Number(s) : null;
       },
       clean(s) {
         return String(s || '').replace(/\s+/g, ' ').trim();
@@ -106,18 +111,27 @@
          * @returns {object} { ok, rows:[ {key,label,text} ], values:{...} }
          */
         calcFuel(p) {
-            const lapsRemaining = Number(p.lapsRemaining);
-            const fuelPerLap = Number(p.fuelPerLap);
-            const currentFuel = Number(p.currentFuel);
-            const reserveLaps = Number(p.reserveLaps);
-            const tank = p.tankCapacity === '' || p.tankCapacity == null
-                ? Infinity : Number(p.tankCapacity);
+            const numOrNull = Utils.numOrNull;
+            const src = p || {};
+            const lapsRemaining = numOrNull(src.lapsRemaining);
+            const fuelPerLap = numOrNull(src.fuelPerLap);
+            const currentFuel = numOrNull(src.currentFuel);
+            const reserveLaps = numOrNull(src.reserveLaps);
+            const tank = (src.tankCapacity == null || String(src.tankCapacity).trim() === '')
+                ? Infinity : numOrNull(src.tankCapacity);
 
+            // null = field belum diisi/tak terbaca. JANGAN dianggap 0
+            // (Number(null) === 0 pernah menghasilkan "butuh 0 L" yang percaya diri).
+            if (lapsRemaining == null) return { ok: false, error: 'Laps remaining wajib diisi' };
+            if (fuelPerLap == null) return { ok: false, error: 'Fuel/lap wajib diisi' };
+            if (currentFuel == null) return { ok: false, error: 'Fuel kini wajib diisi' };
             if (!(lapsRemaining >= 0)) return { ok: false, error: 'Laps remaining harus >= 0' };
             if (!(fuelPerLap > 0)) return { ok: false, error: 'Fuel/lap harus > 0' };
             if (!(currentFuel >= 0)) return { ok: false, error: 'Fuel kini harus >= 0' };
+            if (reserveLaps != null && reserveLaps < 0) return { ok: false, error: 'Reserve harus >= 0' };
+            if (tank !== Infinity && !(tank > 0)) return { ok: false, error: 'Kapasitas tangki harus > 0' };
 
-            const reserve = reserveLaps > 0 ? reserveLaps : 0;
+            const reserve = reserveLaps != null ? reserveLaps : 0;
             const fuelNeeded = lapsRemaining * fuelPerLap;
             const totalRequired = fuelNeeded + reserve * fuelPerLap;
             const fuelToAdd = Math.max(0, totalRequired - currentFuel);
@@ -144,10 +158,15 @@
          * @param {object} p { currentWearPct, wearPerLapPct, lapsCount }
          */
         projectTireWear(p) {
-            const cur = Number(p.currentWearPct);
-            const wpl = Number(p.wearPerLapPct);
-            const laps = Number(p.lapsCount);
+            const numOrNull = Utils.numOrNull;
+            const src = p || {};
+            const cur = numOrNull(src.currentWearPct);
+            const wpl = numOrNull(src.wearPerLapPct);
+            const laps = numOrNull(src.lapsCount);
 
+            if (cur == null) return { ok: false, error: 'Wear kini wajib diisi' };
+            if (wpl == null) return { ok: false, error: 'Wear/lap wajib diisi' };
+            if (laps == null) return { ok: false, error: 'Horizon wajib diisi' };
             if (!(cur >= 0 && cur <= 100)) return { ok: false, error: 'Wear kini harus 0–100' };
             if (!(wpl >= 0)) return { ok: false, error: 'Wear/lap harus >= 0' };
             if (!(laps >= 1 && laps <= 200)) return { ok: false, error: 'Horizon 1–200 lap' };
@@ -169,10 +188,15 @@
          * @param {object} p { currentWearPct, wearPerLapPct, thresholdPct }
          */
         lapsToThreshold(p) {
-            const cur = Number(p.currentWearPct);
-            const wpl = Number(p.wearPerLapPct);
-            const thr = Number(p.thresholdPct);
+            const numOrNull = Utils.numOrNull;
+            const src = p || {};
+            const cur = numOrNull(src.currentWearPct);
+            const wpl = numOrNull(src.wearPerLapPct);
+            const thr = numOrNull(src.thresholdPct);
 
+            if (cur == null) return { ok: false, error: 'Wear kini wajib diisi' };
+            if (wpl == null) return { ok: false, error: 'Wear/lap wajib diisi' };
+            if (thr == null) return { ok: false, error: 'Threshold wajib diisi' };
             if (!(cur >= 0 && cur <= 100)) return { ok: false, error: 'Wear kini harus 0–100' };
             if (!(wpl >= 0)) return { ok: false, error: 'Wear/lap harus >= 0' };
             if (!(thr > cur)) return { ok: false, error: 'Threshold harus > wear kini' };
@@ -192,15 +216,24 @@
          * @param {object} p { lapsLeftOnFuel, reserveLaps, tireLaps, marginLaps }
          */
         pitWindow(p) {
-            const fuelLaps = Number(p.lapsLeftOnFuel);
-            const reserveLaps = Number(p.reserveLaps) || 0;
-            const tireLaps = (p.tireLaps === '' || p.tireLaps == null) ? Infinity : Number(p.tireLaps);
-            const margin = Number(p.marginLaps) || 0;
+            const numOrNull = Utils.numOrNull;
+            const src = p || {};
+            const fuelLaps = numOrNull(src.lapsLeftOnFuel);
+            const reserveLaps = numOrNull(src.reserveLaps);
+            const tireLaps = (src.tireLaps == null || String(src.tireLaps).trim() === '')
+                ? Infinity : numOrNull(src.tireLaps);
+            const margin = numOrNull(src.marginLaps);
 
+            if (fuelLaps == null) return { ok: false, error: 'Laps left on fuel wajib diisi' };
             if (!(fuelLaps >= 0)) return { ok: false, error: 'Laps left on fuel >= 0' };
-            if (!(tireLaps > 0)) return { ok: false, error: 'Tire laps harus > 0' };
+            // Nilai negatif tidak boleh "diam-diam jadi 0": reserve/margin negatif
+            // membalik arah rekomendasi (pit lebih lambat dari batas aman).
+            if (reserveLaps != null && reserveLaps < 0) return { ok: false, error: 'Reserve harus >= 0' };
+            if (margin != null && margin < 0) return { ok: false, error: 'Margin harus >= 0' };
+            if (tireLaps !== Infinity && !(tireLaps > 0)) return { ok: false, error: 'Tire laps harus > 0' };
 
-            const core = Utils.pitWindowCore(fuelLaps, reserveLaps, tireLaps, margin);
+            const core = Utils.pitWindowCore(fuelLaps, reserveLaps != null ? reserveLaps : 0,
+                tireLaps, margin != null ? margin : 0);
             const needPitNow = core.latest < 1;
 
             return {
@@ -221,19 +254,25 @@
          * @param {object} p { totalLaps, tireLifeLaps, pitLossLaps }
          */
         stintSplit(p) {
-            const total = Number(p.totalLaps);
-            const life = Number(p.tireLifeLaps);
-            const pitLoss = Number(p.pitLossLaps) || 0;
+            const numOrNull = Utils.numOrNull;
+            const src = p || {};
+            const total = numOrNull(src.totalLaps);
+            const life = numOrNull(src.tireLifeLaps);
+            const pitLoss = numOrNull(src.pitLossLaps);
 
+            if (total == null) return { ok: false, error: 'Total lap wajib diisi' };
+            if (life == null) return { ok: false, error: 'Umur ban wajib diisi' };
             if (!(total >= 1)) return { ok: false, error: 'Total lap >= 1' };
             if (!(life > 0)) return { ok: false, error: 'Umur ban harus > 0' };
+            if (pitLoss != null && !(pitLoss >= 0)) return { ok: false, error: 'Pit loss harus >= 0' };
+            const loss = pitLoss != null ? pitLoss : 0;
 
             const segments = Math.ceil(total / life);
             const stops = segments - 1;
             const rem = total % segments;
             const base = (total - rem) / segments;
             const stints = Array.from({ length: segments }, (_, i) => base + (i < rem ? 1 : 0));
-            const timeCostLaps = r1(stops * pitLoss);
+            const timeCostLaps = r1(stops * loss);
 
             return {
                 ok: true,
@@ -251,31 +290,39 @@
          * @param {object} p { lapsLeftOnFuel, tyreLapsLeft, reserveLaps, pitLossLaps, marginLaps }
          */
         strategyRecommendation(p) {
-            const fuelLaps = Number(p.lapsLeftOnFuel);
-            const tyreRaw = (p.tyreLapsLeft === '' || p.tyreLapsLeft == null) ? Infinity : Number(p.tyreLapsLeft);
-            const reserve = Number(p.reserveLaps) || 0;
-            const pitLoss = Number(p.pitLossLaps) || 0;
-            const margin = Number(p.marginLaps) || 0;
+            const numOrNull = Utils.numOrNull;
+            const src = p || {};
+            const fuelLaps = numOrNull(src.lapsLeftOnFuel);
+            const tyreRaw = (src.tyreLapsLeft == null || String(src.tyreLapsLeft).trim() === '')
+                ? Infinity : numOrNull(src.tyreLapsLeft);
+            const reserve = numOrNull(src.reserveLaps);
+            const pitLoss = numOrNull(src.pitLossLaps);
+            const margin = numOrNull(src.marginLaps);
 
+            if (fuelLaps == null) return { ok: false, error: 'Laps left on fuel wajib diisi' };
             if (!(fuelLaps >= 0)) return { ok: false, error: 'Laps left on fuel >= 0' };
-            if (!(tyreRaw > 0)) return { ok: false, error: 'Tyre laps harus > 0' };
-            if (!(reserve >= 0) || !(pitLoss >= 0) || !(margin >= 0)) {
+            if (tyreRaw !== Infinity && !(tyreRaw > 0)) return { ok: false, error: 'Tyre laps harus > 0' };
+            if ((reserve != null && !(reserve >= 0)) || (pitLoss != null && !(pitLoss >= 0)) ||
+                (margin != null && !(margin >= 0))) {
                 return { ok: false, error: 'Reserve/pit-loss/margin >= 0' };
             }
 
-            const core = Utils.pitWindowCore(fuelLaps, reserve, tyreRaw, margin);
+            const res = reserve != null ? reserve : 0;
+            const loss = pitLoss != null ? pitLoss : 0;
+            const mar = margin != null ? margin : 0;
+            const core = Utils.pitWindowCore(fuelLaps, res, tyreRaw, mar);
             const limiting = core.fuelLatest < tyreRaw ? 'fuel' : (tyreRaw < core.fuelLatest ? 'tyre' : 'tie');
             const decision = core.latest < 1 ? 'pit-now' : (core.recommended <= 1 ? 'pit-soon' : 'plan');
 
             return {
                 ok: true,
-                values: { decision, latest: core.latest, recommended: core.recommended, limiting, pitLoss },
+                values: { decision, latest: core.latest, recommended: core.recommended, limiting, pitLoss: loss },
                 rows: [
                     ['Keputusan', decision],
                     ['Faktor pembatas', limiting],
                     ['Latest pit setelah', core.latest + ' lap'],
                     ['Rekomendasi (−margin)', core.recommended + ' lap'],
-                    ['Biaya pit', pitLoss + ' lap-equivalent'],
+                    ['Biaya pit', loss + ' lap-equivalent'],
                     ...(core.latest < 1 ? [['⚠', 'Tidak bisa menunggu 1 lap penuh']] : []),
                 ],
             };
@@ -386,7 +433,7 @@
                 values: {
                     ranked: ranked,
                     totalGap: totalGap,
-                    designPoints: (Number.isFinite(Number(p.designPoints))) ? Number(p.designPoints) : null,
+                    designPoints: numOrNull(p ? p.designPoints : null),
                     unbenchmarked: rows.filter(r => r.gap == null).length,
                 },
             };
@@ -546,7 +593,10 @@
                 // Peran dinormalisasi (label "Chief Designer" vs kode "CD") agar
                 // roster halaman Teams bisa dibandingkan dengan pasar Transfers.
                 const role = Utils.roleCode(c.role);
-                const peers = mkt.filter(m => m && (role == null || Utils.roleCode(m.role) === role));
+                // Peran tak terbaca tidak boleh dibandingkan lintas peran
+                // (mekanik vs driver menghasilkan verdict palsu).
+                const peers = (role == null) ? []
+                    : mkt.filter(m => m && Utils.roleCode(m.role) === role);
                 const byRating = peers.filter(m => Utils.numOrNull(m.rating) != null)
                     .sort((x, y) => Utils.numOrNull(y.rating) - Utils.numOrNull(x.rating));
                 const byCost = peers.filter(m => Utils.numOrNull(m.costPerRace) != null)
@@ -752,17 +802,21 @@
          *                     ruleTwoTyres:Boolean, ruleRefuelling:Boolean }
          */
         summarizeStrategy(p) {
-            const st = (p && p.strategy) || null;
+            const src = p || {};
+            const st = src.strategy || null;
             const stintMap = (st && st.stint && typeof st.stint === 'object') ? st.stint : null;
-            const activeCount = st ? Number(st.stints) : NaN;
+            const numOrNull = Utils.numOrNull;
+            const activeCount = st ? numOrNull(st.stints) : null;
             if (!stintMap) return { ok: false, error: 'JSON strategi game tidak terbaca' };
-            if (!Number.isFinite(activeCount)) {
+            if (activeCount == null) {
                 return { ok: false, error: 'jumlah stint aktif (game) tidak terbaca' };
             }
-            const numOrNull = Utils.numOrNull;
-            const raceLaps = numOrNull(p ? p.raceLaps : null);
-            const fpl = numOrNull(p ? p.fuelPerLap : null);
-            const advFuel = numOrNull(p ? p.advancedFuel : null);
+            if (!(activeCount >= 1)) {
+                return { ok: false, error: 'jumlah stint aktif (game) harus >= 1' };
+            }
+            const raceLaps = numOrNull(src.raceLaps);
+            const fpl = numOrNull(src.fuelPerLap);
+            const advFuel = numOrNull(src.advancedFuel);
             // Kunci stint dipakai sesuai urutan tulisan game; jumlah stint
             // AKTIF diambil dari field game "stints" (stint kelebihan = nonaktif).
             const active = [];
@@ -781,6 +835,8 @@
                 if (s.laps == null) unknownLaps++;
                 else lapsTotal += s.laps;
             }
+            // Stint aktif yang tidak ada di JSON juga = lap tak terbaca.
+            if (active.length < activeCount) unknownLaps += (activeCount - active.length);
             const tyres = active.map(s => s.tyre).filter(t => t != null);
             const dry = tyres.filter(t => ['SS', 'S', 'M', 'H'].indexOf(t) !== -1);
             const fuelNeed = (raceLaps != null && fpl != null)
@@ -800,7 +856,10 @@
                     raceLaps: raceLaps,
                     lapsTotal: lapsTotal,
                     unknownLaps: unknownLaps,
-                    lapsShort: (raceLaps != null) ? Math.max(0, raceLaps - lapsTotal) : null,
+                    // Hanya bermakna bila SEMUA lap stint terbaca; selain itu
+                    // angka "kurang N lap" akan dikarang dari data tak lengkap.
+                    lapsShort: (raceLaps != null && unknownLaps === 0)
+                        ? Math.max(0, raceLaps - lapsTotal) : null,
                     fuelPerLap: fpl,
                     advancedFuel: advFuel,
                     fuelNeed: fuelNeed,
@@ -808,9 +867,9 @@
                     bufferLaps: bufferLaps,
                     tyres: tyres,
                     dryUnique: Array.from(new Set(dry)),
-                    twoTyreOk: (p && p.ruleTwoTyres === true)
+                    twoTyreOk: (src.ruleTwoTyres === true)
                         ? (dry.length > 0 && new Set(dry).size >= 2) : null,
-                    refuelling: !!(p && p.ruleRefuelling === true),
+                    refuelling: src.ruleRefuelling === true,
                 },
             };
         },
@@ -855,10 +914,12 @@
         formatLapTime(sec) {
             if (sec == null || !Number.isFinite(Number(sec))) return '—';
             const v = Number(sec);
-            const m = Math.floor(v / 60);
-            const s = v - m * 60;
-            const si = Math.floor(s);
-            const ms = Math.round((s - si) * 1000);
+            // Bulatkan ke milidetik DULU agar 82.9996 tidak jadi "1:22.1000".
+            const totalMs = Math.max(0, Math.round(v * 1000));
+            const m = Math.floor(totalMs / 60000);
+            const rem = totalMs - m * 60000;
+            const si = Math.floor(rem / 1000);
+            const ms = rem - si * 1000;
             return m + ':' + String(si).padStart(2, '0') + '.' + String(ms).padStart(3, '0');
         },
 
@@ -874,16 +935,23 @@
             const fuels = [];
             const tyres = [];
             const times = [];
+            let used = 0;
             for (const l of list) {
                 if (!l) continue;
-                const f = (typeof l.fuelUse === 'number') ? l.fuelUse : IGPCore.parseUseNumber(l.fuelUse);
-                const w = (typeof l.tyreUse === 'number') ? l.tyreUse : IGPCore.parseUseNumber(l.tyreUse);
-                const t = (typeof l.timeSec === 'number') ? l.timeSec : IGPCore.parseLapTime(l.time != null ? l.time : l.timeSec);
-                if (f != null) fuels.push(Math.abs(f));
-                if (w != null) tyres.push(Math.abs(w));
-                if (t != null) times.push(t);
+                const num = v => (typeof v === 'number') ? (Number.isFinite(v) ? v : null) : IGPCore.parseUseNumber(v);
+                const f = num(l.fuelUse);
+                const w = num(l.tyreUse);
+                const t = (typeof l.timeSec === 'number')
+                    ? (Number.isFinite(l.timeSec) ? l.timeSec : null)
+                    : IGPCore.parseLapTime(l.time != null ? l.time : l.timeSec);
+                let hit = false;
+                if (f != null) { fuels.push(Math.abs(f)); hit = true; }
+                if (w != null) { tyres.push(Math.abs(w)); hit = true; }
+                if (t != null) { times.push(t); hit = true; }
+                if (hit) used++;
             }
-            const count = list.length;
+            // count = lap yang benar-benar menyumbang angka (bukan jumlah baris mentah).
+            const count = used;
             if (!fuels.length && !tyres.length && !times.length) {
                 return { ok: false, error: 'Lap practice tak terbaca (fuel/ban/waktu kosong)' };
             }
@@ -911,21 +979,28 @@
          */
         recommendRaceFuel(p) {
             const numOrNull = Utils.numOrNull;
-            const raceLaps = numOrNull(p ? p.raceLaps : null);
-            const fpl = numOrNull(p ? p.fuelPerLap : null);
+            const src = p || {};
+            const raceLaps = numOrNull(src.raceLaps);
+            const fpl = numOrNull(src.fuelPerLap);
             if (raceLaps == null) return { ok: false, error: 'Total lap balapan belum terbaca' };
             if (fpl == null || !(fpl > 0)) return { ok: false, error: 'Fuel/lap practice belum terbaca' };
-            const adv = numOrNull(p ? p.advancedFuel : null);
-            const reserve = (p && p.reserveLaps != null && p.reserveLaps !== '')
-                ? Number(p.reserveLaps) : 1;
-            const res = (!Number.isFinite(reserve) || reserve < 0) ? 1 : reserve;
+            const adv = numOrNull(src.advancedFuel);
+            // Reserve WAJIB eksplisit: 0 = tanpa cadangan. Dulu default 1 lap
+            // membuat `total` > bensin terisi sementara `buffer` tetap positif.
+            if (src.reserveLaps == null || String(src.reserveLaps).trim() === '') {
+                return { ok: false, error: 'Reserve lap wajib diisi (0 = tanpa cadangan)' };
+            }
+            const reserve = numOrNull(src.reserveLaps);
+            if (reserve == null || reserve < 0) return { ok: false, error: 'Reserve lap harus >= 0' };
             const need = Math.round(raceLaps * fpl * 10) / 10;
-            const total = Math.round((need + res * fpl) * 10) / 10;
-            const buffer = adv != null ? Math.round((adv - need) * 10) / 10 : null;
+            const total = Math.round((need + reserve * fpl) * 10) / 10;
+            // Buffer = selisih bensin terisi vs TOTAL yang harus dibawa
+            // (need + reserve), bukan vs need saja.
+            const buffer = adv != null ? Math.round((adv - total) * 10) / 10 : null;
             const bufferLaps = (buffer != null && fpl) ? Math.round((buffer / fpl) * 10) / 10 : null;
             return {
                 ok: true,
-                values: { raceLaps: raceLaps, fuelPerLap: fpl, need: need, reserveLaps: res, total: total, advancedFuel: adv, buffer: buffer, bufferLaps: bufferLaps },
+                values: { raceLaps: raceLaps, fuelPerLap: fpl, need: need, reserveLaps: reserve, total: total, advancedFuel: adv, buffer: buffer, bufferLaps: bufferLaps },
             };
         },
 
@@ -2590,11 +2665,15 @@
             for (const row of rows) {
                 try {
                     const label = row.querySelector('.attribute-rating-header span:not(.ratingVal)');
-                    if (label) label.textContent = row.getAttribute('data-igpas-orig');
+                    const written = row.getAttribute('data-igpas-written');
+                    // Jangan menimpa label yang sudah diganti game setelah tulisan advisor.
+                    if (label && (written == null || label.textContent === written)) {
+                        label.textContent = row.getAttribute('data-igpas-orig');
+                    }
                     const savedTitle = row.getAttribute('data-igpas-title');
                     if (savedTitle != null) {
-                        const written = row.getAttribute('data-igpas-written-title');
-                        if (written == null || row.getAttribute('title') === written) {
+                        const writtenTitle = row.getAttribute('data-igpas-written-title');
+                        if (writtenTitle == null || row.getAttribute('title') === writtenTitle) {
                             if (savedTitle === '') row.removeAttribute('title');
                             else row.setAttribute('title', savedTitle);
                         }
@@ -2603,6 +2682,7 @@
                     }
                 } catch { /* jangan pernah merusak halaman game */ }
                 row.removeAttribute('data-igpas-orig');
+                row.removeAttribute('data-igpas-written');
                 row.removeAttribute('data-igpas-title');
                 row.removeAttribute('data-igpas-written-title');
             }
@@ -2636,7 +2716,9 @@
                 row.setAttribute('data-igpas-orig', orig);
                 row.setAttribute('data-igpas-title',
                     row.hasAttribute('title') ? row.getAttribute('title') : '');
-                label.textContent = '#' + (i + 1) + ' ' + orig + (dpEst != null ? ' · ' + dpEst + ' DP' : '');
+                const newLabel = '#' + (i + 1) + ' ' + orig + (dpEst != null ? ' · ' + dpEst + ' DP' : '');
+                label.textContent = newLabel;
+                row.setAttribute('data-igpas-written', newLabel);
                 const advisorTitle = 'Prioritas #' + (i + 1) + ' — ' + (r.label || orig) + ': ' + r.val +
                     ' → max liga ' + (r.max == null ? '—' : r.max) +
                     ' (gap ' + (r.gap == null ? '—' : r.gap) + '). ' +
@@ -2663,19 +2745,21 @@
             if (!dlg) return;
             for (const link of dlg.querySelectorAll('a[data-igpas-orig]')) {
                 try {
-                    // Restore the first non-empty text node, even if the game
-                    // replaced the advisor text in-place before cleanup.
-                    const nd = Array.from(link.childNodes).find(n =>
-                        n.nodeType === 3 && n.textContent.trim() !== '');
-                    if (nd) nd.textContent = link.getAttribute('data-igpas-orig');
+                    // Restore teks yang kita tulis — kecuali game sudah
+                    // menggantinya dengan biaya baru setelah itu.
+                    restoreMarkedText(link);
                 } catch { /* jangan pernah merusak halaman game */ }
                 link.removeAttribute('data-igpas-orig');
+                link.removeAttribute('data-igpas-origmode');
+                link.removeAttribute('data-igpas-written');
             }
             const h2 = dlg.querySelector('.dialog-subhead-content h2[data-igpas-orig]');
             if (h2) {
-                try { h2.textContent = h2.getAttribute('data-igpas-orig'); }
+                try { restoreMarkedText(h2); }
                 catch { /* abaikan */ }
                 h2.removeAttribute('data-igpas-orig');
+                h2.removeAttribute('data-igpas-origmode');
+                h2.removeAttribute('data-igpas-written');
             }
             for (const el of dlg.querySelectorAll('[data-igpas-title]')) {
                 try {
@@ -2731,8 +2815,11 @@
                 const isBest = bestId != null && r.id === bestId;
                 const isCheap = !isBest && cheapId != null && r.id === cheapId;
                 link.setAttribute('data-igpas-orig', orig);
-                costNode.textContent = '#' + (i + 1) + ' · ' + orig.trim() +
+                link.setAttribute('data-igpas-origmode', 'node');
+                const newCost = '#' + (i + 1) + ' · ' + orig.trim() +
                     (isBest ? ' ★' : '') + (isCheap ? ' · termurah' : '');
+                costNode.textContent = newCost;
+                link.setAttribute('data-igpas-written', newCost);
                 if (card) {
                     // Penanda title selalu dipasang ('' = semula tanpa title) agar
                     // restore presisi tanpa menyapu title milik game.
@@ -2762,9 +2849,12 @@
                         const origH2 = h2.textContent;
                         const v = cmp.values;
                         h2.setAttribute('data-igpas-orig', origH2);
+                        h2.setAttribute('data-igpas-origmode', 'self');
                         h2.setAttribute('data-igpas-title',
                             h2.hasAttribute('title') ? h2.getAttribute('title') : '');
-                        h2.textContent = origH2 + ' · ' + parts.join(', ') + ' vs alternatif';
+                        const newH2 = origH2 + ' · ' + parts.join(', ') + ' vs alternatif';
+                        h2.textContent = newH2;
+                        h2.setAttribute('data-igpas-written', newH2);
                         const advisorTitle = 'Supplier aktif #' +
                             (s.current.supplierId != null ? s.current.supplierId : '?') +
                             ': Σ bonus ' + (v.current.bonus == null ? '—' : (v.current.bonus > 0 ? '+' : '') + v.current.bonus) +
@@ -2798,7 +2888,10 @@
                         if (tds.length) {
                             const nd = Array.from(tds[0].childNodes).find(n =>
                                 n.nodeType === 3 && n.textContent.trim() !== '');
-                            if (nd) nd.textContent = tr.getAttribute('data-igpas-orig');
+                            const written = tr.getAttribute('data-igpas-written');
+                            if (nd && (written == null || nd.textContent === written)) {
+                                nd.textContent = tr.getAttribute('data-igpas-orig');
+                            }
                         }
                         const savedTitle = tr.getAttribute('data-igpas-title');
                         if (savedTitle != null) {
@@ -2812,6 +2905,7 @@
                         }
                     } catch { /* jangan pernah merusak halaman game */ }
                     tr.removeAttribute('data-igpas-orig');
+                    tr.removeAttribute('data-igpas-written');
                     tr.removeAttribute('data-igpas-title');
                     tr.removeAttribute('data-igpas-written-title');
                 }
@@ -2850,6 +2944,7 @@
                 tr.setAttribute('data-igpas-title',
                     tr.hasAttribute('title') ? tr.getAttribute('title') : '');
                 nameNode.textContent = '#' + (i + 1) + ' ' + orig + star;
+                tr.setAttribute('data-igpas-written', nameNode.textContent);
                 const advisorTitle = '#' + (i + 1) + ' · ' + orig +
                     (star ? ' · nilai terbaik' : '') + ': rating ' + r.rating + '%' +
                     (withCost ? ' · ' + fmtMoney(r.cost) + '/race · rating/1M ' +
@@ -2922,6 +3017,21 @@
             }
         }
 
+        // Kembalikan teks yang PERNAH kita tulis saja. Bila game sudah
+        // mengganti isi node itu (AJAX/re-render), data game yang lebih baru
+        // tidak boleh ditimpa teks lama.
+        function restoreMarkedText(el) {
+            const orig = el.getAttribute('data-igpas-orig');
+            if (orig == null) return;
+            const written = el.getAttribute('data-igpas-written');
+            const isNode = el.getAttribute('data-igpas-origmode') === 'node';
+            const target = isNode
+                ? Array.from(el.childNodes).find(n => n.nodeType === 3 && n.textContent.trim() !== '')
+                : el;
+            if (!target) return;
+            if (written != null && target.textContent !== written) return;
+            target.textContent = orig;
+        }
         // Tulis teks milik sendiri pada elemen yang seluruh textContent-nya aman
         // ditimpa (span nama, header kartu): anak elemen tidak ada yang dihancurkan.
         function writeSelfText(el, text) {
@@ -2929,6 +3039,7 @@
             if (!el.hasAttribute('data-igpas-orig')) el.setAttribute('data-igpas-orig', el.textContent);
             el.setAttribute('data-igpas-origmode', 'self');
             el.textContent = text;
+            el.setAttribute('data-igpas-written', text);
         }
         // Tulis pada text-node pertama yang tak kosong di dalam container
         // (sel game/transfers berisi <a>/<img>): link, flag & ikon tetap hidup.
@@ -2939,6 +3050,7 @@
             if (!container.hasAttribute('data-igpas-orig')) container.setAttribute('data-igpas-orig', nd.textContent);
             container.setAttribute('data-igpas-origmode', 'node');
             nd.textContent = text;
+            container.setAttribute('data-igpas-written', text);
         }
         function saveTitle(el) {
             if (!el.hasAttribute('data-igpas-title')) el.setAttribute('data-igpas-title', el.getAttribute('title') || '');
@@ -2953,20 +3065,23 @@
             el.removeAttribute('data-igpas-written-title');
         }
         function restoreTeamInPlace() {
+            const SKIP = '#carAttributesDisplay, .supplyDialog, #engine-table, #chassis-table, #setup, #strategy';
             for (const el of document.querySelectorAll('[data-igpas-orig]')) {
-                if (el.closest('#carAttributesDisplay, .supplyDialog, #engine-table, #chassis-table')) continue;
-                const orig = el.getAttribute('data-igpas-orig');
-                if (orig != null) {
-                    if (el.getAttribute('data-igpas-origmode') === 'node') {
-                        const nd = Array.from(el.childNodes).find(n => n.nodeType === 3 && n.textContent.trim() !== '');
-                        if (nd) nd.textContent = orig;
-                    } else {
-                        el.textContent = orig;
-                    }
-                }
-                restoreTitle(el);
+                if (el.closest(SKIP)) continue;
+                try {
+                    restoreMarkedText(el);
+                    restoreTitle(el);
+                } catch { /* jangan pernah merusak halaman game */ }
                 el.removeAttribute('data-igpas-orig');
                 el.removeAttribute('data-igpas-origmode');
+                el.removeAttribute('data-igpas-written');
+            }
+            // Pass kedua: anotasi yang HANYA menempelkan title (mis. portrait
+            // #dNPic .driverName) tidak punya data-igpas-orig. Tanpa pass ini
+            // tooltip advisor tertinggal setelah pindah halaman.
+            for (const el of document.querySelectorAll('[data-igpas-title], [data-igpas-written-title]')) {
+                if (el.closest(SKIP)) continue;
+                try { restoreTitle(el); } catch { /* abaikan */ }
             }
         }
 
@@ -3024,19 +3139,12 @@
         function restoreRaceInPlace() {
             for (const el of document.querySelectorAll('#setup [data-igpas-orig], #strategy [data-igpas-orig]')) {
                 try {
-                    const orig = el.getAttribute('data-igpas-orig');
-                    if (orig != null) {
-                        if (el.getAttribute('data-igpas-origmode') === 'node') {
-                            const nd = Array.from(el.childNodes).find(n => n.nodeType === 3 && n.textContent.trim() !== '');
-                            if (nd) nd.textContent = orig;
-                        } else {
-                            el.textContent = orig;
-                        }
-                    }
+                    restoreMarkedText(el);
                     restoreTitle(el);
                 } catch { /* jangan pernah merusak halaman game */ }
                 el.removeAttribute('data-igpas-orig');
                 el.removeAttribute('data-igpas-origmode');
+                el.removeAttribute('data-igpas-written');
             }
             for (const el of document.querySelectorAll('#setup [data-igpas-title], #strategy [data-igpas-title]')) {
                 try { restoreTitle(el); }
@@ -3176,15 +3284,17 @@
                         const v = estimate.values;
                         host.setAttribute('data-igpas-orig', original);
                         host.setAttribute('data-igpas-origmode', 'node');
-                        label.textContent = original.trim() + ' · estimasi ' + v.need + ' L / ' + plannedLaps + ' lap' +
+                        const newLabel = original.trim() + ' · estimasi ' + v.need + ' L / ' + plannedLaps + ' lap' +
                             ' · terisi ' + (v.advancedFuel == null ? '—' :
                                 v.advancedFuel + ' L' + (v.buffer == null ? '' :
                                     ' (' + (v.buffer >= 0 ? '+' : '') + v.buffer + ' L)')) + ' ';
+                        label.textContent = newLabel;
+                        host.setAttribute('data-igpas-written', newLabel);
                         saveTitle(host);
                         const detail = 'Estimasi ' + fpl + ' L/lap × ' + plannedLaps + ' lap (' +
                             (useGameLaps ? 'Total laps estimate game' : 'jarak balapan — Total laps estimate belum terbaca') +
                             ') = ' + v.need + ' L, tanpa cadangan tambahan. Selisih terisi: ' +
-                            (v.advancedFuel == null ? '—' : r1(v.advancedFuel - v.need) + ' L') +
+                            (v.buffer == null ? '—' : (v.buffer >= 0 ? '+' : '') + v.buffer + ' L') +
                             '. Sumber fuel/lap: ' + ((sum && sum.ok && sum.values.fuelAvg != null)
                                 ? 'practice (' + sum.values.fuelAvg + ' L/lap, ' + sum.values.count + ' lap)' : 'prediksi game (practice belum tersedia)') +
                             '. Konsumsi aktual dapat berbeda.';
@@ -3195,10 +3305,17 @@
                 const tot = document.getElementById('d' + n + 'TotalLaps');
                 if (tot && strat.ok) {
                     saveTitle(tot);
-                    const tip = 'Total stint game ' + strat.values.lapsTotal + '/' + raceLaps + ' lap' +
-                        (strat.values.lapsShort ? ' (kurang ' + strat.values.lapsShort + ')' : ' (pas)') +
+                    const sv = strat.values;
+                    const lapDiv = (sv.raceLaps != null ? sv.raceLaps : '—');
+                    // Jangan klaim "(pas)" bila ada lap stint yang tak terbaca.
+                    const gapTxt = (sv.unknownLaps > 0)
+                        ? ' (' + sv.unknownLaps + ' stint lapnya belum terbaca)'
+                        : (sv.lapsShort == null ? ''
+                            : (sv.lapsShort > 0 ? ' (kurang ' + sv.lapsShort + ')' : ' (pas)'));
+                    const tip = 'Total stint game ' + sv.lapsTotal + '/' + lapDiv + ' lap' +
+                        gapTxt +
                         (stintTxt ? '; saran stint ' + stintTxt : '') +
-                        (strat.values.twoTyreOk === false ? '; ⚠ butuh 2 compound kering' : '') +
+                        (sv.twoTyreOk === false ? '; ⚠ butuh 2 compound kering' : '') +
                         ' — estimasi, bukan rumus game.';
                     tot.setAttribute('title', tip);
                     tot.setAttribute('data-igpas-written-title', tip);
@@ -3380,13 +3497,78 @@
      *    Develop/Design) agar advisor DP bisa dipasang di tempat yang tepat.
      * ===================================================================== */
     const PageCapture = (() => {
+        // Blok PII eksplisit yang tampil di UI iGP.
         const REDACT_SELECTORS = ['#myProfileName', '#balanceText', '#tokens-total', '#managerRankValue'];
+        // Nama atribut yang isinya kredensial/identitas — selalu dikosongkan.
+        const SENSITIVE_ATTR = /^(data-)?(csrf|token|session|auth|nonce|password|secret|api[-_]?key)$/i;
+        // Identitas form: field ini bisa berisi csrf/email/user id.
+        const SENSITIVE_IDENT = /(csrf|token|session|auth|e-?mail|password|username|user(name)?|manager)/i;
+        const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+        const TOKEN_RE = /\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9_-]{40,})\b/g;
+        const scrub = s => String(s)
+            .replace(EMAIL_RE, '[REDACTED]')
+            .replace(TOKEN_RE, '[REDACTED]');
+
+        function redact(clone) {
+            // 1) Script eksekutabel tidak pernah ikut tersalin (bisa memuat
+            //    state/token inline). Blok data JSON tetap dipertahankan —
+            //    justru itu yang dibutuhkan untuk pemetaan fixture.
+            for (const s of Array.from(clone.querySelectorAll('script'))) {
+                const type = String(s.getAttribute('type') || '').toLowerCase();
+                if (!type.includes('json')) s.remove();
+            }
+            // 2) Nilai PII yang tampil.
+            for (const sel of REDACT_SELECTORS) {
+                const el = clone.querySelector(sel);
+                if (el) el.textContent = '[REDACTED]';
+            }
+            // 3) Field form: hidden/password/email/tel dan field ber-identitas
+            //    sensitif (csrf/user/session) → nilainya dikosongkan. Nilai
+            //    angka permainan (mis. #d1AdvancedFuel) tetap utuh agar fixture
+            //    masih bisa dipetakan.
+            for (const el of clone.querySelectorAll('input, textarea')) {
+                const tag = String(el.tagName || '').toUpperCase();
+                const type = String(el.getAttribute('type') || '').toLowerCase();
+                const ident = [el.getAttribute('id'), el.getAttribute('name'), el.getAttribute('class')]
+                    .filter(Boolean).join(' ');
+                const sensitive = tag === 'TEXTAREA' || type === 'hidden' || type === 'password' ||
+                    type === 'email' || type === 'tel' || SENSITIVE_IDENT.test(ident);
+                if (sensitive) {
+                    if (tag === 'TEXTAREA') el.textContent = '[REDACTED]';
+                    else el.setAttribute('value', '[REDACTED]');
+                    if (el.hasAttribute('data-initialvalue')) el.setAttribute('data-initialvalue', '[REDACTED]');
+                }
+            }
+            // 4) Atribut bernama kredensial + URL yang membawa token.
+            for (const el of clone.querySelectorAll('*')) {
+                for (const attr of Array.from(el.attributes || [])) {
+                    if (SENSITIVE_ATTR.test(attr.name)) attr.value = '[REDACTED]';
+                    else if (/^(href|src|action)$/i.test(attr.name) &&
+                        /\b(token|csrf|session|auth|key)=/i.test(attr.value)) {
+                        attr.value = attr.value.replace(
+                            /(\b(?:token|csrf|session|auth|key)=)[^&]*/gi, '$1[REDACTED]');
+                    }
+                }
+            }
+            // 5) Sapuan pola terakhir: email & string token panjang di text node
+            //    (blok JSON dikecualikan agar data strategi tidak rusak).
+            for (const el of clone.querySelectorAll('*')) {
+                if (String(el.tagName || '').toUpperCase() === 'SCRIPT') continue;
+                for (const nd of Array.from(el.childNodes || [])) {
+                    if (nd.nodeType === 3) nd.textContent = scrub(nd.textContent);
+                }
+            }
+            return clone;
+        }
+
         function buildCapture(doc) {
             if (!doc || !doc.documentElement) return null;
-            const clone = doc.documentElement.cloneNode(true);
-            for (const sel of REDACT_SELECTORS) {
-                const el = clone.querySelector(sel); // id selalu unik — satu penulisan cukup
-                if (el) el.textContent = '[REDACTED]';
+            const clone = redact(doc.documentElement.cloneNode(true));
+            // Atribut teks yang mungkin memuat PII (title/alt/placeholder).
+            for (const el of clone.querySelectorAll('[title], [alt], [placeholder]')) {
+                for (const name of ['title', 'alt', 'placeholder']) {
+                    if (el.hasAttribute(name)) el.setAttribute(name, scrub(el.getAttribute(name)));
+                }
             }
             return '<!doctype html>\n<html>' + clone.innerHTML + '</html>';
         }

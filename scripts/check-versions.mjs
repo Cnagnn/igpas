@@ -63,11 +63,26 @@ mustContain(
   /const VERSION\s*=\s*['"]([0-9]+\.[0-9]+\.[0-9]+)['"]/,
   "const VERSION"
 );
+// Wajib: halaman publik & lockfile tidak boleh drift dari package.json —
+// rilis 0.8.3 sempat terkirim dengan docs/index.html v0.8.0 (warning-only).
+mustContain("docs/index.html", /<b>v([0-9]+\.[0-9]+\.[0-9]+)<\/b>/, "docs/index.html version");
+const lock = JSON.parse(read("package-lock.json"));
+if (lock.version !== expected) {
+  errors.push(`package-lock.json: version = ${lock.version} (expected ${expected})`);
+} else {
+  console.log(`  ✔ package-lock.json — version = ${lock.version}`);
+}
+const lockRoot = lock.packages && lock.packages[""];
+if (lockRoot && lockRoot.version !== expected) {
+  errors.push(
+    `package-lock.json: packages[""].version = ${lockRoot.version} (expected ${expected})`
+  );
+} else if (lockRoot) {
+  console.log(`  ✔ package-lock.json — packages[""].version = ${lockRoot.version}`);
+}
 
 // Opsional tapi disarankan: docs & README menampilkan versi yang sama
-// (badge/stat bisa tertinggal — jadi warning, bukan error keras)
 shouldContain("README.md", /<b>v([0-9]+\.[0-9]+\.[0-9]+)<\/b>/, "README badge version");
-shouldContain("docs/index.html", /<b>v([0-9]+\.[0-9]+\.[0-9]+)<\/b>/, "docs/index.html version");
 shouldContain(
   "docs/app/index.html",
   /GUI v([0-9]+\.[0-9]+\.[0-9]+)/,

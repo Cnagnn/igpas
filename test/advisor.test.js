@@ -388,6 +388,65 @@ t("PageCapture: menu Tampermonkey menyalin DOM dengan PII teredaksi (tanpa UI ha
   s.close();
 });
 
+t("PageCapture: field sensitif, email, dan script eksekutabel tidak ikut tersalin", () => {
+  const s = bootOn(
+    "<!doctype html><html><body>" +
+      '<input id="pageId" value="develop">' +
+      '<input type="hidden" id="csrfToken" value="abc123secret">' +
+      '<input id="d1AdvancedFuel" type="number" value="174">' +
+      '<textarea id="notes">private text</textarea>' +
+      '<div id="bio">hubungi manager@example.com</div>' +
+      '<div data-token="tok_live_123">x</div>' +
+      '<script>window.__token = "inline-secret";</script>' +
+      '<script type="application/json" id="d1StrategyJson">{"stint":{"1":{"tyre":"M","laps":16}}}</script>' +
+      "</body></html>",
+    "https://www.igpmanager.com/app/p=develop"
+  );
+  const captured = [];
+  s.win.GM_setClipboard = data => captured.push(data);
+  s.win.__igpasMenuHandler();
+  const html = captured[0];
+  assert(html.indexOf("abc123secret") === -1, "nilai hidden input (csrf) lolos");
+  assert(html.indexOf("private text") === -1, "isi textarea lolos");
+  assert(html.indexOf("manager@example.com") === -1, "email lolos");
+  assert(html.indexOf("tok_live_123") === -1, "atribut data-token lolos");
+  assert(html.indexOf("inline-secret") === -1, "script eksekutabel ikut tersalin");
+  // Data permainan yang dibutuhkan pemetaan tetap utuh.
+  assert(html.indexOf('value="174"') >= 0, "nilai fuel game ikut teredaksi");
+  assert(html.indexOf('"tyre":"M"') >= 0, "blok JSON strategi ikut hilang");
+  s.close();
+});
+
+ta("Restore: anotasi title-only (portrait staff) dibersihkan setelah pindah halaman", async () => {
+  const s = bootOn(load("staff.html"), "https://www.igpmanager.com/app/p=staff");
+  const name = s.doc.querySelector("#d1Pic .driverName");
+  assert(name, ".driverName tidak ada");
+  assert(/health|pulih/.test(name.getAttribute("title") || ""), "title advisor tidak terpasang");
+  assert(name.hasAttribute("data-igpas-title"), "penanda title advisor tidak ada");
+  // Pindah halaman: renderAll berikutnya wajib mengembalikan title asli.
+  s.doc.getElementById("pageId").value = "cars";
+  s.doc.getElementById("staff").appendChild(s.doc.createElement("div"));
+  await new Promise(r => setTimeout(r, 25));
+  assert(!name.hasAttribute("title"), "title advisor tertinggal: " + name.getAttribute("title"));
+  assert(!name.hasAttribute("data-igpas-title"), "data-igpas-title tertinggal");
+  assert(!name.hasAttribute("data-igpas-written-title"), "data-igpas-written-title tertinggal");
+  s.close();
+});
+
+ta("Restore: teks game yang berubah setelah tulisan advisor tidak ditimpa", async () => {
+  const s = bootOn(load("transfers.html"), URL_TRANSFERS);
+  const td = s.doc.querySelector("#driver-table tbody tr td");
+  assert(/^#\d+ /.test(td.textContent), "ranking advisor tidak tertulis");
+  // Game memperbarui sel (AJAX/re-render) setelah advisor menulis.
+  td.textContent = "NEW DRIVER NAME";
+  s.doc.getElementById("pageId").value = "cars";
+  s.doc.getElementById("driver-table").appendChild(s.doc.createElement("div"));
+  await new Promise(r => setTimeout(r, 25));
+  assert(td.textContent === "NEW DRIVER NAME", "data game tertimpa restore: " + td.textContent);
+  assert(!td.hasAttribute("data-igpas-orig"), "data-igpas-orig tertinggal");
+  s.close();
+});
+
 t("Staff advisor in-place", () => {
   const s = bootOn(load("staff.html"), "https://www.igpmanager.com/app/p=staff");
   assert(!s.doc.querySelector(".igpas-adv-panel"), "panel team masih ada");
