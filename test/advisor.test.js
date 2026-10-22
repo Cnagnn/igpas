@@ -339,8 +339,14 @@ t(
 
 t("Advisor read-only: tidak mengirim packet mailbox (tidak memicu request game)", () => {
   const s = bootOn(load("cars.html"), URL_IGP);
-  const sent = [...s.store.keys()].filter(k => k.indexOf("igpas:mb:collect-") === 0);
-  assert(!sent.length, "advisor mengirim collect-request: " + sent.join(","));
+  // Kunci mailbox berbentuk "igpas:mb:<base36>" — filter lama
+  // ("igpas:mb:collect-") tidak pernah cocok sehingga assertion selalu lolos.
+  const sent = [...s.store.keys()]
+    .filter(k => k.indexOf("igpas:mb:") === 0)
+    .map(k => s.store.get(k))
+    .filter(p => p && typeof p === "object")
+    .map(p => p.type);
+  assert(!sent.length, "advisor mengirim packet: " + sent.join(","));
   s.close();
 });
 
@@ -784,6 +790,76 @@ ta(
     s.close();
   }
 );
+
+const tick = ms => new Promise(r => setTimeout(r, ms || 20));
+
+ta("Restore: game update label Cars → anotasi tunggal & orig ikut teks baru", async () => {
+  const s = bootOn(load("cars.html"), URL_IGP);
+  await tick();
+  const row = s.doc.querySelector("#carAttributesDisplay .attribute-row[data-igpas-orig]");
+  assert(row, "pra-kondisi: advisor belum menulis label");
+  const label = row.querySelector(".attribute-rating-header span:not(.ratingVal)");
+  label.textContent = "Acceleration MAX"; // game menulis ulang label
+  await tick(40);
+  const text = label.textContent;
+  assert(
+    /^#\d+ Acceleration MAX · \d+ DP$/.test(text),
+    "anotasi tidak mengikuti teks game baru: " + text
+  );
+  assert((text.match(/ · /g) || []).length === 1, "anotasi menumpuk: " + text);
+  assert(
+    row.getAttribute("data-igpas-orig") === "Acceleration MAX",
+    "data-igpas-orig basi: " + row.getAttribute("data-igpas-orig")
+  );
+  s.close();
+});
+
+ta("Restore: game update judul Supply → verdict dihitung ulang tanpa duplikasi", async () => {
+  const s = bootOn(load("supply-engine.html"), URL_IGP);
+  await tick();
+  const h2 = s.doc.querySelector(".dialog-subhead-content h2");
+  assert(h2 && /^Engine supply · /.test(h2.textContent), "pra-kondisi verdict belum ditulis");
+  // Game mengganti dialog ke tipe lain: judul + semua kartu ikut berubah.
+  for (const a of s.doc.querySelectorAll('.supplyDialog a[data-tip*="supplyType=engine"]')) {
+    a.setAttribute(
+      "data-tip",
+      a.getAttribute("data-tip").replace("supplyType=engine", "supplyType=fuel")
+    );
+  }
+  h2.textContent = "Fuel supply";
+  await tick(40);
+  assert(
+    /^Fuel supply · /.test(h2.textContent),
+    "verdict tidak mengikuti judul baru: " + h2.textContent
+  );
+  assert((h2.textContent.match(/ · /g) || []).length === 1, "verdict menumpuk: " + h2.textContent);
+  assert(
+    h2.getAttribute("data-igpas-orig") === "Fuel supply",
+    "orig judul basi: " + h2.getAttribute("data-igpas-orig")
+  );
+  s.close();
+});
+
+ta("Restore: navigasi keluar mengembalikan teks game TERBARU (bukan teks lama)", async () => {
+  const s = bootOn(load("cars.html"), URL_IGP);
+  await tick();
+  const row = s.doc.querySelector("#carAttributesDisplay .attribute-row[data-igpas-orig]");
+  assert(row, "pra-kondisi: advisor belum menulis label");
+  const label = row.querySelector(".attribute-rating-header span:not(.ratingVal)");
+  label.textContent = "Braking MAX";
+  await tick(40);
+  // Game berpindah halaman studi → bukan halaman yang di-advisor-i.
+  s.doc.getElementById("pageId").value = "standings";
+  s.doc.dispatchEvent(new s.win.Event("click", { bubbles: true }));
+  await tick(350); // debounce navigasi 250 ms
+  assert(
+    label.textContent === "Braking MAX",
+    "label tidak dikembalikan ke teks game terbaru: " + label.textContent
+  );
+  assert(!row.hasAttribute("data-igpas-orig"), "data-igpas-orig tertinggal");
+  assert(!row.hasAttribute("title"), "title advisor tertinggal: " + row.getAttribute("title"));
+  s.close();
+});
 
 (async () => {
   for (const [name, fn] of asyncTests) {

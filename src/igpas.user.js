@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.8.4
+// @version      0.8.5
 // @description  Race strategy study calculators + read-only study advice (account, car, supply, manufacturers, team, transfers) and pre-race setup/strategy estimate panels (ids `Setup`/`Strategy` tabs only — never the live Race tab). Study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + catatan studi read-only (akun, mobil, supply, manufacturers, tim, transfers) + estimasi setup & strategi pra-balapan (hanya tab Setup/Strategy — bukan tab Race live). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
@@ -24,7 +24,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.8.4';
+    const VERSION = '0.8.5';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -264,6 +264,9 @@
             if (life == null) return { ok: false, error: 'Umur ban wajib diisi' };
             if (!(total >= 1)) return { ok: false, error: 'Total lap >= 1' };
             if (!(life > 0)) return { ok: false, error: 'Umur ban harus > 0' };
+            // Umur < 1 lap = data rusak; tanpa batas ini Array.from membuat
+            // puluhan ribu stint dan membekukan render.
+            if (life < 1) return { ok: false, error: 'Umur ban minimal 1 lap' };
             if (pitLoss != null && !(pitLoss >= 0)) return { ok: false, error: 'Pit loss harus >= 0' };
             const loss = pitLoss != null ? pitLoss : 0;
 
@@ -366,8 +369,10 @@
                 let incomplete = false;
                 for (const k of criteria) {
                     if (!(k in (it.ratings || {}))) { incomplete = true; continue; }
-                    const v = Number(it.ratings[k]);
-                    if (!Number.isFinite(v) || v < 0 || v > 10) {
+                    // null / '' / boolean = BELUM dinilai, bukan 0 (terburuk) atau 1.
+                    const v = Utils.numOrNull(it.ratings[k]);
+                    if (v == null) { incomplete = true; continue; }
+                    if (v < 0 || v > 10) {
                         return { ok: false, error: 'Rating harus angka 0–10 (' + it.name + '.' + k + ')' };
                     }
                     s += v * w[k];
@@ -661,7 +666,7 @@
             if (!cur) return { ok: false, error: 'Supplier aktif tidak terbaca dari dialog' };
             if (!alts || !alts.length) return { ok: false, error: 'Alternatif supplier tidak tampil di dialog ini' };
             const bonusSum = x => {
-                if (!x || !Array.isArray(x.bonuses)) return null;
+                if (!x || !Array.isArray(x.bonuses) || x.bonuses.length === 0) return null;
                 return x.bonuses.reduce((s, b) => s + (b && Number.isFinite(Number(b.value)) ? Number(b.value) : 0), 0);
             };
             const curBonus = bonusSum(cur);
@@ -860,6 +865,10 @@
                     // angka "kurang N lap" akan dikarang dari data tak lengkap.
                     lapsShort: (raceLaps != null && unknownLaps === 0)
                         ? Math.max(0, raceLaps - lapsTotal) : null,
+                    // Arah sebaliknya juga harus terlihat: rencana yang lebih
+                    // panjang dari balapan tidak boleh dilaporkan "(pas)".
+                    lapsOver: (raceLaps != null && unknownLaps === 0)
+                        ? Math.max(0, lapsTotal - raceLaps) : null,
                     fuelPerLap: fpl,
                     advancedFuel: advFuel,
                     fuelNeed: fuelNeed,
@@ -883,7 +892,9 @@
             if (!t) return null;
             let m = t.match(/^(\d+):(\d+(?:\.\d+)?)$/);
             if (m) {
-                const sec = Number(m[1]) * 60 + Number(m[2]);
+                const ss = Number(m[2]);
+                if (!Number.isFinite(ss) || ss >= 60) return null;
+                const sec = Number(m[1]) * 60 + ss;
                 return Number.isFinite(sec) ? Math.round(sec * 1000) / 1000 : null;
             }
             m = t.match(/^(\d+(?:\.\d+)?)$/);
@@ -914,6 +925,7 @@
         formatLapTime(sec) {
             if (sec == null || !Number.isFinite(Number(sec))) return '—';
             const v = Number(sec);
+            if (v < 0) return '—';
             // Bulatkan ke milidetik DULU agar 82.9996 tidak jadi "1:22.1000".
             const totalMs = Math.max(0, Math.round(v * 1000));
             const m = Math.floor(totalMs / 60000);
@@ -983,6 +995,7 @@
             const raceLaps = numOrNull(src.raceLaps);
             const fpl = numOrNull(src.fuelPerLap);
             if (raceLaps == null) return { ok: false, error: 'Total lap balapan belum terbaca' };
+            if (raceLaps < 1) return { ok: false, error: 'Total lap balapan tidak valid' };
             if (fpl == null || !(fpl > 0)) return { ok: false, error: 'Fuel/lap practice belum terbaca' };
             const adv = numOrNull(src.advancedFuel);
             // Reserve WAJIB eksplisit: 0 = tanpa cadangan. Dulu default 1 lap
@@ -1055,8 +1068,11 @@
     const gm = typeof GM_getValue === 'function'
         ? {
             get: (k, d) => { try { return GM_getValue(k, d); } catch { return d; } },
-            set: (k, v) => { try { GM_setValue(k, v); } catch { memStore.set(k, v); } },
-            del: (k) => { try { GM_deleteValue(k); } catch { memStore.delete(k); } },
+            // true = tersimpan; false = GAGAL (kuota penuh / mode privat).
+            // Jangan pura-pura sukses lewat memori: data hilang saat reload dan
+            // UI akan berbohong ("tersimpan") padahal tidak.
+            set: (k, v) => { try { GM_setValue(k, v); return true; } catch { return false; } },
+            del: (k) => { try { GM_deleteValue(k); return true; } catch { return false; } },
             keys: () => { try { return GM_listValues() || []; } catch { return []; } },
         }
         : {
@@ -1083,19 +1099,20 @@
             return all;
         },
         saveProfile(name, snapshot) {
-            if (!Utils.isSafeKind(name)) return;
+            if (!Utils.isSafeKind(name)) return false;
+            if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return false;
             const all = Storage.getProfiles();
             const next = Object.assign(Object.create(null), all);
             next[name] = snapshot;
-            gm.set(Keys.profiles, next);
+            return gm.set(Keys.profiles, next) === true;
         },
         deleteProfile(name) {
-            if (!Utils.isSafeKind(name)) return;
+            if (!Utils.isSafeKind(name)) return false;
             const all = Storage.getProfiles();
-            if (!(name in all)) return;
+            if (!(name in all)) return true;
             const next = Object.assign(Object.create(null), all);
             delete next[name];
-            gm.set(Keys.profiles, next);
+            return gm.set(Keys.profiles, next) === true;
         },
         getSnapshot(kind) {
             if (!Utils.isSafeKind(kind)) return null;
@@ -1103,7 +1120,11 @@
             if (!all || typeof all !== 'object') return null;
             const rec = all[kind] || null;
             if (!rec || typeof rec !== 'object') return null;
-            if (Number.isFinite(rec.ts) && (Date.now() - rec.ts) > SNAPSHOT_TTL_MS) {
+            // ts tidak valid (record legacy/rusak) = tidak boleh hidup selamanya:
+            // snapshot berisi nama/gaji (PII) jadi umur pakai harus eksplisit.
+            const stale = !Number.isFinite(rec.ts) || (Date.now() - rec.ts) > SNAPSHOT_TTL_MS;
+            const broken = !rec.data || typeof rec.data !== 'object';
+            if (stale || broken) {
                 const next = Object.assign(Object.create(null), all);
                 delete next[kind];
                 gm.set(Keys.snapshots, next);
@@ -1112,12 +1133,13 @@
             return rec;
         },
         saveSnapshot(kind, data) {
-            if (!Utils.isSafeKind(kind)) return;
+            if (!Utils.isSafeKind(kind)) return false;
+            if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
             const all = gm.get(Keys.snapshots, null) || Object.create(null);
             const base = (all && typeof all === 'object' && !Array.isArray(all)) ? all : Object.create(null);
             const next = Object.assign(Object.create(null), base);
             next[kind] = { data, ts: Date.now() };
-            gm.set(Keys.snapshots, next);
+            return gm.set(Keys.snapshots, next) === true;
         },
         /** Gabungkan patch ke snapshot kind (mis. supply: {engine|fuel|tyre} per capture). */
         mergeSnapshot(kind, patch) {
@@ -1125,11 +1147,10 @@
             const cur = Storage.getSnapshot(kind);
             const safePatch = Object.assign(Object.create(null), patch);
             const data = Object.assign(Object.create(null), (cur && cur.data) || Object.create(null), safePatch);
-            Storage.saveSnapshot(kind, data);
-            return data;
+            return Storage.saveSnapshot(kind, data) ? data : null;
         },
         clearSnapshots() {
-            gm.del(Keys.snapshots);
+            return gm.del(Keys.snapshots) === true;
         },
     };
 
@@ -1145,17 +1166,29 @@
     const ROLE = (() => {
         if (typeof location === 'undefined') return 'test';
         const h = location.hostname || '';
-        if (h === 'localhost' || h === '127.0.0.1') return 'gui';
-        if (h.endsWith('.github.io') && (location.pathname || '').startsWith('/igpas/')) return 'gui';
+        // Hanya /app/ milik IGPAS (docs/app). Server lokal lain di port yang
+        // sama-sama "localhost" tidak boleh mendapat kontrol GUI/mailbox.
+        if (h === 'localhost' || h === '127.0.0.1') {
+            return (location.pathname || '').startsWith('/app/') ? 'gui' : 'unknown';
+        }
+        if (h.endsWith('.github.io')) {
+            return (location.pathname || '').startsWith('/igpas/app/') ? 'gui' : 'unknown';
+        }
         if (h.includes('igpmanager.com')) return 'sensor';
         return 'unknown';
     })();
 
     const INSTANCE_ID = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
+    // TTL per tipe: permintaan harus bertahan cukup lama agar user sempat
+    // pindah tab; hasil hanya perlu sebentar (dan lebih sensitif).
+    const MAIL_TTL_MS = { request: 10 * 60 * 1000, result: 2 * 60 * 1000 };
+    const MAIL_REQUEST_TYPES = { 'collect-request': 1, 'report-request': 1 };
+
     const Mailbox = {
         PREFIX: 'igpas:mb:',
         HEARTBEAT_KEY: 'igpas:gui:heartbeat',
+        TTL_MS: MAIL_TTL_MS,
         handlers: {},
         timer: null,
         on(type, fn) {
@@ -1172,7 +1205,7 @@
                 ts: Date.now(),
                 payload: payload || {},
             };
-            gm.set(Mailbox.PREFIX + id, packet);
+            return gm.set(Mailbox.PREFIX + id, packet) === true;
         },
         pollOnce() {
             const now = Date.now();
@@ -1180,12 +1213,16 @@
                 if (typeof key !== 'string' || key.indexOf(Mailbox.PREFIX) !== 0) continue;
                 const packet = gm.get(key, null);
                 if (!packet || typeof packet !== 'object') { gm.del(key); continue; } // rusak → bersihkan
-                if (now - (packet.ts || 0) > 30000) { gm.del(key); continue; }        // basi → bersihkan (janitor)
+                const ttl = MAIL_REQUEST_TYPES[packet.type] ? MAIL_TTL_MS.request : MAIL_TTL_MS.result;
+                if (!Number.isFinite(packet.ts) || now - packet.ts > ttl) { gm.del(key); continue; } // basi → bersihkan (janitor)
                 if (packet.from === ROLE + ':' + INSTANCE_ID) continue;              // pesan sendiri: biarkan untuk tab lain
                 if (packet.to && packet.to !== '*' && packet.to !== INSTANCE_ID) continue; // bukan untuk kita: jangan hapus
                 const list = Mailbox.handlers[packet.type] || [];
                 if (!list.length) continue;                                          // tak ada handler di peran ini: biarkan untuk peran lain
-                gm.del(key); // read-once: hanya pesan yang benar-benar dikonsumsi yang dihapus (pola A.C.A.S)
+                // read-once: hanya pesan yang benar-benar dikonsumsi yang dihapus
+                // (pola A.C.A.S). Bila hapus gagal, jangan dispatch: kalau tidak,
+                // handler berjalan berulang tiap poll untuk pesan yang sama.
+                if (!gm.del(key)) break;
                 for (const fn of list) {
                     try { fn(packet); } catch (e) { if (typeof console !== 'undefined') console.warn('IGPAS listener', e); }
                 }
@@ -1193,6 +1230,8 @@
         },
         start(intervalMs) {
             if (Mailbox.timer) return;
+            // unknown (mis. landing page / localhost non-/app/) tidak ikut polling.
+            if (ROLE === 'unknown') return;
             Mailbox.timer = setInterval(() => Mailbox.pollOnce(), intervalMs || 400);
             if (ROLE === 'gui') {
                 gm.set(Mailbox.HEARTBEAT_KEY, Date.now());
@@ -1221,7 +1260,7 @@
             const name = $('#myProfileName'), rankVal = $('#managerRankValue');
             if (!name && !rankVal) return null; // bukan halaman iGP yang sudah login
             const icon = $('#managerRankIcon');
-            const tier = icon ? (icon.getAttribute('src') || '').match(/rank\/([a-z0-9-]+)-\d+\.webp/i) : null;
+            const tier = icon ? (icon.getAttribute('src') || '').match(/rank\/([a-z0-9-]+)-\d+\.(?:webp|png|svg)/i) : null;
             const level = $('.myProfileStatsStack .teal');
             return {
                 manager: name ? name.textContent.trim() : null,
@@ -1253,7 +1292,9 @@
                 const saved = row.getAttribute('data-igpas-orig');
                 attrs[key] = {
                     label: (saved != null ? saved : txt(row, '.attribute-rating-header span:not(.ratingVal)')),
-                    val: Number(txt(row, '.ratingVal')),
+                    // Tanpa .ratingVal (render parsial / pra-musim) = null,
+                    // BUKAN 0: 0 akan jadi "gap terbesar" dan prioritas DP #1.
+                    val: Utils.numOrNull(txt(row, '.ratingVal')),
                 };
             }
             if (!Object.keys(attrs).length) return null;
@@ -1275,8 +1316,8 @@
             }
             return {
                 carType: txt(host, '.c-head h2 span'),
-                dmax: host ? parseInt(host.getAttribute('data-dmax'), 10) || null : null,
-                designPoints: dpEl ? parseInt(dpEl.getAttribute('data-dp'), 10) || null : null,
+                dmax: host ? Utils.numOrNull(host.getAttribute('data-dmax')) : null,
+                designPoints: dpEl ? Utils.numOrNull(dpEl.getAttribute('data-dp')) : null,
                 attrs, best, bonuses, suppliers,
             };
         },
@@ -1297,7 +1338,10 @@
             const root = doc.querySelector('.supplyDialog');
             if (!root) return null; // gate: hanya saat dialog Supply terbuka
             const h2 = root.querySelector('.dialog-subhead-content h2');
-            const tm = (h2 ? h2.textContent : '').match(/^\s*(engine|fuel|tyre)s?\s+supply\s*$/i);
+            // Judul asli disimpan advisor di data-igpas-orig; gate harus membaca
+            // teks game, bukan teks anotasi ("Engine supply · bonus kalah, …").
+            const h2txt = h2 ? (h2.getAttribute('data-igpas-orig') || h2.textContent) : '';
+            const tm = h2txt.match(/^\s*(engine|fuel|tyre)s?\s+supply\s*$/i);
             if (!tm) return null;
             const type = tm[1].toLowerCase();
 
@@ -1312,7 +1356,9 @@
                     const v = (s.textContent || '').match(/[+-]?\d+/);
                     if (v) out.push({ stat: s.getAttribute('data-tip'), value: parseInt(v[0], 10) });
                 }
-                return out;
+                // [] = bonus BELUM dirender (supplier belum di-scout / lazy),
+                // bukan "total bonus 0" — 0 akan memenangkan verdict "lebih baik".
+                return out.length ? out : null;
             };
 
             const sub = root.querySelector('.dialog-subhead');
@@ -1341,7 +1387,7 @@
                 current: {
                     supplierId: sid(sub ? sub.querySelector('img[src*="/supply/"]') : null),
                     costPerRace: costMatch ? money(costMatch[1]) : null,
-                    bonuses: sub ? bonusesIn(sub) : [],
+                    bonuses: sub ? bonusesIn(sub) : null, // null = tidak terbaca, bukan 0
                 },
                 alternatives,
             };
@@ -1370,6 +1416,20 @@
 
             const money = Utils.parseMoney;
             const clean = s => String(s || '').replace(/\s+/g, ' ').trim(); // nama punya spasi nyasar di DOM
+            // Nama manufacturer bisa terpecah antar-node (teks + <span> di dalam
+            // <a>): textContent mentah menempelkan "Aero"+"Dynamics" jadi
+            // "AeroDynamics". Gabungkan dengan spasi di batas elemen.
+            const textOf = el => {
+                if (!el) return '';
+                const walk = node => {
+                    if (!node) return '';
+                    if (node.nodeType === 3) return node.textContent;
+                    if (node.nodeType !== 1) return '';
+                    if (String(node.tagName || '').toUpperCase() === 'BR') return ' ';
+                    return Array.from(node.childNodes || []).map(walk).join(' ');
+                };
+                return clean(walk(el));
+            };
             const num = t => {
                 const n = parseInt(String(t || '').replace(/[^\d]/g, ''), 10);
                 return Number.isFinite(n) ? n : null;
@@ -1399,13 +1459,13 @@
                     const a = tds[0].querySelector('a[href]');
                     const idm = a ? (a.getAttribute('href') || '').match(/id=(\d+)/) : null;
                     const tip = tds[1] ? tds[1].querySelector('.tooltip[data-tip]') : null;
-                    const rm = tip ? (tip.getAttribute('data-tip') || '').match(/^Rating:\s*(\d+)%$/) : null;
+                    const rm = tip ? (tip.getAttribute('data-tip') || '').match(/^Rating:\s*(\d+)\s*%\s*$/i) : null;
                     // Nama tulisan advisor (data-igpas-orig) dikembalikan ke aslinya:
                     // snapshot menyimpan data game murni, bukan hasil tampilan.
                     const savedName = tr.getAttribute('data-igpas-orig');
                     const row = {
                         id: idm ? parseInt(idm[1], 10) : null,
-                        name: (savedName != null ? savedName : clean(tds[0].textContent)), // teks saja — <a> kosong + <img> flag tidak menghasilkan teks
+                        name: (savedName != null ? savedName : textOf(tds[0])), // teks saja — <a> kosong + <img> flag tidak menghasilkan teks
                         nationality: tr.getAttribute('data-nationality') || null,
                         ratingPct: rm ? parseInt(rm[1], 10) : null,
                     };
@@ -1452,9 +1512,27 @@
                 const n = parseInt(String(t || '').replace(/[^\d-]/g, ''), 10);
                 return Number.isFinite(n) ? n : null;
             };
+            const salaryOf = card => {
+                // Gaji = angka tepat setelah ikon cash; card.textContent bisa
+                // menangkap digit dari nama/role lebih dulu.
+                const cash = card.querySelector('img[src*="cash"]');
+                if (cash) {
+                    let nd = cash.nextSibling;
+                    while (nd && nd.nodeType !== 3) nd = nd.nextSibling;
+                    const v = nd ? money(nd.textContent) : null;
+                    if (v != null) return v;
+                }
+                return money(card.textContent);
+            };
             const nameOf = el => {
                 if (!el) return null;
+                // Nama asli dari advisor (data-igpas-orig) — snapshot = data game.
+                const direct = el.getAttribute('data-igpas-orig');
+                if (direct != null) return clean(direct);
                 const c = el.cloneNode(true);
+                for (const m of c.querySelectorAll('[data-igpas-orig]')) {
+                    m.textContent = m.getAttribute('data-igpas-orig');
+                }
                 const brs = c.querySelectorAll('br');
                 for (const b of brs) b.replaceWith(doc.createTextNode(' '));
                 return clean(c.textContent);
@@ -1481,8 +1559,14 @@
                         vals.forEach((v, i) => {
                             if (i < 2) {
                                 cell(i).health = intOf(v.getAttribute('data-val'));
+                                const rec = tds[i] ? tds[i].querySelector('.staffHealthRecovery') : null;
                                 const rate = tds[i] ? tds[i].querySelector('.trainingPreviewRate') : null;
-                                if (rate) cell(i).recoveryPerHour = intOf(rate.textContent);
+                                // `data-recovery-rate` = angka game penuh (6.615);
+                                // teks "+6" hanya fallback dan TIDAK boleh lewat intOf
+                                // (intOf membuang titik → 6.6 jadi 66).
+                                const rv = rec ? Utils.numOrNull(rec.getAttribute('data-recovery-rate')) : null;
+                                if (rv != null) cell(i).recoveryPerHour = rv;
+                                else if (rate) cell(i).recoveryPerHour = Utils.numOrNull(rate.textContent);
                             }
                         });
                     }
@@ -1520,7 +1604,7 @@
                         id: idm ? parseInt(idm[1], 10) : null,
                         role: clean(roleEl ? roleEl.textContent : ''),
                         name: nameOf(card.querySelector('.driverName')),
-                        salaryPerRace: money(card.textContent), // angka pertama pada kartu = gaji
+                        salaryPerRace: salaryOf(card),
                         contract: clean((card.querySelector('span[id^="nStaffC"]') || {}).textContent),
                     });
                 }
@@ -1620,9 +1704,19 @@
             const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
             // Nama driver game menyisipkan <br> (mis. "Andi<br>Pratama"); textContent
             // mentah melahap pemisah itu — ganti <br> jadi spasi dulu.
-            const nameOf = el => el
-                ? clean(String(el.innerHTML).replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, ' '))
-                : null;
+            const nameOf = el => {
+                if (!el) return null;
+                // Nama asli (data-igpas-orig) dikembalikan dulu: advisor menempelkan
+                // suffix practice pada span nama, dan snapshot harus data game murni.
+                const c = el.cloneNode(true);
+                for (const m of c.querySelectorAll('[data-igpas-orig]')) {
+                    m.textContent = m.getAttribute('data-igpas-orig');
+                }
+                const html = String(c.innerHTML)
+                    .replace(/<br\s*\/?>/gi, ' ')
+                    .replace(/<[^>]+>/g, ' ');
+                return clean(html);
+            };
             const numOrNull = v =>
                 ((v != null && String(v) !== '' && Number.isFinite(Number(v))) ? Number(v) : null);
             // Cuaca ada di c-head form setup (#dNSetupWrap): span .waterLevelText
@@ -2407,31 +2501,65 @@
 
         // ---- Autoload & deteksi (v0.5.1) ----
         const KIND_LABEL = { 'account-data': 'akun', 'car-data': 'mobil', 'supply-data': 'supply', 'manufacturer-data': 'manufacturers', 'staff-data': 'tim', 'transfers-data': 'pasar' };
-        let activeReq = null;  // permintaan berjalan: { id, label, kinds, got, details }
+        let activeReq = null;  // permintaan terbaru (untuk status) — lihat `pending`
+        const pending = new Map(); // reqId → req: beberapa permintaan boleh berjalan bersamaan
         let lastReqAt = 0;     // throttle auto-refresh (≥30 dtk)
+        const REQ_TTL_MS = 10 * 60 * 1000;
+
+        function setSnapStatus(text, title) {
+            const st = $('igpas-snap-status');
+            if (!st) return;
+            st.title = title || '';
+            st.textContent = text;
+        }
 
         /** Satu permintaan read-once ke tab sensor + laporan deteksi. Tanpa polling DOM game. */
         function requestCollect(kinds, label, note) {
             const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-            activeReq = { id: id, label: label, kinds: kinds, got: {}, details: [], claimedFrom: {} };
-            lastReqAt = Date.now();
-            Mailbox.send('collect-request', { kinds: kinds, reqId: id });
-            Mailbox.send('report-request', {});
-            const st = $('igpas-snap-status');
-            if (st) {
-                st.title = '';
-                st.textContent = label + ': permintaan dikirim ke tab iGP (baca-saja, sekali per permintaan)' + (note || '');
+            const req = {
+                id: id, label: label, kinds: kinds, got: {}, details: [], claimedFrom: {},
+                at: Date.now(), retried: false,
+            };
+            pending.set(id, req);
+            activeReq = req;
+            for (const [key, val] of pending) {
+                if (Date.now() - val.at > REQ_TTL_MS) pending.delete(key);
             }
+            lastReqAt = Date.now();
+
+            const sent = Mailbox.send('collect-request', { kinds: kinds, reqId: id });
+            const reported = Mailbox.send('report-request', {});
+            if (!sent || !reported) {
+                // Tanpa tulis GM, permintaan tidak akan pernah sampai ke tab sensor.
+                // Beri tahu user alih-alih menunggu 16 dtk lalu bilang "tidak ada respons".
+                setSnapStatus(label + ': GAGAL mengirim permintaan — penyimpanan userscript penuh/tidak tersedia. ' +
+                    'Cek pengaturan Tampermonkey (penyimpanan/kuota).');
+                return req;
+            }
+            setSnapStatus(label + ': permintaan dikirim ke tab iGP (baca-saja, sekali per permintaan)' + (note || ''));
+            // Retry 1×: user sering membuka GUI lebih dulu, baru tab iGP.
             setTimeout(() => {
-                if (!activeReq || activeReq.id !== id || Object.keys(activeReq.got).length) return;
-                const st2 = $('igpas-snap-status');
-                if (st2) st2.textContent = label + ': belum ada respons dari tab iGP — pastikan igpmanager.com terbuka dengan userscript aktif.';
+                const cur = pending.get(id);
+                if (!cur || Object.keys(cur.got).length || cur.retried) return;
+                cur.retried = true;
+                if (Mailbox.send('collect-request', { kinds: kinds, reqId: id })) {
+                    Mailbox.send('report-request', {});
+                    setSnapStatus(label + ': belum ada respons — mencoba ulang sekali…', '');
+                }
             }, 8000);
+            setTimeout(() => {
+                const cur = pending.get(id);
+                if (!cur || Object.keys(cur.got).length) return;
+                setSnapStatus(label + ': belum ada respons dari tab iGP — pastikan igpmanager.com terbuka dengan userscript aktif.');
+            }, 16000);
+            return req;
         }
 
-        function reqSummary() {
-            return activeReq.kinds.map(k =>
-                (KIND_LABEL[k] || k) + ' ' + ({ ok: '✓', no: '✗' }[activeReq.got[k]] || '…')).join(' · ');
+        function reqSummary(req) {
+            const r = req || activeReq;
+            if (!r) return '';
+            return r.kinds.map(k =>
+                (KIND_LABEL[k] || k) + ' ' + ({ ok: '✓', no: '✗' }[r.got[k]] || '…')).join(' · ');
         }
 
         function renderSnapshots() {
@@ -2439,6 +2567,9 @@
             const acc = $('igpas-snap-account-body');
             const car = $('igpas-snap-car-body');
             if (!acc || !car) return;
+            // Satu record rusak (mis. hasil GM storage korup) tidak boleh
+            // mematikan seluruh panel — atau melempar error ke console tiap render.
+            try {
             const a = Storage.getSnapshot('account-data');
             const c = Storage.getSnapshot('car-data');
             const s = Storage.getSnapshot('supply-data');
@@ -2498,6 +2629,11 @@
             const marketBody = $('igpas-snap-market-body');
             if (marketBody) marketBody.innerHTML = marketHtml(txSnap);
             renderCompare();
+            } catch (e) {
+                if (typeof console !== 'undefined') console.warn('IGPAS render snapshot', e);
+                if (badge) badge.textContent = 'snapshot rusak — hapus lalu Capture ulang';
+                setSnapStatus('sebagian snapshot rusak dan diabaikan; hapus snapshot lalu Capture ulang untuk memperbaiki.');
+            }
         }
 
         let mounted = false;
@@ -2550,56 +2686,58 @@
 
             const clr = $('igpas-snap-clear');
             if (clr) {clr.addEventListener('click', () => {
-                Storage.clearSnapshots();
-                const st = $('igpas-snap-status');
-                if (st) st.textContent = 'snapshot dihapus.';
+                const cleared = Storage.clearSnapshots();
+                setSnapStatus(cleared ? 'snapshot dihapus.'
+                    : 'GAGAL menghapus snapshot (penyimpanan tidak tersedia).');
                 renderSnapshots();
             });}
 
             Mailbox.on('collect-result', p => {
                 const pay = (p && p.payload) || {};
-                const st = $('igpas-snap-status');
                 const hasReqId = typeof pay.reqId === 'string' && pay.reqId.length > 0;
-                const matchesActive = hasReqId && activeReq && pay.reqId === activeReq.id;
-                const requestedKind = matchesActive && activeReq.kinds.indexOf(pay.kind) >= 0;
-                const priorState = requestedKind ? activeReq.got[pay.kind] : null;
+                const req = hasReqId ? pending.get(pay.reqId) : null;
+                const requestedKind = !!req && req.kinds.indexOf(pay.kind) >= 0;
+                const priorState = requestedKind ? req.got[pay.kind] : null;
                 // Error dari satu sensor tidak mengunci kind: sensor lain boleh
                 // memberi hasil sukses (penting saat beberapa tab sensor broadcast).
                 const firstOrSuccessAfterError = requestedKind &&
                     (!priorState || (priorState === 'no' && pay.ok && pay.data));
                 const sender = (p && p.from) || 'unknown';
-                const claimedSender = requestedKind && activeReq.claimedFrom[pay.kind];
+                const claimedSender = requestedKind && req.claimedFrom[pay.kind];
                 const senderAllowed = firstOrSuccessAfterError && (!claimedSender || claimedSender === sender);
 
                 if (senderAllowed) {
                     // Authorization penyimpanan dipisahkan dari korelasi UI:
-                    // hanya request aktif, kind yang diminta, hasil pertama per kind,
-                    // dan sender pertama per kind yang boleh menulis snapshot.
-                    if (pay.ok && pay.data) activeReq.claimedFrom[pay.kind] = sender;
+                    // hanya request yang cocok reqId-nya, kind yang diminta, hasil
+                    // pertama per kind, dan sender pertama per kind yang boleh menulis.
+                    if (pay.ok && pay.data) req.claimedFrom[pay.kind] = sender;
+                    let saved = true;
                     if (pay.ok && pay.data) {
                         if (pay.kind === 'supply-data') {
-                            Storage.mergeSnapshot('supply-data', { [pay.data.type]: pay.data });
+                            saved = !!(pay.data.type && Storage.mergeSnapshot('supply-data', { [pay.data.type]: pay.data }));
                         } else {
-                            Storage.saveSnapshot(pay.kind, pay.data);
+                            saved = Storage.saveSnapshot(pay.kind, pay.data);
                         }
                     }
-                    activeReq.got[pay.kind] = pay.ok ? 'ok' : 'no';
-                    if (!pay.ok && pay.error) activeReq.details.push(pay.kind + ': ' + pay.error);
-                    if (st) {
-                        const complete = activeReq.kinds.every(k => activeReq.got[k]);
-                        st.title = activeReq.details.join(' | ');
-                        st.textContent = activeReq.label + ': ' + reqSummary() +
-                            (complete ? ' — selesai ' + new Date().toLocaleTimeString() : '');
+                    req.got[pay.kind] = pay.ok ? 'ok' : 'no';
+                    if (!pay.ok && pay.error) req.details.push(pay.kind + ': ' + pay.error);
+                    const complete = req.kinds.every(k => req.got[k]);
+                    const tail = complete ? ' — selesai ' + new Date().toLocaleTimeString() : '';
+                    if (!saved) {
+                        setSnapStatus(req.label + ': data diterima tetapi GAGAL disimpan (penyimpanan penuh/mode privat) — ' +
+                            'snapshot lama tidak berubah.', req.details.join(' | '));
+                    } else {
+                        setSnapStatus(req.label + ': ' + reqSummary(req) + tail, req.details.join(' | '));
                     }
                     renderSnapshots();
-                } else if (!hasReqId && st) {
+                } else if (!hasReqId) {
                     // Legacy result tanpa reqId: tetap tampilkan status informatif,
                     // tetapi TIDAK boleh mengotorisasi penulisan snapshot.
                     if (pay.ok && pay.data) {
-                        st.textContent = pay.kind + ' diterima tanpa reqId — tidak disimpan (' + new Date().toLocaleTimeString() + ').';
+                        setSnapStatus(pay.kind + ' diterima tanpa reqId — tidak disimpan (' + new Date().toLocaleTimeString() + ').');
                     } else {
                         const extra = pay.kind === 'supply-data' ? ' — buka dialog Supply dulu di tab iGP' : '';
-                        st.textContent = '✗ ' + pay.kind + ': ' + (pay.error || 'tidak ada data') + extra;
+                        setSnapStatus('✗ ' + pay.kind + ': ' + (pay.error || 'tidak ada data') + extra);
                     }
                 }
                 // Result dengan reqId yang stale, duplikat, atau kind tak diminta
@@ -2627,9 +2765,14 @@
             // kembali ke tab ini (jeda ≥30 dtk). Bukan polling DOM game — sensor hanya
             // membaca halaman saat ada permintaan eksplisit dari GUI.
             if ($('igpas-snap-capture')) {
+                // Tampilkan snapshot tersimpan SEKARANG (tanpa menunggu tab iGP),
+                // supaya GUI tidak terlihat kosong saat dibuka kembali.
+                renderSnapshots();
                 requestCollect(['account-data', 'car-data'], 'autoload');
                 document.addEventListener('visibilitychange', () => {
-                    if (document.visibilityState === 'visible' && (Date.now() - lastReqAt) > 30000) {
+                    if (document.visibilityState !== 'visible') return;
+                    renderSnapshots(); // tab lain mungkin baru menyimpan snapshot
+                    if ((Date.now() - lastReqAt) > 30000) {
                         requestCollect(['account-data', 'car-data'], 'auto-refresh');
                     }
                 });
@@ -3332,8 +3475,9 @@
                     // Jangan klaim "(pas)" bila ada lap stint yang tak terbaca.
                     const gapTxt = (sv.unknownLaps > 0)
                         ? ' (' + sv.unknownLaps + ' stint lapnya belum terbaca)'
-                        : (sv.lapsShort == null ? ''
-                            : (sv.lapsShort > 0 ? ' (kurang ' + sv.lapsShort + ')' : ' (pas)'));
+                        : (sv.lapsOver > 0 ? ' (kelebihan ' + sv.lapsOver + ')'
+                            : (sv.lapsShort == null ? ''
+                                : (sv.lapsShort > 0 ? ' (kurang ' + sv.lapsShort + ')' : ' (pas)')));
                     const tip = 'Total stint game ' + sv.lapsTotal + '/' + lapDiv + ' lap' +
                         gapTxt +
                         (stintTxt ? '; saran stint ' + stintTxt : '') +
@@ -3380,10 +3524,14 @@
                 renderObserving = true;
             } catch { /* observer opsional — fallback debounce tetap jalan */ }
         }
+        // Hitungan waktu game (countdown) berubah tiap detik dan TIDAK
+        // memengaruhi rekomendasi — jangan memicu DOM walk penuh tiap tick.
+        const COUNTDOWN_SEL = '.countdown, [data-countdown], .raceCountdown, .timer';
         function mutationRelevant(m) {
             if (!m) return false;
             const own = el => !!(el && el.closest && el.closest('.igpas-adv-panel, #' + PREFIX + '-toggle'));
             const t = m.target;
+            if (t && t.nodeType === 1 && t.closest && t.closest(COUNTDOWN_SEL)) return false;
             if (m.type === 'attributes' && t && t.nodeType === 1) {
                 if (own(t)) return false;
                 const an = m.attributeName;
@@ -3396,6 +3544,7 @@
             if (m.type === 'characterData') {
                 const p = t && t.parentElement;
                 if (!p || own(p)) return false;
+                if (p.closest && p.closest(COUNTDOWN_SEL)) return false;
                 try { return !!(p.closest && p.closest(WATCH_SEL)); }
                 catch { return false; }
             }
@@ -3536,29 +3685,108 @@
         const SENSITIVE_ATTR = /^(data-)?(csrf|token|session|auth|nonce|password|secret|api[-_]?key)$/i;
         // Identitas form: field ini bisa berisi csrf/email/user id.
         const SENSITIVE_IDENT = /(csrf|token|session|auth|e-?mail|password|username|user(name)?|manager)/i;
+        // Kunci JSON yang tidak pernah dibutuhkan untuk pemetaan fixture.
+        const SENSITIVE_KEY = /(csrf|token|session|auth|nonce|password|secret|api[-_]?key|e-?mail|manager|username)/i;
         const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
         const TOKEN_RE = /\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9_-]{40,})\b/g;
         const scrub = s => String(s)
             .replace(EMAIL_RE, '[REDACTED]')
             .replace(TOKEN_RE, '[REDACTED]');
-
-        function redact(clone) {
-            // 1) Script eksekutabel tidak pernah ikut tersalin (bisa memuat
-            //    state/token inline). Blok data JSON tetap dipertahankan —
-            //    justru itu yang dibutuhkan untuk pemetaan fixture.
-            for (const s of Array.from(clone.querySelectorAll('script'))) {
-                const type = String(s.getAttribute('type') || '').toLowerCase();
-                if (!type.includes('json')) s.remove();
+        // Nilai PII konkret dari dokumen hidup (nama manajer, saldo, token,
+        // rank) disapu dari SELURUH capture — termasuk aria-label/alt/src/
+        // style yang tidak bisa dikenali dari pola. Tanpa ini nama asli user
+        // tetap lolos di avatar/greeting walau #myProfileName sudah diblok.
+        const scrubKnown = (s, pii) => {
+            let out = scrub(s);
+            for (const v of (pii || [])) {
+                if (v && out.indexOf(v) !== -1) out = out.split(v).join('[REDACTED]');
             }
-            // 2) Nilai PII yang tampil.
+            return out;
+        };
+        const collectPii = doc => {
+            const out = new Set();
+            const add = v => {
+                const s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+                if (s.length >= 3) out.add(s);
+            };
+            for (const sel of REDACT_SELECTORS) {
+                const el = doc.querySelector(sel);
+                if (el) add(el.textContent);
+            }
+            // Nickname/username yang tampil di form profil.
+            for (const el of doc.querySelectorAll(
+                'input[name*="nick" i], input[id*="nick" i], input[name*="username" i]')) {
+                add(el.value);
+            }
+            return Array.from(out).sort((a, b) => b.length - a.length);
+        };
+        // Elemen yang tidak dibutuhkan untuk memetakan fixture dan bisa memuat
+        // kredensial/identitas: meta (csrf-token), link/base, template (konten
+        // tidak terlihat querySelectorAll), iframe/object/embed (srcdoc).
+        const DROP_SELECTOR = 'meta, link, base, template, iframe, object, embed';
+        // Atribut struktural yang nilainya aman & penting untuk fixture.
+        const KEEP_ATTR = /^(class|id|type|name|for|role|colspan|rowspan|width|height|viewbox|d|fill|stroke|points|transform)$/i;
+        // URL: parameter sensitif + email tetap dibuang, path dipertahankan
+        // kecuali berbentuk token panjang (mis. /reset/<64 hex>).
+        const URL_ATTR = /^(href|src|action|formaction|poster|srcset)$/i;
+
+        function scrubJson(v, depth) {
+            const d = depth || 0;
+            if (d > 12) return '[REDACTED]';
+            if (Array.isArray(v)) return v.map(x => scrubJson(x, d + 1));
+            if (v && typeof v === 'object') {
+                const out = {};
+                for (const k of Object.keys(v)) {
+                    out[k] = SENSITIVE_KEY.test(k) ? '[REDACTED]' : scrubJson(v[k], d + 1);
+                }
+                return out;
+            }
+            if (typeof v === 'string') return scrub(v);
+            return v;
+        }
+
+        function scrubUrl(value) {
+            let v = String(value);
+            // Parameter kredensial (token/csrf/session/auth/key/manager/email).
+            v = v.replace(
+                /([?&](?:token|csrf|session|auth|key|api[-_]?key|manager|e-?mail|username)=)[^&#]*/gi,
+                '$1[REDACTED]');
+            // Email di mana pun dalam URL.
+            v = v.replace(EMAIL_RE, '[REDACTED]');
+            // Token panjang sebagai segmen path.
+            v = v.replace(/([/])[A-Za-z0-9_-]{40,}(?=[/?#]|$)/g, '$1[REDACTED]');
+            return v;
+        }
+
+        function redact(clone, pii) {
+            if (!clone || !clone.querySelectorAll) return clone;
+            // 1) Elemen berisiko: script eksekutabel, meta/link/base, template,
+            //    iframe/object/embed (srcdoc). Script JSON tetap dipertahankan
+            //    (dibutuhkan fixture) tetapi isinya disaring pada langkah 5.
+            for (const el of Array.from(clone.querySelectorAll('script, ' + DROP_SELECTOR))) {
+                if (String(el.tagName || '').toUpperCase() === 'SCRIPT') {
+                    const type = String(el.getAttribute('type') || '').toLowerCase();
+                    if (!type.includes('json')) el.remove();
+                } else {
+                    el.remove();
+                }
+            }
+            // 2) Komentar bisa memuat data internal/identitas.
+            if (typeof clone.ownerDocument !== 'undefined' && clone.ownerDocument.createTreeWalker) {
+                const walker = clone.ownerDocument.createTreeWalker(clone, 128 /* SHOW_COMMENT */);
+                const comments = [];
+                while (walker.nextNode()) comments.push(walker.currentNode);
+                for (const c of comments) c.remove();
+            }
+            // 3) Nilai PII yang tampil.
             for (const sel of REDACT_SELECTORS) {
                 const el = clone.querySelector(sel);
                 if (el) el.textContent = '[REDACTED]';
             }
-            // 3) Field form: hidden/password/email/tel dan field ber-identitas
+            // 4) Field form: hidden/password/email/tel dan field ber-identitas
             //    sensitif (csrf/user/session) → nilainya dikosongkan. Nilai
             //    angka permainan (mis. #d1AdvancedFuel) tetap utuh agar fixture
-            //    masih bisa dipetakan.
+            //    masih bisa dipetakan (dan tetap lewat scrub pola).
             for (const el of clone.querySelectorAll('input, textarea')) {
                 const tag = String(el.tagName || '').toUpperCase();
                 const type = String(el.getAttribute('type') || '').toLowerCase();
@@ -3572,23 +3800,60 @@
                     if (el.hasAttribute('data-initialvalue')) el.setAttribute('data-initialvalue', '[REDACTED]');
                 }
             }
-            // 4) Atribut bernama kredensial + URL yang membawa token.
+            // 5) Script JSON: redaksi per kunci (token/email/manager) tanpa
+            //    merusak angka permainan; JSON rusak → sapuan teks mentah.
+            for (const s of clone.querySelectorAll('script')) {
+                const raw = String(s.textContent || '');
+                let out = raw;
+                try {
+                    const parsed = JSON.parse(raw);
+                    out = scrubKnown(JSON.stringify(scrubJson(parsed)), pii);
+                } catch {
+                    out = scrubKnown(raw, pii);
+                }
+                if (out !== raw) s.textContent = out;
+            }
+            // 6) Atribut: kredensial bernama, URL, lalu scrub pola pada sisanya.
             for (const el of clone.querySelectorAll('*')) {
                 for (const attr of Array.from(el.attributes || [])) {
-                    if (SENSITIVE_ATTR.test(attr.name)) attr.value = '[REDACTED]';
-                    else if (/^(href|src|action)$/i.test(attr.name) &&
-                        /\b(token|csrf|session|auth|key)=/i.test(attr.value)) {
-                        attr.value = attr.value.replace(
-                            /(\b(?:token|csrf|session|auth|key)=)[^&]*/gi, '$1[REDACTED]');
+                    const name = attr.name;
+                    if (/^srcdoc$/i.test(name)) { el.removeAttribute(name); continue; }
+                    // Handler inline = vektor eksekusi + bisa memuat ID/URL internal.
+                    if (/^on/i.test(name)) { el.removeAttribute(name); continue; }
+                    if (SENSITIVE_ATTR.test(name)) { attr.value = '[REDACTED]'; continue; }
+                    if (URL_ATTR.test(name)) {
+                        const v = scrubUrl(attr.value);
+                        if (v !== attr.value) attr.value = v;
+                        continue;
                     }
+                    if (KEEP_ATTR.test(name)) continue; // nilai struktural, tanpa PII
+                    // Atribut berisi JSON (data-config dsb.): redaksi per kunci.
+                    const raw = String(attr.value || '');
+                    if (/^[[{]/.test(raw.trim())) {
+                        try {
+                            const v = JSON.stringify(scrubJson(JSON.parse(raw)));
+                            if (v !== raw) attr.value = v;
+                            continue;
+                        } catch { /* bukan JSON valid → scrub pola di bawah */ }
+                    }
+                    const v = scrubKnown(raw, pii);
+                    if (v !== raw) attr.value = v;
                 }
             }
-            // 5) Sapuan pola terakhir: email & string token panjang di text node
+            // 6b) Sapuan nilai PII konkret pada SEMUA atribut (termasuk src/
+            //     style/aria-*/alt yang dilewati aturan struktural).
+            for (const el of clone.querySelectorAll('*')) {
+                for (const attr of Array.from(el.attributes || [])) {
+                    const v = scrubKnown(attr.value, pii);
+                    if (v !== attr.value) attr.value = v;
+                }
+            }
+            // 7) Sapuan pola terakhir: email & string token panjang di text node
             //    (blok JSON dikecualikan agar data strategi tidak rusak).
             for (const el of clone.querySelectorAll('*')) {
                 if (String(el.tagName || '').toUpperCase() === 'SCRIPT') continue;
                 for (const nd of Array.from(el.childNodes || [])) {
-                    if (nd.nodeType === 3) nd.textContent = scrub(nd.textContent);
+                    if (nd.nodeType === 3) nd.textContent = scrubKnown(nd.textContent, pii);
                 }
             }
             return clone;
@@ -3596,13 +3861,8 @@
 
         function buildCapture(doc) {
             if (!doc || !doc.documentElement) return null;
-            const clone = redact(doc.documentElement.cloneNode(true));
-            // Atribut teks yang mungkin memuat PII (title/alt/placeholder).
-            for (const el of clone.querySelectorAll('[title], [alt], [placeholder]')) {
-                for (const name of ['title', 'alt', 'placeholder']) {
-                    if (el.hasAttribute(name)) el.setAttribute(name, scrub(el.getAttribute(name)));
-                }
-            }
+            const pii = collectPii(doc);
+            const clone = redact(doc.documentElement.cloneNode(true), pii);
             return '<!doctype html>\n<html>' + clone.innerHTML + '</html>';
         }
         function install() {

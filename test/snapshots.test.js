@@ -325,6 +325,27 @@ t("race-track-data: gate + karakteristik & panjang sirkuit", () => {
   eq(r.data.lengthKm, 4.341);
 });
 
+t("manufacturer-data: nama terpecah antar-node digabung dengan spasi", () => {
+  const dom = new JSDOM(
+    fs.readFileSync(path.join(__dirname, "fixtures/manufacturers-engines.html"), "utf8")
+  );
+  const doc = dom.window.document;
+  const td = doc.querySelector("#engine-table tbody tr td");
+  const name = td.textContent.replace(/\s+/g, " ").trim();
+  const cut = name.indexOf(" ") > 0 ? name.indexOf(" ") : Math.max(1, Math.floor(name.length / 2));
+  // Game memecah nama ke dua node bersaudara: text node + <span>.
+  const textNode = Array.prototype.slice
+    .call(td.childNodes)
+    .find(n => n.nodeType === 3 && n.textContent.trim() !== "");
+  textNode.textContent = " " + name.slice(0, cut) + " ";
+  const span = doc.createElement("span");
+  span.textContent = name.slice(cut).trim();
+  td.appendChild(span);
+  const r = AdapterRegistry.capture("manufacturer-data", doc);
+  eq(r.ok, true);
+  eq(r.data.engines[0].name, name.slice(0, cut) + " " + name.slice(cut).trim());
+});
+
 t("status registry jujur (ready vs menunggu-map)", () => {
   eq(
     AdapterRegistry.status(),

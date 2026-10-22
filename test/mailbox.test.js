@@ -86,15 +86,66 @@ t("pesan untuk instance lain: tidak dikonsumsi & tidak dihapus", () => {
   store.delete("igpas:mb:t4");
 });
 
-t("paket basi (>30 dtk): dibersihkan janitor tanpa dispatch", () => {
+t("hasil basi (>2 mnt): dibersihkan janitor tanpa dispatch", () => {
   let got = null;
   Mailbox.on("stale-type", p => {
     got = p;
   });
-  put("t5", pkt("stale-type", { id: "t5", ts: Date.now() - 40000 }));
+  put("t5", pkt("stale-type", { id: "t5", ts: Date.now() - 3 * 60 * 1000 }));
   Mailbox.pollOnce();
-  assert(got === null, "paket basi di-dispatch");
-  assert(!has("t5"), "paket basi tidak dibersihkan");
+  assert(got === null, "hasil basi di-dispatch");
+  assert(!has("t5"), "hasil basi tidak dibersihkan");
+});
+
+t("permintaan 60 dtk masih hidup (user sempat pindah tab)", () => {
+  let got = null;
+  Mailbox.on("collect-request", p => {
+    got = p.payload;
+  });
+  put(
+    "t8",
+    pkt("collect-request", { id: "t8", ts: Date.now() - 60000, payload: { kinds: ["staff-data"] } })
+  );
+  Mailbox.pollOnce();
+  assert(
+    got && got.kinds && got.kinds[0] === "staff-data",
+    "permintaan 60 dtk dibuang sebelum diproses"
+  );
+  assert(!has("t8"), "permintaan ter-konsumsi tidak dihapus");
+});
+
+t("permintaan >10 mnt: dibersihkan janitor (tidak abadi)", () => {
+  let got = null;
+  Mailbox.on("collect-request", p => {
+    got = p.payload;
+  });
+  put(
+    "t9",
+    pkt("collect-request", {
+      id: "t9",
+      ts: Date.now() - 11 * 60 * 1000,
+      payload: { kinds: ["car-data"] },
+    })
+  );
+  Mailbox.pollOnce();
+  assert(got === null, "permintaan 11 mnt di-dispatch");
+  assert(!has("t9"), "permintaan 11 mnt tidak dibersihkan");
+});
+
+t("GM_setValue gagal: send() = false, tidak ada paket hantu", () => {
+  const original = global.GM_setValue;
+  global.GM_setValue = () => {
+    throw new Error("quota");
+  };
+  try {
+    const before = Array.from(store.keys()).sort().join("|");
+    const ok = Mailbox.send("collect-request", { kinds: ["car-data"] });
+    assert(ok === false, "send() melaporkan sukses padahal penyimpanan gagal");
+    const after = Array.from(store.keys()).sort().join("|");
+    assert(before === after, "paket hantu tetap tersimpan");
+  } finally {
+    global.GM_setValue = original;
+  }
 });
 
 t("read-once: poll berulang tidak memicu handler dua kali", () => {
