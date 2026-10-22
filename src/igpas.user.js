@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.8.2
+// @version      0.8.3
 // @description  Race strategy study calculators + read-only study advice (account, car, supply, manufacturers, team, transfers) and pre-race setup/strategy estimate panels (ids `Setup`/`Strategy` tabs only — never the live Race tab). Study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + catatan studi read-only (akun, mobil, supply, manufacturers, tim, transfers) + estimasi setup & strategi pra-balapan (hanya tab Setup/Strategy — bukan tab Race live). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
@@ -21,7 +21,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.8.2';
+    const VERSION = '0.8.3';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -3016,10 +3016,11 @@
          *    = teks ringkas fuel/ban per lap; title = agregasi + hint track +
          *    arah slider game; p engineer (#dNSetupComments .shrinkText) = title
          *    saja (struktur span merah dipertahankan).
-         *  - Strategy: p strategi (#dNStrategyComments .shrinkText, teks polos)
-         *    = teks ringkas fuel need + stint; title = rincian; input
-         *    #dNAdvancedFuel + span #dNTotalLaps = title saja (nilai game tak
-         *    diubah). Gagal jujur: tanpa practice/fuel/lap → tanpa tulisan. */
+         *  - Strategy: komentar pembalap TIDAK ditulis lagi. Teks + title
+         *    ditulis pada label asli "Fuel (litres)" di .c-wrap #dNAdvancedFuel
+         *    (estimasi practice/lap × Total laps estimate vs fuel terisi) dan
+         *    title pada span #dNTotalLaps. Nilai & tombol -/+ game tak diubah.
+         *    Gagal jujur: tanpa practice/fuel/lap → tanpa tulisan. */
         function restoreRaceInPlace() {
             for (const el of document.querySelectorAll('#setup [data-igpas-orig], #strategy [data-igpas-orig]')) {
                 try {
@@ -3128,7 +3129,7 @@
                 // fuel/lap: prioritas practice avg → fallback prediksi game.
                 const fpl = (sum && sum.ok && sum.values.fuelAvg != null) ? sum.values.fuelAvg : drv.fuelPerLap;
                 const fuelRec = (raceLaps != null && fpl != null)
-                    ? IGPCore.recommendRaceFuel({ raceLaps: raceLaps, fuelPerLap: fpl, advancedFuel: drv.advancedFuel, reserveLaps: 1 })
+                    ? IGPCore.recommendRaceFuel({ raceLaps: raceLaps, fuelPerLap: fpl, advancedFuel: drv.advancedFuel, reserveLaps: 0 })
                     : null;
                 // umur ban: game dNTyreLife (per compound, ambil min) → fallback practice.
                 let life = null;
@@ -3155,55 +3156,50 @@
                     const sp = IGPCore.stintSplit({ totalLaps: raceLaps, tireLifeLaps: life, pitLossLaps: 0 });
                     if (sp.ok) stintTxt = sp.values.stints.join('/') + ' lap (' + sp.values.stops + ' pit, umur ' + life + ' lap/' + lifeSrc + ')';
                 }
-                const cmt = document.querySelector('#d' + n + 'StrategyComments .shrinkText');
-                if (cmt) {
-                    const parts = [];
-                    if (fuelRec && fuelRec.ok) {
-                        parts.push('butuh ±' + fuelRec.values.need + 'L (' + raceLaps + ' lap × ' + fpl + 'L)' +
-                            (fuelRec.values.buffer != null ? ', terisi ' + drv.advancedFuel + 'L (' + (fuelRec.values.buffer >= 0 ? '+' : '') + fuelRec.values.buffer + 'L)' : ''));
-                    }
-                    if (stintTxt) parts.push('stint ' + stintTxt);
-                    if (strat.ok && strat.values.twoTyreOk === false) parts.push('⚠ butuh 2 compound kering');
-                    if (!parts.length) continue;
-                    const short = ' · IGPAS: ' + parts.join(' · ');
-                    const origMode = cmt.getAttribute('data-igpas-origmode');
-                    const orig = cmt.getAttribute('data-igpas-orig') || cmt.textContent;
-                    if (origMode !== 'self' && !cmt.hasAttribute('data-igpas-orig')) {
-                        cmt.setAttribute('data-igpas-orig', cmt.textContent);
-                        cmt.setAttribute('data-igpas-origmode', 'self');
-                    }
-                    if ((cmt.textContent || '').indexOf('IGPAS:') === -1) cmt.textContent = orig + short;
-                    saveTitle(cmt);
-                    const tip = 'Practice ' + (sum && sum.ok ? sum.values.count + ' lap' : 'belum ada') +
-                        (sum && sum.ok ? ': fuel ' + (sum.values.fuelAvg != null ? sum.values.fuelAvg + ' L/lap' : '—') +
-                        ', ban ' + (sum.values.tyreAvg != null ? sum.values.tyreAvg + ' %/lap' : '—') +
-                        ', terbaik ' + sum.values.bestLap : '') +
-                        (fuelRec && fuelRec.ok ? '. Fuel balapan: butuh ±' + fuelRec.values.need + 'L + reserve ' +
-                        fuelRec.values.reserveLaps + ' lap (≈' + fuelRec.values.total + 'L)' : '') +
-                        (stintTxt ? '. Stint: ' + stintTxt : '') +
-                        (strat.ok ? '. Strategi game: ' + strat.values.stintsCount + ' stint (' +
-                        strat.values.stints.map(s => (s.tyre || '?') + s.laps).join('/') + ')' : '') +
-                        ' — estimasi, bukan rumus game.';
-                    cmt.setAttribute('title', tip);
-                    cmt.setAttribute('data-igpas-written-title', tip);
-                }
+                // Fuel: estimasi & perbandingan ditulis pada label asli "Fuel (litres)"
+                // di .c-wrap input (BUKAN komentar pembalap). Dasar = konsumsi practice
+                // per lap × Total laps estimate game; tanpa cadangan tambahan.
                 const adv = document.getElementById('d' + n + 'AdvancedFuel');
-                if (adv && fuelRec && fuelRec.ok) {
-                    saveTitle(adv);
-                    const tip = 'Rekomendasi fuel: ±' + fuelRec.values.need + 'L butuh + ' +
-                        fuelRec.values.reserveLaps + ' lap reserve (≈' + fuelRec.values.total + 'L); terisi ' +
-                        (drv.advancedFuel == null ? '—' : drv.advancedFuel + 'L') +
-                        (fuelRec.values.buffer != null ? ' (' + (fuelRec.values.buffer >= 0 ? '+' : '') + fuelRec.values.buffer + 'L ≈ ' + fuelRec.values.bufferLaps + ' lap)' : '') +
-                        ' — estimasi dari ' + ((sum && sum.ok) ? 'practice' : 'prediksi game') + ', bukan rumus game.';
-                    adv.setAttribute('title', tip);
-                    adv.setAttribute('data-igpas-written-title', tip);
+                const host = adv ? adv.closest('.c-wrap') : null;
+                const label = host && Array.from(host.childNodes).find(nd => nd.nodeType === 3 && /Fuel\s*\(litres\)/i.test(nd.textContent));
+                if (adv && label && fuelRec && fuelRec.ok) {
+                    // attr = teks asli; aman bila render dipanggil tanpa restore lebih dulu.
+                    const original = host.getAttribute('data-igpas-orig') || label.textContent;
+                    const gameLaps = Number(drv.totalLapsGame);
+                    const useGameLaps = Number.isFinite(gameLaps) && gameLaps > 0;
+                    const plannedLaps = useGameLaps ? gameLaps : raceLaps;
+                    const estimate = IGPCore.recommendRaceFuel({
+                        raceLaps: plannedLaps, fuelPerLap: fpl,
+                        advancedFuel: Utils.numOrNull(adv.value), reserveLaps: 0,
+                    });
+                    if (estimate.ok) {
+                        const v = estimate.values;
+                        host.setAttribute('data-igpas-orig', original);
+                        host.setAttribute('data-igpas-origmode', 'node');
+                        label.textContent = original.trim() + ' · estimasi ' + v.need + ' L / ' + plannedLaps + ' lap' +
+                            ' · terisi ' + (v.advancedFuel == null ? '—' :
+                                v.advancedFuel + ' L' + (v.buffer == null ? '' :
+                                    ' (' + (v.buffer >= 0 ? '+' : '') + v.buffer + ' L)')) + ' ';
+                        saveTitle(host);
+                        const detail = 'Estimasi ' + fpl + ' L/lap × ' + plannedLaps + ' lap (' +
+                            (useGameLaps ? 'Total laps estimate game' : 'jarak balapan — Total laps estimate belum terbaca') +
+                            ') = ' + v.need + ' L, tanpa cadangan tambahan. Selisih terisi: ' +
+                            (v.advancedFuel == null ? '—' : r1(v.advancedFuel - v.need) + ' L') +
+                            '. Sumber fuel/lap: ' + ((sum && sum.ok && sum.values.fuelAvg != null)
+                                ? 'practice (' + sum.values.fuelAvg + ' L/lap, ' + sum.values.count + ' lap)' : 'prediksi game (practice belum tersedia)') +
+                            '. Konsumsi aktual dapat berbeda.';
+                        host.setAttribute('title', detail);
+                        host.setAttribute('data-igpas-written-title', detail);
+                    }
                 }
                 const tot = document.getElementById('d' + n + 'TotalLaps');
                 if (tot && strat.ok) {
                     saveTitle(tot);
                     const tip = 'Total stint game ' + strat.values.lapsTotal + '/' + raceLaps + ' lap' +
                         (strat.values.lapsShort ? ' (kurang ' + strat.values.lapsShort + ')' : ' (pas)') +
-                        (stintTxt ? '; saran stint ' + stintTxt : '') + ' — estimasi, bukan rumus game.';
+                        (stintTxt ? '; saran stint ' + stintTxt : '') +
+                        (strat.values.twoTyreOk === false ? '; ⚠ butuh 2 compound kering' : '') +
+                        ' — estimasi, bukan rumus game.';
                     tot.setAttribute('title', tip);
                     tot.setAttribute('data-igpas-written-title', tip);
                 }
@@ -3358,6 +3354,12 @@
                 pending = setTimeout(() => { pending = null; renderAll(); }, 250);
             };
             document.addEventListener('click', schedule, true);
+            document.addEventListener('input', ev => {
+                if (ev.target && /^d[12]AdvancedFuel$/.test(ev.target.id)) renderAll();
+            }, true);
+            document.addEventListener('change', ev => {
+                if (ev.target && /^d[12]AdvancedFuel$/.test(ev.target.id)) renderAll();
+            }, true);
             document.addEventListener('keydown', schedule, true);
             window.addEventListener('popstate', schedule);
             window.addEventListener('hashchange', schedule);

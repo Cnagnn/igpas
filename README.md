@@ -124,15 +124,17 @@ dan halaman lain juga tidak. Sifatnya:
   (`#n Nama ★ rekomendasi` untuk peringkat 1): driver (overall, fee di
   `title`) dan staff per peran; **link kontrak dan flag negara di dalam sel
   tetap hidup** karena hanya text node yang ditulis ulang.
-- **Setup & Strategy pra-balapan (v0.8.2)** — pembaca perilaku track
+- **Setup & Strategy pra-balapan (v0.8.2; fuel v0.8.3)** — pembaca perilaku track
   (overtaking/bumpiness/fuel/wear + panjang sirkuit, read-only dari tab Race)
   - agregasi **seluruh lap practice** menjadi fuel/lap, tyre %/lap, dan timelap
     per stint. Setup: ringkasan practice di span nama driver + `title` agregasi,
     hint trek, dan arah slider game; komentar engineer hanya `title` (span merah
-    utuh). Strategy: kebutuhan fuel (`raceLaps × fuel/lap` + reserve 1 lap vs
-    bensin terisi), saran stint dari umur ban game/practice, dan cek dua-compound
-    di komentar strategi + `title` fuel (`#dNAdvancedFuel`) & total laps
-    (nilai game tak diubah). Div `#race` tidak pernah ditulis.
+    utuh). Strategy: **komentar pembalap tidak ditulis**; estimasi fuel tampil
+    langsung pada label asli **Fuel (litres)** di wadah `#dNAdvancedFuel`
+    (`estimasi <practice/lap × Total laps estimate> L · terisi <nilai game> L
+(selisih)`), **tanpa cadangan**, dengan `title` berisi rumus + sumber data;
+    `title` juga pada span total laps. Nilai fuel, tombol −/+, dan ikon game
+    tidak diubah. Div `#race` tidak pernah ditulis.
 
 Semua tulisan berlabel **"estimasi — bukan rumus game"** di `title`: heuristik
 transparan atas angka yang memang tampil, bukan kepastian performa. Render

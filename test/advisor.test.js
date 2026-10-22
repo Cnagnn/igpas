@@ -475,27 +475,141 @@ t(
   }
 );
 
-t("Race strategy in-place: fuel need + stint di komentar, title fuel & total", () => {
+t("Race strategy: estimasi di Fuel (litres), komentar asli utuh", () => {
+  const pristine = new JSDOM(load("race.html"));
+  const pristineComment = pristine.window.document.querySelector(
+    "#d1StrategyComments .shrinkText"
+  ).textContent;
+  pristine.window.close();
   const s = bootOn(load("race.html"), URL_RACE);
   const cmt = s.doc.querySelector("#d1StrategyComments .shrinkText");
-  assert(
-    cmt && /IGPAS:/.test(cmt.textContent),
-    "komentar strategi tanpa rekomendasi: " + (cmt && cmt.textContent)
-  );
-  assert(/butuh ±/.test(cmt.textContent), "fuel need tidak tampil: " + cmt.textContent);
-  assert(/estimasi/i.test(cmt.getAttribute("title") || ""), "title strategi tanpa estimasi");
+  assert(cmt && !/IGPAS:/.test(cmt.textContent), "advisor masih di komentar strategi");
+  assert(!cmt.hasAttribute("data-igpas-title"), "komentar masih dianotasi");
+  assert(cmt.textContent === pristineComment, "komentar pembalap berubah: " + cmt.textContent);
   const adv = s.doc.getElementById("d1AdvancedFuel");
   assert(
-    adv && /Rekomendasi fuel/.test(adv.getAttribute("title") || ""),
+    adv &&
+      /153.6 L/.test(adv.closest(".c-wrap").textContent) &&
+      !/cadangan|156 L/.test(adv.closest(".c-wrap").textContent),
     "title fuel tanpa rekomendasi"
   );
+  // Perbandingan terlihat langsung di label: Total laps estimate × practice/lap.
+  assert(
+    /estimasi 153\.6 L \/ 64 lap/.test(adv.closest(".c-wrap").textContent),
+    "estimasi fuel tidak di label: " + adv.closest(".c-wrap").textContent
+  );
+  assert(
+    /terisi 174 L \(\+20\.4 L\)/.test(adv.closest(".c-wrap").textContent),
+    "selisih fuel tidak di label: " + adv.closest(".c-wrap").textContent
+  );
   assert(adv.getAttribute("value") === "174", "nilai fuel game ikut berubah");
+  assert(/tanpa cadangan tambahan/.test(adv.closest(".c-wrap").title), "cadangan harus nol");
+  assert(
+    /20.4 L/.test(adv.closest(".c-wrap").title),
+    "selisih harus terhadap kebutuhan tanpa cadangan"
+  );
   const tot = s.doc.getElementById("d1TotalLaps");
   assert(
     tot && /estimasi/i.test(tot.getAttribute("title") || ""),
     "title total laps tanpa estimasi"
   );
   assert(tot.textContent.trim() === "64", "angka total game ikut berubah");
+  // Kedua mobil: label fuel dianotasi, komentar tetap bersih.
+  const adv2 = s.doc.getElementById("d2AdvancedFuel");
+  assert(
+    adv2 && /estimasi \d/.test(adv2.closest(".c-wrap").textContent),
+    "driver 2 tanpa estimasi: " + (adv2 && adv2.closest(".c-wrap").textContent)
+  );
+  const cmt2 = s.doc.querySelector("#d2StrategyComments .shrinkText");
+  assert(
+    cmt2 && !/IGPAS:/.test(cmt2.textContent) && !cmt2.hasAttribute("data-igpas-title"),
+    "komentar driver 2 dianotasi"
+  );
+  s.close();
+});
+
+/* Widget Fuel nyata (tooltip + igpNum game): label dapat estimasi, kontrol utuh. */
+ta("Race strategy: widget Fuel asli utuh, reaktif, idempoten, restore bersih", async () => {
+  const base = new JSDOM(load("race.html"));
+  const bdoc = base.window.document;
+  const host = bdoc.getElementById("d1AdvancedFuel").closest(".c-wrap");
+  host.innerHTML =
+    '<span class="teal tooltip" data-tip="Refuelling during the race is disabled.">' +
+    '<svg class="inline-block pointer-events-none align-middle icon-24"><use xlink:href="#md-information-circle"></use></svg></span> Fuel (litres)' +
+    '<div class="igpNum s">' +
+    '<div class="minus"><svg><use xlink:href="#subtract"></use></svg></div>' +
+    '<div class="num green"><span class="valueLine"><span class="value">174</span></span></div>' +
+    '<div class="plus"><svg><use xlink:href="#add"></use></svg></div>' +
+    "</div>" +
+    '<input type="number" value="174" data-initialvalue="174" min="0" max="300" name="advancedFuel" id="d1AdvancedFuel" class="number">';
+  const html = base.serialize();
+  base.window.close();
+
+  const s = bootOn(html, URL_RACE);
+  const adv = s.doc.getElementById("d1AdvancedFuel");
+  const wrap = adv.closest(".c-wrap");
+  const labelOf = () =>
+    Array.from(wrap.childNodes).find(n => n.nodeType === 3 && /Fuel/.test(n.textContent));
+  const label = labelOf();
+
+  assert(wrap.querySelector(".igpNum .minus"), "tombol minus hilang");
+  assert(wrap.querySelector(".igpNum .plus"), "tombol plus hilang");
+  assert(wrap.querySelector(".igpNum .value").textContent === "174", "angka kontrol game berubah");
+  assert(adv.value === "174", "nilai input game berubah");
+  assert(adv.getAttribute("data-initialvalue") === "174", "data-initialvalue game berubah");
+  assert(wrap.children.length === 3, "elemen baru disuntik: " + wrap.children.length);
+  assert(label && /estimasi 153\.6 L \/ 64 lap/.test(label.textContent), "label tanpa estimasi");
+  assert(
+    /Total laps estimate game/.test(wrap.getAttribute("title") || ""),
+    "basis Total laps estimate tidak disebut"
+  );
+
+  // Reaktif: input game berubah → label ikut, tanpa menggandakan suffix.
+  adv.value = "200";
+  adv.dispatchEvent(new s.win.Event("input", { bubbles: true }));
+  const afterInput = labelOf().textContent;
+  assert(/terisi 200 L \(\+46\.4 L\)/.test(afterInput), "label tidak reaktif: " + afterInput);
+  assert((afterInput.match(/estimasi/g) || []).length === 1, "suffix estimasi mengganda");
+  assert((afterInput.match(/Fuel \(litres\)/g) || []).length === 1, "label asli mengganda");
+  assert(afterInput.trim().startsWith("Fuel (litres)"), "teks asli label hilang: " + afterInput);
+
+  // Restore: pindah halaman → label asli kembali, tanpa sisa atribut advisor.
+  s.doc.getElementById("pageId").value = "cars";
+  s.doc.getElementById("setup").appendChild(s.doc.createElement("div"));
+  await new Promise(r => setTimeout(r, 25));
+  assert(
+    labelOf().textContent.trim() === "Fuel (litres)",
+    "label tidak dipulihkan: " + labelOf().textContent
+  );
+  assert(!wrap.hasAttribute("data-igpas-orig"), "data-igpas-orig tertinggal");
+  assert(!wrap.hasAttribute("title"), "title advisor tertinggal: " + wrap.getAttribute("title"));
+  assert(
+    wrap.querySelector(".igpNum .value").textContent === "174",
+    "kontrol game rusak setelah restore"
+  );
+  s.close();
+});
+
+t("Race strategy: peringatan dua-compound hanya di title total laps", () => {
+  const base = new JSDOM(load("race.html"));
+  const bdoc = base.window.document;
+  const el = bdoc.getElementById("d1StrategyJson");
+  const json = JSON.parse(el.textContent);
+  json.stint["4"].tyre = "M"; // semua stint kering 1 compound → langgar two_tyres
+  el.textContent = JSON.stringify(json);
+  const html = base.serialize();
+  base.window.close();
+  const s = bootOn(html, URL_RACE);
+  const tot = s.doc.getElementById("d1TotalLaps");
+  assert(
+    /2 compound kering/.test(tot.getAttribute("title") || ""),
+    "peringatan dua-compound hilang dari title: " + tot.getAttribute("title")
+  );
+  const cmt = s.doc.querySelector("#d1StrategyComments .shrinkText");
+  assert(
+    !/compound|IGPAS/i.test(cmt.textContent),
+    "peringatan bocor ke komentar: " + cmt.textContent
+  );
   s.close();
 });
 
@@ -571,28 +685,6 @@ ta(
     s.close();
   }
 );
-
-(async () => {
-  for (const [name, fn] of asyncTests) {
-    try {
-      await fn();
-      pass++;
-      console.log("  ✔ " + name);
-    } catch (e) {
-      fail++;
-      console.error("  ✗ " + name + " — " + e.message);
-    }
-  }
-  console.log(
-    (fail ? "\n" : "") +
-      (pass + fail) +
-      " test advisor, " +
-      fail +
-      " gagal" +
-      (fail ? "" : " — semua lulus ✔")
-  );
-  process.exit(fail ? 1 : 0);
-})();
 
 (async () => {
   for (const [name, fn] of asyncTests) {
