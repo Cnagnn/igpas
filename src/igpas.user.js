@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.8.5
+// @version      0.8.6
 // @description  Race strategy study calculators + read-only study advice (account, car, supply, manufacturers, team, transfers) and pre-race setup/strategy estimate panels (ids `Setup`/`Strategy` tabs only — never the live Race tab). Study tool only, no live-race assistance, no automation.
 // @description:id Kalkulator analisis & studi strategi iGP Manager (fuel, ban, pit window, stint) + catatan studi read-only (akun, mobil, supply, manufacturers, tim, transfers) + estimasi setup & strategi pra-balapan (hanya tab Setup/Strategy — bukan tab Race live). Alat studi, bukan bantuan saat balapan, tanpa otomasi.
 // @license      GPL-3.0-or-later
@@ -24,7 +24,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.8.5';
+    const VERSION = '0.8.6';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -102,6 +102,55 @@
         return t.slice(0, 40);
       },
     });
+
+    /**
+     * Validasi bentuk data capture sebelum dikirim/disimpan.
+     * Tujuan: hasil mailbox yang rusak (atau berasal dari tab asing) tidak
+     * boleh merusak panel/storage. Ini BUKAN autentikasi — lihat docs/PRIVACY.md.
+     */
+    function validateCapture(kind, data) {
+        if (!Utils.isSafeKind(kind)) return false;
+        if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+        try {
+            // Batas ukuran: cegah paket raksasa mengisi kuota GM storage.
+            if (JSON.stringify(data).length > 256 * 1024) return false;
+        } catch {
+            return false;
+        }
+        const arr = v => Array.isArray(v);
+        const optArr = v => v === undefined || v === null || Array.isArray(v);
+        const obj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+        const num = v => v == null || (typeof v === 'number' && Number.isFinite(v));
+        switch (kind) {
+            case 'account-data': {
+                const keys = ['manager', 'level', 'rank', 'rankTier', 'balance', 'tokens'];
+                const any = keys.some(k => data[k] != null);
+                const types = keys.every(k =>
+                    data[k] == null || typeof data[k] === 'string' || typeof data[k] === 'number');
+                return any && types;
+            }
+            case 'car-data':
+                return obj(data.attrs) && arr(data.bonuses) && arr(data.suppliers) &&
+                    num(data.dmax) && num(data.designPoints);
+            case 'supply-data':
+                return /^(engine|fuel|tyre)$/.test(String(data.type || '')) &&
+                    obj(data.current) && arr(data.alternatives);
+            case 'manufacturer-data':
+                return arr(data.engines) && arr(data.chassis);
+            case 'staff-data':
+                return arr(data.drivers) && optArr(data.staffCards);
+            case 'transfers-data':
+                return arr(data.drivers) && optArr(data.staff);
+            case 'race-setup-data':
+            case 'race-strategy-data':
+                return arr(data.drivers);
+            case 'race-track-data':
+                return num(data.overtaking) && num(data.bumpiness) && num(data.fuel) &&
+                    num(data.wear) && num(data.lengthKm);
+            default:
+                return false;
+        }
+    }
 
     const IGPCore = Object.freeze({
 
@@ -1216,7 +1265,9 @@
                 const ttl = MAIL_REQUEST_TYPES[packet.type] ? MAIL_TTL_MS.request : MAIL_TTL_MS.result;
                 if (!Number.isFinite(packet.ts) || now - packet.ts > ttl) { gm.del(key); continue; } // basi → bersihkan (janitor)
                 if (packet.from === ROLE + ':' + INSTANCE_ID) continue;              // pesan sendiri: biarkan untuk tab lain
-                if (packet.to && packet.to !== '*' && packet.to !== INSTANCE_ID) continue; // bukan untuk kita: jangan hapus
+                // `to` boleh instance id polos (paket lama) atau "rol:id" (alamat penuh).
+                if (packet.to && packet.to !== '*' && packet.to !== INSTANCE_ID &&
+                    packet.to !== ROLE + ':' + INSTANCE_ID) continue; // bukan untuk kita: jangan hapus
                 const list = Mailbox.handlers[packet.type] || [];
                 if (!list.length) continue;                                          // tak ada handler di peran ini: biarkan untuk peran lain
                 // read-once: hanya pesan yang benar-benar dikonsumsi yang dihapus
@@ -2527,8 +2578,10 @@
             }
             lastReqAt = Date.now();
 
-            const sent = Mailbox.send('collect-request', { kinds: kinds, reqId: id });
+            // Report dikirim LEBIH DULU: saat hasil tiba, GUI sudah punya
+            // identitas sensor (urutan penulisan mailbox = urutan baca poll).
             const reported = Mailbox.send('report-request', {});
+            const sent = Mailbox.send('collect-request', { kinds: kinds, reqId: id });
             if (!sent || !reported) {
                 // Tanpa tulis GM, permintaan tidak akan pernah sampai ke tab sensor.
                 // Beri tahu user alih-alih menunggu 16 dtk lalu bilang "tidak ada respons".
@@ -2542,8 +2595,8 @@
                 const cur = pending.get(id);
                 if (!cur || Object.keys(cur.got).length || cur.retried) return;
                 cur.retried = true;
+                Mailbox.send('report-request', {});
                 if (Mailbox.send('collect-request', { kinds: kinds, reqId: id })) {
-                    Mailbox.send('report-request', {});
                     setSnapStatus(label + ': belum ada respons — mencoba ulang sekali…', '');
                 }
             }, 8000);
@@ -2698,29 +2751,39 @@
                 const req = hasReqId ? pending.get(pay.reqId) : null;
                 const requestedKind = !!req && req.kinds.indexOf(pay.kind) >= 0;
                 const priorState = requestedKind ? req.got[pay.kind] : null;
+                // Skema divalidasi SEBELUM data boleh menyentuh storage.
+                const shapeOk = !!(pay.ok && validateCapture(pay.kind, pay.data));
                 // Error dari satu sensor tidak mengunci kind: sensor lain boleh
                 // memberi hasil sukses (penting saat beberapa tab sensor broadcast).
                 const firstOrSuccessAfterError = requestedKind &&
-                    (!priorState || (priorState === 'no' && pay.ok && pay.data));
+                    (!priorState || (priorState === 'no' && shapeOk));
                 const sender = (p && p.from) || 'unknown';
+                // Hanya peran sensor yang boleh menulis snapshot (defense in depth;
+                // bukan autentikasi — lihat docs/PRIVACY.md).
+                const fromSensor = /^sensor:/.test(sender);
                 const claimedSender = requestedKind && req.claimedFrom[pay.kind];
-                const senderAllowed = firstOrSuccessAfterError && (!claimedSender || claimedSender === sender);
+                const senderAllowed = fromSensor && firstOrSuccessAfterError &&
+                    (!claimedSender || claimedSender === sender);
 
                 if (senderAllowed) {
                     // Authorization penyimpanan dipisahkan dari korelasi UI:
                     // hanya request yang cocok reqId-nya, kind yang diminta, hasil
                     // pertama per kind, dan sender pertama per kind yang boleh menulis.
-                    if (pay.ok && pay.data) req.claimedFrom[pay.kind] = sender;
+                    if (shapeOk) req.claimedFrom[pay.kind] = sender;
                     let saved = true;
-                    if (pay.ok && pay.data) {
+                    if (shapeOk) {
                         if (pay.kind === 'supply-data') {
-                            saved = !!(pay.data.type && Storage.mergeSnapshot('supply-data', { [pay.data.type]: pay.data }));
+                            saved = !!(Storage.mergeSnapshot('supply-data', { [pay.data.type]: pay.data }));
                         } else {
                             saved = Storage.saveSnapshot(pay.kind, pay.data);
                         }
                     }
-                    req.got[pay.kind] = pay.ok ? 'ok' : 'no';
-                    if (!pay.ok && pay.error) req.details.push(pay.kind + ': ' + pay.error);
+                    req.got[pay.kind] = shapeOk ? 'ok' : 'no';
+                    if (!shapeOk && pay.ok) {
+                        req.details.push(pay.kind + ': data tidak sesuai skema — dibuang');
+                    } else if (!pay.ok && pay.error) {
+                        req.details.push(pay.kind + ': ' + pay.error);
+                    }
                     const complete = req.kinds.every(k => req.got[k]);
                     const tail = complete ? ' — selesai ' + new Date().toLocaleTimeString() : '';
                     if (!saved) {
@@ -3682,7 +3745,7 @@
         // Blok PII eksplisit yang tampil di UI iGP.
         const REDACT_SELECTORS = ['#myProfileName', '#balanceText', '#tokens-total', '#managerRankValue'];
         // Nama atribut yang isinya kredensial/identitas — selalu dikosongkan.
-        const SENSITIVE_ATTR = /^(data-)?(csrf|token|session|auth|nonce|password|secret|api[-_]?key)$/i;
+        const SENSITIVE_ATTR = /^(data-)?(csrf|token|session|auth|nonce|password|secret|api[-_]?key|sharkid|visitor|tracker|analytics|fingerprint|device)$/i;
         // Identitas form: field ini bisa berisi csrf/email/user id.
         const SENSITIVE_IDENT = /(csrf|token|session|auth|e-?mail|password|username|user(name)?|manager)/i;
         // Kunci JSON yang tidak pernah dibutuhkan untuk pemetaan fixture.
@@ -3747,10 +3810,18 @@
 
         function scrubUrl(value) {
             let v = String(value);
-            // Parameter kredensial (token/csrf/session/auth/key/manager/email).
+            // Parameter kredensial/identitas. `(^|[?&])` juga menangani URL
+            // relatif yang dimulai langsung dengan "p=manager&id=..." (tanpa "?").
             v = v.replace(
-                /([?&](?:token|csrf|session|auth|key|api[-_]?key|manager|e-?mail|username)=)[^&#]*/gi,
-                '$1[REDACTED]');
+                /(^|[?&])((?:token|csrf|session|auth|key|api[-_]?key|manager|e-?mail|username|uid|userid|user_id|account|profile)=)[^&#]*/gi,
+                '$1$2[REDACTED]');
+            // Konteks profil manajer: semua `id=` adalah identitas akun/pemain.
+            if (/(^|[?&])(?:p|page)=manager\b/i.test(v)) {
+                v = v.replace(/(^|[?&])id=[^&#]*/gi, '$1id=[REDACTED]');
+            }
+            // Path avatar/akun: /img/user/<id>/... dan /av/<id>...
+            v = v.replace(/(\/img\/user\/)[^/?#]+/gi, '$1[REDACTED]')
+                .replace(/(\/av(?:atar)?\/)[^/?#]+/gi, '$1[REDACTED]');
             // Email di mana pun dalam URL.
             v = v.replace(EMAIL_RE, '[REDACTED]');
             // Token panjang sebagai segmen path.
@@ -3807,6 +3878,14 @@
                 let out = raw;
                 try {
                     const parsed = JSON.parse(raw);
+                    // Script bootstrap identitas: kunci `id` di level atas adalah
+                    // user/manager id, bukan id permainan.
+                    const ident = String(s.id || '') + ' ' + String(s.className || '');
+                    if (/(user|manager|account|profile|bootstrap)/i.test(ident) &&
+                        parsed && typeof parsed === 'object' && !Array.isArray(parsed) &&
+                        Object.prototype.hasOwnProperty.call(parsed, 'id')) {
+                        parsed.id = '[REDACTED]';
+                    }
                     out = scrubKnown(JSON.stringify(scrubJson(parsed)), pii);
                 } catch {
                     out = scrubKnown(raw, pii);
@@ -3930,16 +4009,21 @@
                 // sekali per permintaan — tanpa polling, tanpa sentuhan elemen game.
                 const pay = (p && p.payload) || {};
                 const kinds = pay.kinds || ['account-data', 'car-data'];
+                // Alamatkan balasan ke instance GUI yang bertanya: GUI lain tidak
+                // boleh mengonsumsi hasil milik request ini (pola addressed reply).
+                const replyTo = (p && typeof p.from === 'string' && p.from.indexOf('gui:') === 0)
+                    ? p.from : undefined;
                 for (const kind of kinds) {
                     const res = AdapterRegistry.capture(kind);
+                    const valid = !!(res.ok && validateCapture(kind, res.data));
                     Mailbox.send('collect-result', {
                         reqId: pay.reqId || null,
                         kind,
-                        ok: res.ok,
-                        data: res.data || null,
-                        error: res.error || null,
+                        ok: valid,
+                        data: valid ? res.data : null,
+                        error: valid ? null : (res.error || 'data tidak sesuai skema'),
                         pageUrl: (typeof location !== 'undefined') ? location.href : '?',
-                    });
+                    }, replyTo);
                 }
             });
         }
@@ -3949,6 +4033,9 @@
 
     // Ekspor untuk pengujian Node — tanpa efek di browser (module tak terdefinisi).
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { IGPCore, Utils, AdapterRegistry, Storage, Mailbox, Advisor, PageCapture };
+        module.exports = {
+            IGPCore, Utils, AdapterRegistry, Storage, Mailbox, Advisor, PageCapture,
+            validateCapture: validateCapture, INSTANCE_ID: INSTANCE_ID, ROLE: ROLE,
+        };
     }
 })();

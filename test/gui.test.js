@@ -262,6 +262,42 @@ let autoReqId = null;
     );
   });
 
+  // Hasil "ok" dengan bentuk data asing tidak boleh menyentuh storage.
+  $("igpas-snap-capture").click();
+  const badReqId = mbPackets()
+    .filter(p => p.type === "collect-request")
+    .pop().payload.reqId;
+  const beforeAcc = JSON.stringify((store.get("igpas:snapshots") || {})["account-data"] || null);
+  store.set("igpas:mb:bad-shape", {
+    id: "bad-shape",
+    type: "collect-result",
+    to: "*",
+    from: "sensor:test",
+    ts: Date.now(),
+    payload: {
+      reqId: badReqId,
+      kind: "account-data",
+      ok: true,
+      data: { manager: { nested: true } },
+      error: null,
+      pageUrl: "https://igpmanager.com/",
+    },
+  });
+  await wait(900);
+
+  t("skema data asing: tidak ditulis, status menyebut skema", () => {
+    const afterAcc = JSON.stringify((store.get("igpas:snapshots") || {})["account-data"] || null);
+    assert(beforeAcc === afterAcc, "snapshot tertimpa data berskema asing");
+    assert(
+      $("igpas-snap-status").title.indexOf("skema") >= 0,
+      "detail status: " + $("igpas-snap-status").title
+    );
+    assert(
+      $("igpas-snap-status").textContent.indexOf("akun ✗") >= 0,
+      "ringkasan: " + $("igpas-snap-status").textContent
+    );
+  });
+
   let mfrReqId = null;
   t("Capture manufacturers: klik → collect-request manufacturer-data + status", () => {
     $("igpas-snap-capture-manufacturers").click();

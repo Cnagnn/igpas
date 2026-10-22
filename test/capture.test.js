@@ -116,5 +116,21 @@ t("capture: komentar HTML tidak ikut", () => {
   assert(out.indexOf("<!--") === -1, "komentar masih ada");
 });
 
+t("capture: ID akun/avatar, tracker, dan id bootstrap diredaksi", () => {
+  const out = capture(`<!doctype html><html><body>
+<div id="myProfileName">Budi Santoso</div>
+<a href="p=manager&amp;id=441233">profil</a>
+<img src="/img/user/441233/avatar.png" alt="avatar">
+<div id="wrap" data-sharkid="SHARK_TRACKER_ID_998877" data-tip="Weight: 41">x</div>
+<script type="application/json" id="userBootstrap">{"id":441233,"name":"Budi Santoso","tier":"gold"}</script>
+</body></html>`);
+  for (const leak of ["441233", "SHARK_TRACKER_ID_998877", "Budi Santoso"]) {
+    assert(out.indexOf(leak) === -1, "identitas lolos: " + leak);
+  }
+  assert(out.indexOf('data-tip="Weight: 41"') !== -1, "data permainan hilang");
+  assert(out.indexOf('"tier":"gold"') !== -1, "data JSON aman hilang");
+  assert(out.indexOf("id=[REDACTED]") !== -1, "id profil tidak diredaksi");
+});
+
 console.log("\n" + pass + " test, " + fail + " gagal" + (fail ? "" : " — semua lulus ✔"));
 process.exit(fail ? 1 : 0);

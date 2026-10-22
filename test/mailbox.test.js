@@ -12,7 +12,7 @@ global.GM_deleteValue = k => {
 };
 global.GM_listValues = () => Array.from(store.keys());
 
-const { Mailbox } = require("../src/igpas.user.js");
+const { Mailbox, INSTANCE_ID } = require("../src/igpas.user.js");
 
 let pass = 0,
   fail = 0;
@@ -72,6 +72,40 @@ t("tipe tanpa handler di peran ini: dibiarkan (untuk peran lain)", () => {
   Mailbox.pollOnce();
   assert(has("t3"), "paket tanpa handler terhapus");
   store.delete("igpas:mb:t3");
+});
+
+t("alamat penuh rol:instance hanya dikonsumsi instance itu", () => {
+  let got = null;
+  Mailbox.on("collect-request", p => {
+    got = p.payload;
+  });
+  put(
+    "addr1",
+    pkt("collect-request", {
+      id: "addr1",
+      to: "test:" + INSTANCE_ID,
+      payload: { kinds: ["car-data"] },
+    })
+  );
+  Mailbox.pollOnce();
+  assert(
+    got && got.kinds && got.kinds[0] === "car-data",
+    "paket beralamat instance ini tidak dikonsumsi"
+  );
+  assert(!has("addr1"), "paket beralamat instance ini tidak dihapus");
+  got = null;
+  put(
+    "addr2",
+    pkt("collect-request", {
+      id: "addr2",
+      to: "test:instance-lain",
+      payload: { kinds: ["car-data"] },
+    })
+  );
+  Mailbox.pollOnce();
+  assert(got === null, "paket untuk instance lain dikonsumsi");
+  assert(has("addr2"), "paket untuk instance lain dihapus");
+  store.delete("igpas:mb:addr2");
 });
 
 t("pesan untuk instance lain: tidak dikonsumsi & tidak dihapus", () => {

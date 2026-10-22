@@ -16,7 +16,7 @@ global.GM_deleteValue = k => {
 };
 global.GM_listValues = () => Array.from(store.keys());
 
-const { Storage, Utils, Mailbox } = require("../src/igpas.user.js");
+const { Storage, Utils, Mailbox, validateCapture } = require("../src/igpas.user.js");
 
 let pass = 0,
   fail = 0;
@@ -110,6 +110,57 @@ t("record tanpa ts (legacy) dianggap kedaluwarsa", () => {
   store.set("igpas:snapshots", { "account-data": { data: { manager: "Lama" } } });
   assert(Storage.getSnapshot("account-data") === null, "record tanpa ts dibaca selamanya");
   assert(!store.get("igpas:snapshots")["account-data"], "record tanpa ts tidak dibersihkan");
+});
+
+t("validateCapture: bentuk adapter diterima, bentuk asing ditolak", () => {
+  const okAccount = validateCapture("account-data", { manager: "Tester", level: "L7" });
+  assert(okAccount === true, "akun valid ditolak");
+  assert(
+    validateCapture("account-data", { manager: { nested: true } }) === false,
+    "manager objek diterima"
+  );
+  assert(validateCapture("account-data", {}) === false, "objek kosong diterima");
+  assert(
+    validateCapture("car-data", {
+      attrs: {},
+      bonuses: [],
+      suppliers: [],
+      dmax: null,
+      designPoints: null,
+    }) === true,
+    "mobil valid ditolak"
+  );
+  assert(validateCapture("car-data", { attrs: "x" }) === false, "attrs string diterima");
+  assert(
+    validateCapture("supply-data", { type: "engine", current: {}, alternatives: [] }) === true,
+    "supply valid ditolak"
+  );
+  assert(
+    validateCapture("supply-data", { type: "other", current: {}, alternatives: [] }) === false,
+    "tipe supply asing diterima"
+  );
+  assert(
+    validateCapture("manufacturer-data", { engines: [], chassis: [] }) === true,
+    "manufaktur valid ditolak"
+  );
+  assert(
+    validateCapture("manufacturer-data", { engines: [] }) === false,
+    "chassis hilang diterima"
+  );
+  assert(
+    validateCapture("race-track-data", { overtaking: 40, lengthKm: 5.2 }) === true,
+    "track valid ditolak"
+  );
+  assert(
+    validateCapture("race-track-data", { overtaking: "x" }) === false,
+    "track string diterima"
+  );
+  assert(validateCapture("__proto__", { a: 1 }) === false, "kind tidak aman diterima");
+});
+
+t("validateCapture: paket raksasa (>256 KB) ditolak", () => {
+  const big = { manager: "X", level: "L1", pad: "x".repeat(300 * 1024) };
+  assert(validateCapture("account-data", big) === false, "paket raksasa diterima");
 });
 
 t("mailbox: hapus gagal → handler TIDAK dipanggil (anti loop dispatch)", () => {
