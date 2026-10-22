@@ -1,6 +1,6 @@
 # PRIVACY & RISIKO — I.G.P.A.S
 
-Berlaku untuk v0.8.5. Dokumen ini menggantikan `docs/COMPLIANCE.md` (dicabut). Ringkas dan faktual:
+Berlaku untuk v0.8.6. Dokumen ini menggantikan `docs/COMPLIANCE.md` (dicabut). Ringkas dan faktual:
 apa yang disimpan, ke mana data pergi, apa yang disunting saat capture, dan
 risiko apa yang tetap ada.
 
@@ -45,8 +45,10 @@ Dibuang/diredaksi:
   `secret`, `apiKey`, `email`, `manager`, `username`).
 
 **Sisa risiko yang disengaja** (periksa sendiri sebelum menempel di publik):
-- ID permainan/akun di URL (mis. `p=manager&id=…`, path avatar, `data-sharkid`);
-- nama manajer pihak ketiga / nama tim yang tampil sebagai data permainan;
+- nama manajer pihak ketiga / nama tim yang tampil sebagai data permainan
+  (tidak bisa dibedakan dari data game lain tanpa merusak fixture);
+- ID permainan yang memang dibutuhkan fixture (mis. `id` supplier/brand,
+  `data-driver`, id mobil) — bukan identitas akun;
 - ID panjang yang bukan token (mis. hash aset) — bisa jadi `[REDACTED]` dan
   membuat sebagian fixture kurang informatif.
 
@@ -59,10 +61,14 @@ dan buang ID unik sebelum menempel.
   `cnagnn.github.io/igpas/`).
 - Peran GUI dibatasi: `localhost` hanya pada path `/app/`, GitHub Pages hanya
   `/igpas/app/`; halaman lain menjadi `unknown` dan **tidak** memulai polling.
-- Paket berisi `from` (peran + instance id) dan ditampilkan di GUI. Tidak ada
-  autentikasi kriptografis: tab lain di origin yang sama yang menjalankan
-  userscript ini dapat menjawab permintaan capture. Karena itu **jangan membuka
-  halaman lokal tidak tepercaya di `localhost/app/` saat tab iGP terbuka**.
+- Paket berisi `from` (peran + instance id) dan ditampilkan di GUI. Hasil
+  capture **dialamatkan** ke `gui:<instance>` yang meminta; GUI hanya menerima
+  paket untuk instance-nya dari pengirim berperan `sensor:*`, lalu memvalidasi
+  skema data per jenis (dan batas 256 KB) sebelum menyimpan.
+- Ini **bukan autentikasi kriptografis**. Penyimpanan GM bersifat per-userscript
+  (halaman biasa tidak bisa menulisnya), tetapi tab mana pun yang menjalankan
+  userscript ini dapat mengirim paket. Karena itu **jangan membuka halaman lokal
+  tidak tepercaya di `localhost/app/` saat tab iGP terbuka**.
 - Snapshot yang diterima tetap lokal; tidak ada eksfiltrasi oleh userscript.
 
 ## 5. Risiko ToS

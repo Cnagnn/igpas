@@ -20,7 +20,7 @@ npm run dev      # http://localhost:8787/  (docs/)
 | Format       | `npm run format:check`   | `prettier --check .` (fix: `npm run format`)                                                 |
 | Version sync | `npm run versions:check` | source: `package.json` → `@version` + `const VERSION`                                        |
 | Guards       | `npm run guards:check`   | `@match` allowlist + 0 network/eval/remote code                                              |
-| Tests        | `npm test`               | 178 tests (82 core + 31 snapshot + 7 storage + 7 capture + 10 mailbox + 14 gui + 27 advisor) |
+| Tests        | `npm test`               | 183 tests (82 core + 31 snapshot + 9 storage + 8 capture + 11 mailbox + 15 gui + 27 advisor) |
 
 CI (`ci.yml`) menjalankan `npm run verify` di Node 22 **dan** 24; guard userscript
 (`fetch`/`XHR`/`sendBeacon`/WebSocket/EventSource/dynamic import/`eval`/`unsafeWindow`
