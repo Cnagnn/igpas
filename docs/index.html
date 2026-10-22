@@ -127,9 +127,9 @@
     </div>
 
     <div class="stats">
-        <div class="stat"><b>v0.8.4</b><span>current release</span></div>
+        <div class="stat"><b>v0.8.5</b><span>current release</span></div>
         <div class="stat"><b>8</b><span>study tools</span></div>
-        <div class="stat"><b>157</b><span>tests passing</span></div>
+        <div class="stat"><b>178</b><span>tests passing</span></div>
         <div class="stat"><b>0</b><span>automation &amp; network calls</span></div>
     </div>
 
@@ -155,7 +155,7 @@
                 <p>Rank manufacturers and cars by weighted criteria you pick. Incomplete data is flagged, not hidden.</p>
                 <span class="chip">transparent scoring</span></div>
             <div class="card"><div class="ico">🖥️</div><h3>Dual-Tab Command Center</h3>
-                <p>Game in one tab (silent sensor — no injected UI), strategy desk in another, linked over a local mailbox.</p>
+                <p>Game in one tab, strategy desk in another, linked over a local mailbox. On study pages the script only rewrites existing game labels in place — no injected panels, and nothing at all on the live race view.</p>
                 <span class="chip">GUI ↔ sensor</span></div>
             <div class="card"><div class="ico">⚖️</div><h3>Decision Compare</h3>
                 <p>Is your staff, driver or supplier <em>better, worse or the same</em> as what's on the transfer market? Explicit verdicts, two axes shown separately, missing numbers written as unreadable — never invented.</p>
@@ -167,7 +167,7 @@
         <h2>How it works</h2>
         <p class="sub">Three steps. No build, no cloud, no accounts.</p>
         <div class="steps">
-            <div class="step"><b>1 · Install</b><p>Install Tampermonkey, then the userscript. It never draws anything on the live race view — only its own clearly-marked study panels (and, on request, pre-race Setup/Strategy estimates); the calculators live here.</p></div>
+            <div class="step"><b>1 · Install</b><p>Install Tampermonkey, then the userscript. It never draws anything on the live race view. On study pages it annotates the game's own text in place (rankings, cost labels, estimates — always marked as estimates) without adding panels or buttons; the calculators live here.</p></div>
             <div class="step"><b>2 · Connect</b><p>Open the Command Center in one tab and iGP Manager in another — they link over a local storage mailbox.</p></div>
             <div class="step"><b>3 · Study</b><p>Enter your numbers, read the projections and recommendations, save setups per circuit.</p></div>
         </div>
@@ -176,9 +176,10 @@
     <div class="ethics">
         <b>⚠ A study tool, not a race aid.</b>
         <p>I.G.P.A.S performs zero automation, makes zero network requests, never renders
-           an interface on the live race view (pre-race Setup/Strategy estimates are
-           read-only panels added at the owner's request), and never touches game
-           elements during a race. Use it
+           an interface on the live race view, and never touches game elements during a
+           race. On study tabs it only rewrites the text of existing game labels/titles
+           in place (pre-race Setup/Strategy estimates included, at the owner's request).
+           Use it
            for analysis, practice and post-race review — and please respect the
            iGP Manager Terms of Service.</p>
     </div>

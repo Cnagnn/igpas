@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Docs & Compliance
-    url: https://github.com/Cnagnn/igpas/blob/main/docs/COMPLIANCE.md
-    about: Baca matriks ToS & mode risiko sebelum lapor
+  - name: Privacy, risiko & ToS
+    url: https://github.com/Cnagnn/igpas/blob/main/docs/PRIVACY.md
+    about: Baca apa yang disimpan, redaksi capture, dan risiko ToS sebelum lapor

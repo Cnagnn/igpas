@@ -7,22 +7,24 @@
 
 ```bash
 npm install
-npm run verify   # syntax + lint + format:check + versions:check + npm test
+npm run verify   # syntax + lint + format:check + versions:check + guards:check + npm test
 npm run dev      # http://localhost:8787/  (docs/)
 ```
 
 ## Quality gate (wajib hijau sebelum PR)
 
-| Gate         | Perintah                 | Catatan                                                             |
-| ------------ | ------------------------ | ------------------------------------------------------------------- |
-| Syntax       | `npm run syntax`         | `node --check src/igpas.user.js`                                    |
-| Lint         | `npm run lint`           | `eslint .` (fix: `npm run lint:fix`)                                |
-| Format       | `npm run format:check`   | `prettier --check .` (fix: `npm run format`)                        |
-| Version sync | `npm run versions:check` | source: `package.json` → `@version` + `const VERSION`               |
-| Tests        | `npm test`               | 126 tests (63 core + 24 snapshot + 6 mailbox + 14 gui + 19 advisor) |
+| Gate         | Perintah                 | Catatan                                                                                      |
+| ------------ | ------------------------ | -------------------------------------------------------------------------------------------- |
+| Syntax       | `npm run syntax`         | `node --check src/igpas.user.js`                                                             |
+| Lint         | `npm run lint`           | `eslint .` (fix: `npm run lint:fix`)                                                         |
+| Format       | `npm run format:check`   | `prettier --check .` (fix: `npm run format`)                                                 |
+| Version sync | `npm run versions:check` | source: `package.json` → `@version` + `const VERSION`                                        |
+| Guards       | `npm run guards:check`   | `@match` allowlist + 0 network/eval/remote code                                              |
+| Tests        | `npm test`               | 178 tests (82 core + 31 snapshot + 7 storage + 7 capture + 10 mailbox + 14 gui + 27 advisor) |
 
-CI (`ci.yml`) menjalankan semua gate + **header/guard** userscript
-(`fetch`/`XHR`/`GM_xmlhttpRequest`/`eval`/`unsafeWindow` harus 0 di `src/`).
+CI (`ci.yml`) menjalankan `npm run verify` di Node 22 **dan** 24; guard userscript
+(`fetch`/`XHR`/`sendBeacon`/WebSocket/EventSource/dynamic import/`eval`/`unsafeWindow`
+mustahil 0 di `src/`, `@match` dibatasi allowlist).
 
 ## Struktur repo (userscript-oriented)
 
@@ -30,9 +32,10 @@ CI (`ci.yml`) menjalankan semua gate + **header/guard** userscript
 src/igpas.user.js          userscript utama — TANPA build step
 test/                      Node + jsdom (tanpa framework)
   fixtures/*.html          DOM capture tersanitasi (PII/script dibuang)
-  core.test.js | snapshots.test.js | mailbox.test.js | gui.test.js | advisor.test.js
+  core.test.js | snapshots.test.js | storage.test.js | capture.test.js |
+  mailbox.test.js | gui.test.js | advisor.test.js
 docs/                      GitHub Pages (landing + /app/ Command Center)
-  ARCHITECTURE.md
+  ARCHITECTURE.md | PRIVACY.md
 scripts/check-versions.mjs guard sinkronisasi versi
 ```
 

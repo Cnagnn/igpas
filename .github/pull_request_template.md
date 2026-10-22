@@ -18,7 +18,7 @@
 - [ ] Tidak menambah `fetch`/`XHR`/`GM_xmlhttpRequest`/`eval`/`unsafeWindow` di `src/` (guard CI)
 - [ ] Jika menyentuh adapter/DOM: fixture `test/fixtures/*.html` + test jsdom diperbarui
 - [ ] Jika menyentuh halaman race: tab `#race` (live) tetap **zero-UI** & tidak dibaca/diubah
-- [ ] Jika menyentuh DOM game: risiko ToS dipahami ditanggung user (COMPLIANCE.md sudah dicabut)
+- [ ] Jika menyentuh DOM game: risiko ToS dipahami ditanggung user (lihat docs/PRIVACY.md)
 
 ## Catatan
 

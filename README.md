@@ -4,7 +4,7 @@ Kalkulator **analisis & studi strategi** untuk [iGP Manager](https://igpmanager.
 sebagai userscript. Terinspirasi arsitektur [A.C.A.S](https://psyyke.github.io/A.C.A.S/)
 (studi reverse-engineering via REA, lihat `docs/ARCHITECTURE.md`).
 
-> ⚠️ **Alat studi — bukan alat balapan.** Tidak ada otomasi, tidak ada aksi ke
+> **Versi saat ini: <b>v0.8.5</b>.** ⚠️ **Alat studi — bukan alat balapan.** Tidak ada otomasi, tidak ada aksi ke
 > situs, tidak membantu kendali saat balapan live. Gunakan untuk analisis,
 > latihan berpikir strategi, dan evaluasi post-race. Risiko banned/pelanggaran
 > ToS iGP Manager **ditanggung penuh oleh user** — projek ini tidak bertanggung
@@ -240,15 +240,15 @@ Satu perintah gate penuh:
 npm run verify     # syntax + lint + format:check + versions:check + guards:check + npm test
 ```
 
-| Gate                                     | Perintah                 | Catatan                                                      |
-| ---------------------------------------- | ------------------------ | ------------------------------------------------------------ |
-| Syntax                                   | `npm run syntax`         | `node --check src/igpas.user.js`                             |
-| Lint                                     | `npm run lint`           | `eslint .` — fix: `npm run lint:fix`                         |
-| Format                                   | `npm run format:check`   | `prettier --check .` — fix: `npm run format`                 |
-| Version sync                             | `npm run versions:check` | cek `@version` + `const VERSION` vs `package.json`,          |
+| Gate                                     | Perintah                 | Catatan                                                                                             |
+| ---------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------- |
+| Syntax                                   | `npm run syntax`         | `node --check src/igpas.user.js`                                                                    |
+| Lint                                     | `npm run lint`           | `eslint .` — fix: `npm run lint:fix`                                                                |
+| Format                                   | `npm run format:check`   | `prettier --check .` — fix: `npm run format`                                                        |
+| Version sync                             | `npm run versions:check` | cek `@version` + `const VERSION` vs `package.json`,                                                 |
 | `docs/index.html` & lockfile (hard-fail) |
-| Guards                                   | `npm run guards:check`   | `@grant` lengkap + tanpa `fetch`/`XHR`/`eval`/`unsafeWindow` |
-| Tests                                    | `npm test`               | 157 tests                                                    |
+| Guards                                   | `npm run guards:check`   | `@grant` lengkap, `@match` allowlist, tanpa `fetch`/`XHR`/`sendBeacon`/socket/`eval`/`unsafeWindow` |
+| Tests                                    | `npm test`               | 178 tests                                                                                           |
 
 CI (`ci.yml`) menjalankan semua gate (`npm run verify`), termasuk guard userscript.
 
@@ -258,7 +258,7 @@ Release (`release.yml`) terpicu pada tag `v*.*.*` dan memvalidasi tag vs `packag
 Husky opsional lokal:
 
 ```bash
-npm run prepare   # aktifkan pre-commit (syntax + lint + versions)
+npm run prepare   # aktifkan pre-commit (syntax + lint + guards + versions + tests)
 ```
 
 Lihat `CONTRIBUTING.md` untuk workflow adapter baru & konvensi.
