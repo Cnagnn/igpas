@@ -4,7 +4,7 @@ Penasihat studi **read-only** untuk [iGP Manager](https://igpmanager.com), berup
 **satu userscript tanpa build step**. Tidak ada web GUI, tidak ada server, tidak
 ada jaringan, dan tidak ada data yang disimpan.
 
-> **Versi saat ini: <b>v0.10.0</b>.** ⚠️ **Alat studi — bukan alat balapan.**
+> **Versi saat ini: <b>v0.11.0</b>.** ⚠️ **Alat studi — bukan alat balapan.**
 > Tidak ada otomasi, tidak ada aksi ke situs, tidak membantu kendali saat
 > balapan live. Risiko banned/pelanggaran ToS iGP Manager **ditanggung penuh
 > oleh user**.
@@ -18,14 +18,15 @@ dan **warna sementara pada tombol Supply/Repair**; angka, bar, link, flag, dan i
 game tidak disentuh. Teks/title/style asli disimpan dan **di-restore otomatis**
 setiap re-render dan saat pindah halaman.
 
-| Halaman (gate `#pageId`)                      | Yang ditulis di elemen asli                                                                                                                                                                                                                                                                                       |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Cars**                                      | Tab Overview: baris atribut diurutkan `#1..#n` dari atas ke bawah; label `#n Atribut · X DP`; val/max/gap di `title`; tanpa warna. Tab Repair: tombol `Fix`/`Replace` diwarnai merah (≤50% ganti), amber (50–60% siap-siap), abu-abu (>60% tunda); judul kartu tidak diubah; biaya/stok/restock/ambang di `title` |
-| **Manufacturers**                             | Peringkat nama baris engine/chassis (`#n Nama`, `★` terbaik); rating/biaya/rating-per-1jt di `title`                                                                                                                                                                                                              |
-| **Supply** (dialog Engine/Fuel/Tyres terbuka) | Tombol alternatif diwarnai: merah = supplier ini direkomendasikan ganti (≥5% lebih efisien), amber = aktif/calon (tetap atau cek), abu-abu = bukan pilihan. Teks biaya & judul dialog tidak diubah; peringkat gabungan, Σ bonus, nilai/1jt, dan aturan ambang di `title`                                          |
-| **Drivers & Staff**                           | Label nama driver jadi `Nama \| Full Recover 13j 55m` (countdown dari health + laju pulih, dibulatkan ke atas); health/laju/estimasi di `title`; gaji & kontrak staff di `title` kartu                                                                                                                            |
-| **Transfers**                                 | Peringkat pada text node nama baris (`#n Nama ★ rekomendasi`); overall/fee di `title` — link kontrak & flag tetap hidup                                                                                                                                                                                           |
-| **Race / Setup / Strategy**                   | **Tidak disentuh sama sekali** — tidak dibaca, tidak ditulis. Advisor hanya aktif di halaman studi (Cars, Manufacturers, Supply, Drivers & Staff, Transfers).                                                                                                                                                     |
+| Halaman (gate `#pageId`)                      | Yang ditulis di elemen asli                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cars**                                      | Tab Overview: baris atribut diurutkan `#1..#n` dari atas ke bawah; label `#n Atribut · X DP`; val/max/gap di `title`; tanpa warna. Tab Repair: tombol `Fix`/`Replace` diwarnai merah (≤50% ganti), amber (50–60% siap-siap), abu-abu (>60% tunda); judul kartu tidak diubah; biaya/stok/restock/ambang di `title`                                                                                                                      |
+| **Manufacturers**                             | Peringkat nama baris engine/chassis (`#n Nama`, `★` terbaik); rating/biaya/rating-per-1jt di `title`                                                                                                                                                                                                                                                                                                                                   |
+| **Supply** (dialog Engine/Fuel/Tyres terbuka) | Tombol alternatif diwarnai: merah = supplier ini direkomendasikan ganti (≥5% lebih efisien), amber = aktif/calon (tetap atau cek), abu-abu = bukan pilihan. Teks biaya & judul dialog tidak diubah; peringkat gabungan, Σ bonus, nilai/1jt, dan aturan ambang di `title`                                                                                                                                                               |
+| **Drivers & Staff**                           | Label nama driver jadi `Nama \| Full Recover 13j 55m` (countdown dari health + laju pulih, dibulatkan ke atas); health/laju/estimasi di `title`; gaji & kontrak staff di `title` kartu                                                                                                                                                                                                                                                 |
+| **Transfers**                                 | Peringkat pada text node nama baris (`#n Nama ★ rekomendasi`); overall/fee di `title` — link kontrak & flag tetap hidup                                                                                                                                                                                                                                                                                                                |
+| **Sponsor** (dialog Sign Primary/Secondary)   | `Sign` hijau + `Sign ★` = pilihan aman: **Secondary** income/race tertinggi (dijamin), **Primary** token/race tertinggi. Tombol amber = alternatif trade-off: bonus tunai/race tertinggi (Secondary plus break-even peluang objektif; Primary bonus tunai vs token). Bonus dibayar **per race** bila objektif tercapai; token & cash tidak dicampur; total kontrak hanya bila term terbaca. Angka game tidak diubah; detail di `title` |
+| **Race / Setup / Strategy**                   | **Tidak disentuh sama sekali** — tidak dibaca, tidak ditulis. Advisor hanya aktif di halaman studi (Cars, Manufacturers, Supply, Drivers & Staff, Transfers) dan dialog Sponsor (Primary di Home, Secondary di Finances).                                                                                                                                                                                                              |
 
 Semua tulisan berlabel **"estimasi — bukan rumus game"** di `title`: heuristik
 transparan atas angka yang memang tampil, bukan kepastian performa. Render
@@ -82,7 +83,7 @@ docs/ARCHITECTURE.md     arsitektur & peta komponen
 docs/PRIVACY.md          data, redaksi, risiko ToS
 ```
 
-`npm test` menjalankan **99 test** (65 core + 8 capture + 26 advisor). Butuh
+`npm test` menjalankan **110 test** (72 core + 8 capture + 30 advisor). Butuh
 **Node ≥ 22.22.2** (lihat `.nvmrc`); `jsdom@30` menarik `undici@8` yang
 mensyaratkan Node ≥ 22.19.
 
@@ -93,7 +94,7 @@ mensyaratkan Node ≥ 22.19.
 | Format  | `npm run format:check`   | `prettier --check .` (fix: `npm run format`)                                   |
 | Version | `npm run versions:check` | `@version` + `const VERSION` vs `package.json`                                 |
 | Guards  | `npm run guards:check`   | `@grant` lengkap, `@match` hanya igpmanager.com, nol jaringan/eval/remote code |
-| Tests   | `npm test`               | 99 test                                                                        |
+| Tests   | `npm test`               | 110 test                                                                       |
 
 CI (`.github/workflows/ci.yml`) menjalankan `npm run verify` di Node 22 **dan** 24. Release (`.github/workflows/release.yml`) terpicu pada tag `v*.*.*`,
 memvalidasi tag = `package.json`, dan mengunggah asset userscript.

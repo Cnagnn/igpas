@@ -57,6 +57,8 @@ function ta(name, fn) {
 
 const URL_IGP = "https://www.igpmanager.com/app/p=cars";
 const URL_TRANSFERS = "https://www.igpmanager.com/app/p=transfers";
+const URL_FINANCES = "https://www.igpmanager.com/app/p=finances";
+const URL_HOME = "https://www.igpmanager.com/app/p=home";
 const URL_RACE = "https://www.igpmanager.com/app/index.php?page=race&tab=race";
 
 t("Design advisor: baris Cars diurutkan #1..#n, label berperingkat, tanpa warna", () => {
@@ -645,6 +647,158 @@ t("Transfers advisor in-place driver dan staff", () => {
 t("Transfers comparison tidak menyuntik panel", () => {
   const s = bootOn(load("transfers.html"), URL_TRANSFERS);
   assert(!s.doc.querySelector(".igpas-adv-panel"), "panel comparison masih ada");
+  s.close();
+});
+
+/* Dialog sponsor (Finances): peringkat "paling worth" pada tombol Sign asli. */
+t("Sponsor advisor: income tertinggi hijau + ★, bonus tunai tertinggi amber", () => {
+  const s = bootOn(load("sponsor-secondary.html"), URL_FINANCES);
+  const table = s.doc.getElementById("sponsorSignTable");
+  assert(table, "tabel sponsor tidak ada");
+  const links = Array.prototype.slice.call(table.querySelectorAll('a[data-tip*="eId="]'));
+  assert(links.length === 4, "tombol Sign harus 4, dapat " + links.length);
+  const btnByEid = eid => {
+    const re = new RegExp("eId=" + eid + "\\b");
+    return links.find(a => re.test(a.getAttribute("data-tip") || ""));
+  };
+  const bg = el => String(el.style.getPropertyValue("background-color") || "").toLowerCase();
+  const best = btnByEid(19);
+  assert(/Sign ★/.test(best.textContent), "eId19 bukan pilihan utama: " + best.textContent);
+  assert(bg(best) === "rgb(30, 132, 73)", "eId19 bukan hijau: " + bg(best));
+  const tip = best.getAttribute("title") || "";
+  assert(/paling worth #1/.test(tip), "title tanpa verdict #1: " + tip);
+  assert(/income 1\.6 jt\/race \(dijamin tiap race\)/.test(tip), "title tanpa income: " + tip);
+  assert(/bonus 102 rb\/race bila objektif tercapai/.test(tip), "title tanpa bonus/race: " + tip);
+  assert(/jaminan 8 jt \(5 race\)/.test(tip), "title tanpa jaminan: " + tip);
+  assert(/potensi maks 8\.5 jt/.test(tip), "title tanpa potensi: " + tip);
+  assert(/estimasi, bukan rumus game/.test(tip), "title tanpa label estimasi: " + tip);
+  const second = btnByEid(17);
+  assert(/^Sponsor #2 dari 4/.test(second.getAttribute("title") || ""), "eId17 bukan #2");
+  assert(
+    /jaminan 7\.5 jt \(5 race\)/.test(second.getAttribute("title") || ""),
+    "eId17 tanpa jaminan"
+  );
+  assert(/potensi maks 9 jt/.test(second.getAttribute("title") || ""), "eId17 tanpa potensi");
+  assert(bg(second) === "", "eId17 tak boleh diwarnai: " + bg(second));
+  // Bonus tunai tertinggi (eId2) = alternatif amber + break-even objektif.
+  const alt = btnByEid(2);
+  assert(bg(alt) === "rgb(185, 119, 14)", "eId2 bukan amber: " + bg(alt));
+  assert(!/Sign ★/.test(alt.textContent), "eId2 tidak boleh ★");
+  const altTip = alt.getAttribute("title") || "";
+  assert(/^Sponsor #4 dari 4/.test(altTip), "eId2 bukan #4: " + altTip);
+  assert(/bonus tunai tertinggi — trade-off income/.test(altTip), "eId2 tanpa trade-off");
+  assert(/>84% race/.test(altTip), "eId2 tanpa break-even: " + altTip);
+  assert(/potensi maks 9\.9 jt/.test(altTip), "eId2 tanpa potensi: " + altTip);
+  // Angka game tidak berubah.
+  const rows = table.querySelectorAll("tr");
+  const income = Array.prototype.map.call(rows[1].querySelectorAll("td"), td =>
+    td.textContent.trim()
+  );
+  const bonus = Array.prototype.map.call(rows[2].querySelectorAll("td"), td =>
+    td.textContent.trim()
+  );
+  assert(income.join("|") === "171k|428k|1.5m|1.6m", "income berubah: " + income.join("|"));
+  assert(bonus.join("|") === "1.8m|1.5m|306k|102k", "bonus berubah: " + bonus.join("|"));
+  // Tanpa elemen baru & tanpa storage.
+  assert(!s.doc.querySelector('[id^="igpas-adv"]'), "elemen advisor baru dibuat");
+  assert(!s.doc.querySelector(".igpas-adv-panel"), "panel advisor dibuat");
+  assert(!s.writes.length, "advisor menulis storage: " + s.writes.join(","));
+  s.close();
+});
+
+t("Sponsor advisor: term tak terbaca → peringkat income, tidak mengarang total", () => {
+  const s = bootOn(load("sponsor-secondary.html").replace("5 race(s)", "—"), URL_FINANCES);
+  const links = Array.prototype.slice.call(
+    s.doc.querySelectorAll('#sponsorSignTable a[data-tip*="eId="]')
+  );
+  const best = links.find(a => /eId=19\b/.test(a.getAttribute("data-tip") || ""));
+  assert(/Sign ★/.test(best.textContent), "eId19 bukan pilihan utama saat term kosong");
+  const tip = best.getAttribute("title") || "";
+  assert(/term kontrak tidak terbaca/.test(tip), "title tidak jujur soal term: " + tip);
+  assert(!/total \d/.test(tip), "total dikarang saat term kosong: " + tip);
+  const first = links.find(a => /eId=2\b/.test(a.getAttribute("data-tip") || ""));
+  assert(/^Sponsor #4 dari 4/.test(first.getAttribute("title") || ""), "eId2 bukan #4");
+  assert(
+    String(first.style.getPropertyValue("background-color") || "").toLowerCase() ===
+      "rgb(185, 119, 14)",
+    "eId2 bukan amber saat term kosong"
+  );
+  s.close();
+});
+
+t("Sponsor advisor (primary): token diutamakan, bonus tunai trade-off amber", () => {
+  const s = bootOn(load("sponsor-primary.html"), URL_HOME);
+  const table = s.doc.getElementById("sponsorSignTable");
+  assert(table, "tabel sponsor primary tidak ada");
+  const links = Array.prototype.slice.call(table.querySelectorAll('a[data-tip*="eId="]'));
+  assert(links.length === 16, "tombol Sign harus 16, dapat " + links.length);
+  const btnByEid = eid => {
+    const re = new RegExp("eId=" + eid + "\\b");
+    return links.find(a => re.test(a.getAttribute("data-tip") || ""));
+  };
+  const bg = el => String(el.style.getPropertyValue("background-color") || "").toLowerCase();
+  // 3 token/race + bonus tunai 612k = peringkat #1 (token diutamakan).
+  const best = btnByEid(14);
+  assert(/Sign ★/.test(best.textContent), "eId14 bukan pilihan utama: " + best.textContent);
+  assert(bg(best) === "rgb(30, 132, 73)", "eId14 bukan hijau: " + bg(best));
+  const tip = best.getAttribute("title") || "";
+  assert(/paling worth #1/.test(tip), "title tanpa verdict #1: " + tip);
+  assert(/3 token\/race/.test(tip), "title tanpa token/race: " + tip);
+  assert(/bonus tunai 612 rb/.test(tip), "title tanpa bonus tunai: " + tip);
+  assert(/term kontrak tidak terbaca/.test(tip), "title tidak jujur soal term: " + tip);
+  assert(
+    /bonus tunai 612 rb\/race bila objektif tercapai/.test(tip),
+    "title tanpa bonus/race: " + tip
+  );
+  assert(/token diutamakan/.test(tip), "title tanpa model token: " + tip);
+  assert(!/total \d/.test(tip), "token tidak boleh dijumlahkan dengan cash: " + tip);
+  // Bonus tunai tertinggi (eId2: 1 token + 1.8m) = alternatif amber, bukan ★.
+  const alt = btnByEid(2);
+  assert(bg(alt) === "rgb(185, 119, 14)", "eId2 bukan amber: " + bg(alt));
+  assert(!/Sign ★/.test(alt.textContent), "eId2 tidak boleh ★");
+  const altTip = alt.getAttribute("title") || "";
+  assert(/^Sponsor #14 dari 16/.test(altTip), "eId2 bukan #14: " + altTip);
+  assert(/bonus tunai tertinggi — trade-off token/.test(altTip), "eId2 tanpa label trade-off");
+  assert(/bonus tunai 1\.8 jt/.test(altTip), "eId2 tanpa bonus tunai: " + altTip);
+  // 2 token/race, bonus 1.5m = #5, tanpa warna.
+  const mid = btnByEid(5);
+  assert(/^Sponsor #5 dari 16/.test(mid.getAttribute("title") || ""), "eId5 bukan #5");
+  assert(bg(mid) === "", "eId5 tak boleh diwarnai: " + bg(mid));
+  // Angka game (token & bonus) tidak berubah.
+  const rows = table.querySelectorAll("tr");
+  const income = Array.prototype.map.call(rows[1].querySelectorAll("td"), td =>
+    td.textContent.trim()
+  );
+  const bonus = Array.prototype.map.call(rows[2].querySelectorAll("td"), td =>
+    td.textContent.trim()
+  );
+  assert(
+    income.join("|") === "1|1|1|2|2|2|2|2|2|2|2|2|3|3|3|3",
+    "income token berubah: " + income.join("|")
+  );
+  assert(
+    bonus.join("|") ===
+      "1.8m|1.7m|1.6m|1.5m|1.4m|1.3m|1.2m|1.1m|1m|918k|816k|714k|612k|510k|306k|102k",
+    "bonus berubah: " + bonus.join("|")
+  );
+  assert(!s.doc.querySelector('[id^="igpas-adv"]'), "elemen advisor baru dibuat");
+  assert(!s.writes.length, "advisor menulis storage: " + s.writes.join(","));
+  s.close();
+});
+
+ta("Sponsor advisor: re-render idempoten — ★ tidak berganda", async () => {
+  const s = bootOn(load("sponsor-secondary.html"), URL_FINANCES);
+  const table = s.doc.getElementById("sponsorSignTable");
+  table.appendChild(s.doc.createElement("div")); // mutasi game → observer render
+  await new Promise(r => setTimeout(r, 50));
+  assert(
+    (table.textContent.match(/★/g) || []).length === 1,
+    "★ berganda setelah render: " + table.textContent
+  );
+  const marked = Array.prototype.filter.call(table.querySelectorAll('a[data-tip*="eId="]'), a =>
+    /Sign ★/.test(a.textContent)
+  );
+  assert(marked.length === 1, "tombol ★ harus satu, dapat " + marked.length);
   s.close();
 });
 

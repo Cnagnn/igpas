@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.10.0
-// @description  Read-only in-page study advisor for iGP Manager: #1..#n sorted design-point priorities, color-coded supply and parts/engine repair buttons, supplier/manufacturer rankings, and staff/transfer notes written only as text/title/style on original page elements. Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
-// @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design terurut #1..#n, warna tombol Supply dan ganti parts/engine, peringkat supplier/manufacturer, catatan staff/transfers — hanya teks/title/style pada elemen asli. Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
+// @version      0.11.0
+// @description  Read-only in-page study advisor for iGP Manager: #1..#n sorted design-point priorities, color-coded supply and parts/engine repair buttons, supplier/manufacturer rankings, staff/transfer notes, and sponsor-offer value rankings written only as text/title/style on original page elements. Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
+// @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design terurut #1..#n, warna tombol Supply dan ganti parts/engine, peringkat supplier/manufacturer, catatan staff/transfers, dan peringkat nilai penawaran sponsor — hanya teks/title/style pada elemen asli. Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
 // @supportURL   https://github.com/Cnagnn/igpas/issues
@@ -18,7 +18,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.10.0';
+    const VERSION = '0.11.0';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -571,6 +571,134 @@
                     bestRatingId: ranked[0].id,
                     bestValueId: byEff.length ? byEff[0].id : null,
                     noData: rows.filter(r => r.rating == null).length,
+                },
+            };
+        },
+
+        /**
+         * Peringkat penawaran sponsor (v0.11.0) — dialog Sign Primary & Secondary.
+         * Model eksplisit (bonus dibayar PER RACE saat objektif tercapai):
+         *  - Secondary (income CASH): income dijamin tiap league race; bonus
+         *    hanya bila objektif race itu tercapai. Peringkat = income
+         *    (jaminan) tertinggi; bonus tunai tertinggi jadi alternatif amber
+         *    (trade-off) + break-even peluang objektif. Tidak ada bonus yang
+         *    dianggap sekali per kontrak.
+         *  - Primary (income TOKEN): token dan cash BEDA SATUAN — tidak pernah
+         *    dijumlahkan/dikonversi. Peringkat = token/race tertinggi (nilai
+         *    utama), tie-break bonus tunai; bonus tunai terbaik jadi alternatif.
+         *  - Total kontrak hanya ditampilkan bila term terbaca (income × term
+         *    dan potensi maks (income + bonus) × term); term tak terbaca →
+         *    total = null. Term dibaca dari kartu Primary sponsor di halaman.
+         * @param {object} p { offers:[{eId,income,tokens,bonus}],
+         *   termRaces:Number|null, incomeKind:'cash'|'token' }
+         * @returns {{ok:Boolean, values?:{ranked:Array,incomeKind:String,
+         *   bestEId:String|null,bestGuaranteeEId:String|null,
+         *   bestBonusEId:String|null,bestPotentialEId:String|null,
+         *   alternativeEId:String|null,breakEvenP:Number|null,
+         *   termRaces:Number|null,unreadable:Number}, error?:String}}
+         */
+        rankSponsors(p) {
+            const offers = (p && Array.isArray(p.offers)) ? p.offers : null;
+            if (!offers || !offers.length) {
+                return { ok: false, error: 'Penawaran sponsor tidak terbaca dari dialog' };
+            }
+            const termRaw = p && p.termRaces;
+            const term = (termRaw != null && Number.isFinite(Number(termRaw)) && Number(termRaw) > 0)
+                ? Math.floor(Number(termRaw)) : null;
+            const incomeKind = (p && p.incomeKind === 'token') ? 'token' : 'cash';
+            const tokenMode = incomeKind === 'token';
+            const bonusVal = r => (r.bonus == null ? -Infinity : r.bonus);
+            const rows = [];
+            for (const o of offers) {
+                if (!o) continue;
+                const bonus = Utils.numOrNull(o.bonus);
+                const eId = o.eId != null ? String(o.eId) : null;
+                if (tokenMode) {
+                    const tokens = Utils.numOrNull(o.tokens);
+                    // 0/tak terbaca = penawaran tak bisa dinilai.
+                    if (tokens == null || tokens <= 0) continue;
+                    rows.push({
+                        eId: eId,
+                        tokens: tokens,
+                        income: null,
+                        bonus: bonus,
+                        guaranteePerRace: null,
+                        potentialPerRace: null,
+                        guaranteeTotal: null,
+                        potentialTotal: null, // token & cash tidak dicampur
+                    });
+                    continue;
+                }
+                const income = Utils.numOrNull(o.income);
+                if (income == null || income <= 0) continue;
+                const bonusCash = bonus == null ? 0 : bonus;
+                rows.push({
+                    eId: eId,
+                    tokens: null,
+                    income: income,
+                    bonus: bonus,
+                    guaranteePerRace: income,
+                    potentialPerRace: income + bonusCash,
+                    guaranteeTotal: term != null ? income * term : null,
+                    potentialTotal: term != null ? (income + bonusCash) * term : null,
+                });
+            }
+            if (!rows.length) {
+                return {
+                    ok: false,
+                    error: tokenMode ? 'Income token sponsor tidak terbaca' : 'Income sponsor tidak terbaca',
+                };
+            }
+            const byEId = (a, b) => String(a.eId).localeCompare(String(b.eId));
+            if (tokenMode) {
+                rows.sort((a, b) =>
+                    (b.tokens - a.tokens) || (bonusVal(b) - bonusVal(a)) || byEId(a, b));
+            } else {
+                // Income = jaminan; potentialPerRace = bonus dianggap tercapai.
+                rows.sort((a, b) =>
+                    (b.income - a.income) ||
+                    (b.potentialPerRace - a.potentialPerRace) ||
+                    (bonusVal(b) - bonusVal(a)) ||
+                    byEId(a, b));
+            }
+            const ranked = rows.map((r, i) => Object.assign({}, r, { rank: i + 1 }));
+            const bestEId = ranked[0].eId;
+            let bestBonus = null;
+            let bestPotential = null;
+            for (const r of ranked) {
+                if (!bestBonus || bonusVal(r) > bonusVal(bestBonus)) bestBonus = r;
+                if (!tokenMode && (!bestPotential || r.potentialPerRace > bestPotential.potentialPerRace)) {
+                    bestPotential = r;
+                }
+            }
+            const alternative = tokenMode
+                ? (bestBonus && bestBonus.eId !== bestEId ? bestBonus.eId : null)
+                : (bestPotential && bestPotential.eId !== bestEId ? bestPotential.eId : null);
+            let breakEvenP = null;
+            if (!tokenMode && alternative) {
+                const best = ranked[0];
+                const alt = ranked.find(r => r.eId === alternative);
+                // Alt (income lebih rendah, bonus lebih tinggi) unggul bila
+                // peluang objektif > (income_best - income_alt)/(bonus_alt - bonus_best).
+                const dIncome = best.income - alt.income;
+                const dBonus = bonusVal(alt) - bonusVal(best);
+                if (dIncome > 0 && dBonus > 0) {
+                    breakEvenP = Math.round((dIncome / dBonus) * 100) / 100;
+                }
+            }
+            return {
+                ok: true,
+                values: {
+                    ranked: ranked,
+                    incomeKind: incomeKind,
+                    bestEId: bestEId,
+                    bestGuaranteeEId: tokenMode ? null : bestEId,
+                    bestBonusEId: bestBonus ? bestBonus.eId : null,
+                    bestPotentialEId: !tokenMode && bestPotential ? bestPotential.eId : null,
+                    alternativeEId: alternative,
+                    breakEvenP: breakEvenP,
+                    termRaces: term,
+                    unreadable: offers.length - rows.length,
                 },
             };
         },
@@ -1214,18 +1342,83 @@
     };
 
     /**
+     * Adapter dialog sponsor (Primary/Secondary) — read-only, dipetakan dari
+     * capture live DOM. Gate: #sponsorSignTable ada (dialog Sign terbuka);
+     * tidak pernah membuka dialog, klik, atau submit. Term kontrak per
+     * penawaran TIDAK ditampilkan game (baris "Contract term" dikomentari),
+     * jadi term dibaca dari kartu Primary sponsor di halaman di belakang
+     * dialog — asumsi eksplisit, bukan rumus game.
+     */
+    const IgpSponsorAdapter = {
+        id: 'sponsor-data',
+        desc: 'dialog sponsor: income per league race + bonus objektif',
+        captures(doc) {
+            const table = doc.getElementById('sponsorSignTable');
+            if (!table) return null; // gate: hanya saat dialog sponsor terbuka
+            const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+            const rows = Array.from(table.querySelectorAll('tr'));
+            const rowOf = label => rows.find(tr => {
+                const th = tr.querySelector('th');
+                return th && clean(th.textContent).toLowerCase().indexOf(label) === 0;
+            });
+            const incomeRow = rowOf('income');
+            const bonusRow = rowOf('bonus');
+            const signRow = rows.find(tr => tr.querySelector('a[data-tip*="eId="]'));
+            if (!incomeRow || !bonusRow || !signRow) return null;
+            const incomeCells = Array.from(incomeRow.querySelectorAll('td'));
+            const bonusCells = Array.from(bonusRow.querySelectorAll('td'));
+            // Satuan income: token (Primary sponsor) vs cash (Secondary).
+            // Token dan cash tidak boleh dicampur; kind dideteksi dari ikon.
+            const isTokenCell = c => !!(c && c.querySelector('img[src*="token"], .token-icon, .token-cost'));
+            const incomeKind = incomeCells.some(isTokenCell) ? 'token' : 'cash';
+            const amountOf = cell => {
+                if (!cell) return null;
+                const m = clean(cell.textContent).match(/(\d+(?:\.\d+)?)/);
+                return m ? parseFloat(m[1]) : null;
+            };
+            const offers = [];
+            Array.from(signRow.querySelectorAll('td')).forEach((td, i) => {
+                const a = td.querySelector('a[data-tip*="eId="]');
+                if (!a) return;
+                const eId = (String(a.getAttribute('data-tip') || '').match(/eId=(\d+)/) || [])[1];
+                if (!eId) return;
+                const moneyOf = cell => (cell ? Utils.parseMoney(clean(cell.textContent)) : null);
+                offers.push({
+                    eId: parseInt(eId, 10),
+                    tokens: incomeKind === 'token' ? amountOf(incomeCells[i]) : null,
+                    income: incomeKind === 'cash' ? moneyOf(incomeCells[i]) : null,
+                    bonus: moneyOf(bonusCells[i]),
+                });
+            });
+            if (!offers.length) return null;
+            // Term kontrak: kartu Primary sponsor di #page-content (di belakang modal).
+            let termRaces = null;
+            for (const card of doc.querySelectorAll('#page-content .c-wrap')) {
+                const head = card.querySelector('.font-heading');
+                if (!head || !/primary\s+sponsor/i.test(clean(head.textContent))) continue;
+                const m = clean(card.textContent).match(/(\d+)\s*race(?:\(s\)|s)?/i);
+                if (m) termRaces = parseInt(m[1], 10);
+                break;
+            }
+            return { termRaces: termRaces, incomeKind: incomeKind, offers: offers };
+        },
+    };
+
+    /**
      * Registry adapter data. Status dipublikasikan apa adanya: ':ready' = adapter
      * read-only terpasang; ':menunggu-map' = pemetaan DOM halaman belum dilakukan.
      */
     /* =====================================================================
      * 3b) ADVISOR IN-PAGE (v0.7.0) — rekomendasi read-only di halaman STUDI iGP.
-     *  - HANYA MENAMBAH elemen milik sendiri (id/class prefiks igpas-adv-);
-     *    tidak pernah mengubah/menghapus elemen game, tidak mengklik, tidak
-     *    submit, tidak fetch/XHR, tidak mengirim packet mailbox apa pun.
+     *  - IN-PLACE: tidak menambah elemen apa pun. Tulisan hanya teks pada node
+     *    game yang sudah ada, atribut title elemen yang sama, dan style
+     *    sementara (warna tombol). Tidak mengklik, tidak submit, tidak
+     *    fetch/XHR, tidak mengirim packet mailbox apa pun.
      *  - Aktif di #pageId 'cars' (termasuk dialog Supply terbuka),
-     *    'manufacturers', 'staff', 'transfers'. Halaman 'race' (Setup,
-     *    Strategy, maupun Race live) TIDAK mendapat UI/tulisan apa pun;
-     *    tanpa klik/submit elemen game, di mana pun.
+     *    'manufacturers', 'staff', 'transfers', dan dialog sponsor
+     *    (#sponsorSignTable — biasanya di halaman Finances). Halaman 'race'
+     *    (Setup, Strategy, maupun Race live) TIDAK mendapat UI/tulisan apa
+     *    pun; tanpa klik/submit elemen game, di mana pun.
      *  - Re-render dipicu aksi user (klik/navigasi) — BUKAN polling DOM.
      *  - Semua angka = pembacaan DOM yang memang tampil + heuristik eksplisit
      *    IGPCore, berlabel "estimasi — bukan rumus game".
@@ -1936,7 +2129,8 @@
             el.removeAttribute('data-igpas-written-title');
         }
         function restoreTeamInPlace() {
-            const SKIP = '#carAttributesDisplay, .supplyDialog, #engine-table, #chassis-table, #repair';
+            const SKIP = '#carAttributesDisplay, .supplyDialog, #engine-table, #chassis-table,' +
+                ' #repair, #sponsorSignTable';
             for (const el of document.querySelectorAll('[data-igpas-orig]')) {
                 if (el.closest(SKIP)) continue;
                 try {
@@ -1991,6 +2185,126 @@
             annotate(document.getElementById('staff-table'), m.staff, 'Staff');
             return;
         }
+
+        /* Dialog sponsor (Primary/Secondary): peringkat "paling worth" pada
+         * tombol Sign yang sudah ada. IN-PLACE PENUH (tanpa elemen baru):
+         * tombol total tertinggi diwarnai hijau + "Sign ★"; bila income
+         * tertinggi (jaminan terbaik) berbeda, tombol itu amber. Angka game
+         * tidak diubah; rincian income/term/bonus/jaminan di title tombol
+         * yang sama. Teks/style/title asli disimpan dan dikembalikan oleh
+         * restoreSponsor() — captures selalu berjalan setelah restore. */
+        const SPONSOR_BUTTON_COLORS = {
+            best: { bg: '#1e8449', fg: '#ffffff' },
+            alternative: { bg: '#b9770e', fg: '#ffffff' },
+        };
+        function restoreSponsor() {
+            const table = document.getElementById('sponsorSignTable');
+            if (!table) return;
+            for (const el of table.querySelectorAll('[data-igpas-orig]')) {
+                try { restoreMarkedText(el); } catch { /* abaikan */ }
+                el.removeAttribute('data-igpas-orig');
+                el.removeAttribute('data-igpas-origmode');
+                el.removeAttribute('data-igpas-written');
+            }
+            for (const el of table.querySelectorAll('[data-igpas-title], [data-igpas-written-title]')) {
+                try { restoreTitle(el); } catch { /* abaikan */ }
+            }
+            for (const el of table.querySelectorAll('[data-igpas-orig-style]')) {
+                try { restoreInlineStyle(el); } catch { /* abaikan */ }
+            }
+        }
+        function sponsorTitle(r, values) {
+            const bits = [];
+            if (values.incomeKind === 'token') {
+                // Token = satuan berbeda dari cash. Jangan pernah menjumlahkan.
+                bits.push('income ' + r.tokens + ' token/race (token tidak dikonversi ke cash)');
+                if (r.bonus != null) {
+                    bits.push('bonus tunai ' + fmtMoney(r.bonus) + '/race bila objektif tercapai');
+                }
+                if (values.termRaces != null) {
+                    bits.push('≈ ' + (r.tokens * values.termRaces) + ' token selama ' +
+                        values.termRaces + ' race');
+                    if (r.bonus != null) {
+                        bits.push('bonus tunai maks ' + fmtMoney(r.bonus * values.termRaces) +
+                            ' bila objektif tiap race');
+                    }
+                } else {
+                    bits.push('term kontrak tidak terbaca — total tidak dihitung');
+                }
+                bits.push('token diutamakan; bonus tunai trade-off');
+            } else {
+                bits.push('income ' + fmtMoney(r.income) + '/race (dijamin tiap race)');
+                if (r.bonus != null) {
+                    bits.push('bonus ' + fmtMoney(r.bonus) + '/race bila objektif tercapai');
+                }
+                if (values.termRaces != null) {
+                    bits.push('jaminan ' + fmtMoney(r.guaranteeTotal) + ' (' + values.termRaces + ' race)');
+                    bits.push('potensi maks ' + fmtMoney(r.potentialTotal) + ' bila objektif tiap race');
+                } else {
+                    bits.push('term kontrak tidak terbaca — total tidak dihitung');
+                }
+                if (String(r.eId) === String(values.alternativeEId)) {
+                    bits.push('bonus tunai tertinggi — trade-off income' +
+                        (values.breakEvenP != null
+                            ? '; unggul bila objektif tercapai >' + Math.round(values.breakEvenP * 100) + '% race'
+                            : ''));
+                }
+            }
+            if (values.incomeKind === 'token' && String(r.eId) === String(values.alternativeEId)) {
+                bits.push('bonus tunai tertinggi — trade-off token');
+            }
+            bits.push('estimasi, bukan rumus game');
+            return 'Sponsor ' + (r.rank === 1 ? 'paling worth #1' : '#' + r.rank) +
+                ' dari ' + values.ranked.length + ': ' + bits.join(' · ') + '.';
+        }
+        function mountSponsor() {
+            const table = document.getElementById('sponsorSignTable');
+            if (!table) { restoreSponsor(); return; }
+            restoreSponsor(); // teks/style asli kembali dulu agar captures baca data murni
+            const s = IgpSponsorAdapter.captures(document);
+            if (!s) return;
+            const res = IGPCore.rankSponsors({
+                offers: s.offers,
+                termRaces: s.termRaces,
+                incomeKind: s.incomeKind,
+            });
+            if (!res.ok) return;
+            const values = res.values;
+            const byId = new Map(values.ranked.map(r => [String(r.eId), r]));
+            const signRow = Array.from(table.querySelectorAll('tr')).find(tr =>
+                tr.querySelector('a[data-tip*="eId="]'));
+            if (!signRow) return;
+            for (const td of signRow.querySelectorAll('td')) {
+                const a = td.querySelector('a[data-tip*="eId="]');
+                if (!a) continue;
+                const eId = (String(a.getAttribute('data-tip') || '').match(/eId=(\d+)/) || [])[1];
+                const r = eId ? byId.get(eId) : null;
+                if (!r) continue;
+                const isBest = r.rank === 1;
+                const isAlternative = String(r.eId) === String(values.alternativeEId);
+                if (isBest) {
+                    writeSelfText(a, 'Sign ★');
+                    applyInlineStyle(a, {
+                        'background-color': SPONSOR_BUTTON_COLORS.best.bg,
+                        'background-image': 'none',
+                        'border-color': SPONSOR_BUTTON_COLORS.best.bg,
+                        'color': SPONSOR_BUTTON_COLORS.best.fg,
+                    });
+                } else if (isAlternative) {
+                    applyInlineStyle(a, {
+                        'background-color': SPONSOR_BUTTON_COLORS.alternative.bg,
+                        'background-image': 'none',
+                        'border-color': SPONSOR_BUTTON_COLORS.alternative.bg,
+                        'color': SPONSOR_BUTTON_COLORS.alternative.fg,
+                    });
+                }
+                saveTitle(a);
+                const tip = sponsorTitle(r, values);
+                a.setAttribute('title', tip);
+                a.setAttribute('data-igpas-written-title', tip);
+            }
+        }
+
         /* Render instan 0ms (v0.8.0): konten game datang async (AJAX) setelah DOM
          * awal — menunggu klik user + debounce 250ms bikin rekomendasi telat.
          * MutationObserver bereaksi di microtask yang sama saat game commit DOM
@@ -2004,7 +2318,7 @@
         const WATCH_SEL = '#carAttributesDisplay, #carAttributes, #carsDesignPoints,' +
             ' #leagueDesignData, #carAttributesBonuses, .carsSuppliers, #repair, .supplyDialog,' +
             ' #engine-table, #chassis-table, #drivers, #staff, #driverStatsTable,' +
-            ' #driver-table, #staff-table, #cdTransfersRefresh, #pageId';
+            ' #driver-table, #staff-table, #cdTransfersRefresh, #sponsorSignTable, #pageId';
         function observeOff() {
             if (renderObserver && renderObserving) {
                 try { renderObserver.disconnect(); } catch { /* abaikan */ }
@@ -2079,7 +2393,10 @@
         function renderAll() {
             if (typeof document === 'undefined' || !document.body) return;
             const pid = pageId();
-            if (['cars', 'manufacturers', 'staff', 'transfers'].indexOf(pid) === -1) {
+            // Dialog sponsor bisa terbuka di halaman Finances (di luar daftar
+            // halaman studi) — gate berbasis DOM dialog, bukan pageId.
+            const sponsorOpen = !!document.getElementById('sponsorSignTable');
+            if (!sponsorOpen && ['cars', 'manufacturers', 'staff', 'transfers'].indexOf(pid) === -1) {
                 // Halaman lain: tanpa jejak UI apa pun (disiplin study-only).
                 removeIfAny([PREFIX + '-toggle', PREFIX + '-style', PREFIX + '-design',
                     PREFIX + '-supply', PREFIX + '-supply-compare', PREFIX + '-mfg-engine',
@@ -2090,6 +2407,7 @@
                 restoreSupply(); // kembalikan teks biaya kartu + judul dialog
                 restoreManufacturers(); // kembalikan teks nama baris
                 restoreTeamInPlace(); // kembalikan nama staff/transfers + title
+                restoreSponsor(); // kembalikan tombol Sign + title/style
                 return;
             }
             observeOff(); // tulisan sendiri tidak memicu observer
@@ -2100,12 +2418,14 @@
                 restoreSupply();
                 restoreManufacturers();
                 restoreTeamInPlace();
+                restoreSponsor();
                 mountDesign();
                 mountRepair();
                 mountSupply();
                 mountManufacturers();
                 mountTeam();
                 mountTransfers();
+                mountSponsor();
             } catch (e) {
                 if (typeof console !== 'undefined') console.warn('IGPAS advisor', e); // jangan pernah merusak halaman game
             }

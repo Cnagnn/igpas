@@ -469,6 +469,165 @@ t("rankManufacturerItems: semua rating kosong → error jujur", () => {
   assert.strictEqual(r.ok, false);
 });
 
+/* ---------- rankSponsors (v0.11.0 advisor, dialog Sponsor) ---------- */
+
+// Angka nyata dari dialog Secondary sponsor (16 penawaran, disubset 4).
+// Income & bonus sama-sama PER RACE; bonus hanya bila objektif tercapai.
+const SPONSOR_OFFERS = [
+  { eId: 2, income: 171000, bonus: 1800000 },
+  { eId: 5, income: 428000, bonus: 1500000 },
+  { eId: 17, income: 1500000, bonus: 306000 },
+  { eId: 19, income: 1600000, bonus: 102000 },
+];
+
+t("rankSponsors cash: peringkat dari income (jaminan), bonus tunai jadi alternatif", () => {
+  const r = IGPCore.rankSponsors({ offers: SPONSOR_OFFERS, termRaces: 5 });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.values.incomeKind, "cash");
+  assert.deepStrictEqual(
+    r.values.ranked.map(x => x.eId),
+    ["19", "17", "5", "2"]
+  );
+  assert.strictEqual(r.values.bestEId, "19"); // income tertinggi = jaminan
+  assert.strictEqual(r.values.bestGuaranteeEId, "19");
+  assert.strictEqual(r.values.bestBonusEId, "2"); // 1.8m/race
+  assert.strictEqual(r.values.bestPotentialEId, "2"); // 171k + 1.8m = 1.971m/race
+  assert.strictEqual(r.values.alternativeEId, "2"); // trade-off bonus vs income
+  assert.strictEqual(r.values.termRaces, 5);
+  assert.strictEqual(r.values.breakEvenP, 0.84); // 84% objektif agar eId2 unggul
+  const top = r.values.ranked[0];
+  assert.strictEqual(top.income, 1600000);
+  assert.strictEqual(top.guaranteeTotal, 8000000); // 1.6m × 5
+  assert.strictEqual(top.potentialTotal, 8510000); // (1.6m + 102k) × 5
+  assert.strictEqual(top.bonus, 102000);
+  assert.strictEqual(r.values.ranked[3].guaranteeTotal, 855000); // 171k × 5
+  assert.strictEqual(r.values.ranked[3].potentialTotal, 9855000); // 1.971m × 5
+});
+
+t("rankSponsors cash: term tidak mengubah peringkat (bonus per race), total ikut term", () => {
+  const r1 = IGPCore.rankSponsors({ offers: SPONSOR_OFFERS, termRaces: 1 });
+  const r5 = IGPCore.rankSponsors({ offers: SPONSOR_OFFERS, termRaces: 5 });
+  assert.deepStrictEqual(
+    r1.values.ranked.map(x => x.eId),
+    ["19", "17", "5", "2"]
+  );
+  assert.deepStrictEqual(
+    r5.values.ranked.map(x => x.eId),
+    ["19", "17", "5", "2"]
+  );
+  assert.strictEqual(r1.values.ranked[0].guaranteeTotal, 1600000);
+  assert.strictEqual(r5.values.ranked[0].guaranteeTotal, 8000000);
+  assert.strictEqual(r1.values.breakEvenP, 0.84); // per race, bukan per kontrak
+});
+
+t("rankSponsors cash: term tak terbaca → total null, peringkat & break-even tetap jujur", () => {
+  const r = IGPCore.rankSponsors({ offers: SPONSOR_OFFERS, termRaces: null });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.values.termRaces, null);
+  assert.deepStrictEqual(
+    r.values.ranked.map(x => x.eId),
+    ["19", "17", "5", "2"]
+  );
+  assert.strictEqual(r.values.ranked[0].guaranteeTotal, null);
+  assert.strictEqual(r.values.ranked[0].potentialTotal, null);
+  assert.strictEqual(r.values.bestEId, "19");
+  assert.strictEqual(r.values.alternativeEId, "2");
+  assert.strictEqual(r.values.breakEvenP, 0.84);
+});
+
+t("rankSponsors cash: income kosong/nol dilewati, semua kosong → error jujur", () => {
+  const r = IGPCore.rankSponsors({
+    offers: [
+      ...SPONSOR_OFFERS,
+      { eId: 99, income: null, bonus: 5000000 },
+      { eId: 98, income: 0, bonus: 1 },
+    ],
+    termRaces: 5,
+  });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.values.ranked.length, 4);
+  assert.strictEqual(r.values.unreadable, 2);
+  assert.strictEqual(IGPCore.rankSponsors({ offers: [{ eId: 1, income: null }] }).ok, false);
+  assert.strictEqual(IGPCore.rankSponsors({}).ok, false);
+});
+
+t("rankSponsors cash: income seri → potensi (bonus) lebih tinggi menang", () => {
+  const r = IGPCore.rankSponsors({
+    offers: [
+      { eId: 1, income: 100000, bonus: 900000 },
+      { eId: 2, income: 100000, bonus: 700000 },
+    ],
+    termRaces: 2,
+  });
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(
+    r.values.ranked.map(x => x.eId),
+    ["1", "2"]
+  );
+  assert.strictEqual(r.values.bestEId, "1");
+  assert.strictEqual(r.values.alternativeEId, null); // income sama → #1 sudah potensi terbaik
+  assert.strictEqual(r.values.breakEvenP, null); // tidak ada trade-off income
+});
+
+// Primary sponsor: income TOKEN, bonus tunai — jangan pernah dicampur.
+const PRIMARY_EIDS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 19];
+const PRIMARY_TOKENS = [1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3];
+const PRIMARY_BONUS = [
+  1800000, 1700000, 1600000, 1500000, 1400000, 1300000, 1200000, 1100000, 1000000, 918000, 816000,
+  714000, 612000, 510000, 306000, 102000,
+];
+const PRIMARY_OFFERS = PRIMARY_EIDS.map((eId, i) => ({
+  eId: eId,
+  tokens: PRIMARY_TOKENS[i],
+  bonus: PRIMARY_BONUS[i],
+}));
+
+t("rankSponsors token: token diutamakan, bonus tunai tie-break, tanpa total campur", () => {
+  const r = IGPCore.rankSponsors({ offers: PRIMARY_OFFERS, termRaces: 5, incomeKind: "token" });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.values.incomeKind, "token");
+  assert.strictEqual(r.values.bestEId, "14"); // 3 token, bonus 612k (tertinggi di grup 3 token)
+  assert.strictEqual(r.values.bestBonusEId, "2"); // 1.8m tunai
+  assert.strictEqual(r.values.alternativeEId, "2"); // trade-off: bonus tunai tertinggi
+  assert.strictEqual(r.values.bestGuaranteeEId, null); // "jaminan cash" tidak berlaku
+  assert.strictEqual(r.values.bestPotentialEId, null); // bukan sumbu cash
+  assert.strictEqual(r.values.breakEvenP, null); // token vs cash tidak dibandingkan
+  const top = r.values.ranked[0];
+  assert.strictEqual(top.tokens, 3);
+  assert.strictEqual(top.guaranteeTotal, null);
+  assert.strictEqual(top.potentialTotal, null); // token × term + cash TIDAK dijumlahkan
+  assert.deepStrictEqual(
+    r.values.ranked.slice(0, 4).map(x => x.eId),
+    ["14", "15", "17", "19"]
+  );
+  assert.deepStrictEqual(
+    r.values.ranked.slice(4, 7).map(x => x.eId),
+    ["5", "6", "7"]
+  );
+  assert.deepStrictEqual(
+    r.values.ranked.slice(-3).map(x => x.eId),
+    ["2", "3", "4"]
+  );
+});
+
+t("rankSponsors token: token kosong/nol dilewati, semua kosong → error jujur", () => {
+  const r = IGPCore.rankSponsors({
+    offers: [
+      { eId: 1, tokens: 0, bonus: 900000 },
+      { eId: 2, tokens: null, bonus: 800000 },
+      { eId: 3, tokens: 2, bonus: 700000 },
+    ],
+    incomeKind: "token",
+  });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.values.ranked.length, 1);
+  assert.strictEqual(r.values.unreadable, 2);
+  assert.strictEqual(
+    IGPCore.rankSponsors({ offers: [{ eId: 1, tokens: null }], incomeKind: "token" }).ok,
+    false
+  );
+});
+
 /* ---------- parseTraits (v0.7.2 advisor, halaman Transfers) ---------- */
 
 t("parseTraits: block-green/block-red dan specialA1 terbaca, None dibuang", () => {

@@ -3,19 +3,20 @@
 Penasihat studi **read-only** untuk iGP Manager dalam satu file userscript,
 tanpa build step, tanpa web GUI, tanpa jaringan, dan tanpa penyimpanan.
 
-Versi saat ini 0.10.0.
+Versi saat ini 0.11.0.
 
 ## 1. Ruang lingkup
 
 - ✅ Rekomendasi in-page pada halaman **studi** iGP (Cars, Manufacturers,
-  Supply, Drivers & Staff, Transfers). Tab **Setup/Strategy pra-balapan**
-  tidak lagi diberi advisor (dihapus v0.10.0).
+  Supply, Drivers & Staff, Transfers) dan dialog **Sponsor** (Sign). Tab
+  **Setup/Strategy pra-balapan** tidak lagi diberi advisor (dihapus v0.10.0).
 - ✅ Menu capture DOM dengan redaksi PII untuk pemetaan fixture.
 - ✅ Supply **switch-aware**: efisiensi = Σ bonus per 1jt biaya. Peringkat menggabungkan supplier aktif + alternatif (seri dimenangkan aktif); tombol alternatif diwarnai merah bila rekomendasi ganti (≥5% lebih efisien), amber untuk aktif/calon, abu-abu untuk bukan pilihan. Teks biaya & judul tidak diubah; verdict + detail di `title` — mencegah loop ganti supplier.
 - ✅ Cars **Overview**: baris atribut diurutkan `#1..#n` dari atas ke bawah dan label asli ditulis `#n Atribut · X DP`; val/max/gap + estimasi DP di `title`; tanpa warna; angka & bar game tidak disentuh.
 - ✅ Cars **Repair**: tombol `Fix`/`Replace` diwarnai dari kondisi yang tampil + rekomendasi — merah ≤50% (ganti), amber 50–60% (siap-siap), abu-abu >60% (tunda). Judul kartu tidak diubah; biaya/stok/restock/ambang di `title`; tidak mengklik tombol.
 - ❌ Tidak ada Command Center / web GUI / GitHub Pages.
 - ❌ Tidak ada mailbox antar-tab, GM storage, profil, atau snapshot.
+- ✅ Sponsor **Primary & Secondary**: `Sign` hijau + `Sign ★` untuk pilihan aman — Secondary income/race tertinggi (dijamin), Primary token/race tertinggi. Tombol amber menandai alternatif trade-off: bonus tunai/race tertinggi (Secondary + break-even peluang objektif; Primary bonus tunai vs token). Model eksplisit: bonus dibayar **per race** saat objektif tercapai (bukan sekali per kontrak); token & cash beda satuan dan tidak pernah dijumlahkan/dikonversi. Total kontrak (`income × term`, potensi `(income+bonus) × term`) hanya bila term terbaca dari kartu Primary sponsor — tidak ada angka karangan.
 - ❌ Tidak scrape/automasi saat balapan live; `#race`, `#setup`, dan `#strategy` tidak pernah disentuh (tidak dibaca, tidak ditulis).
 - ❌ Tidak ada klik/submit/fetch/XHR.
 
@@ -24,12 +25,13 @@ Versi saat ini 0.10.0.
 | Komponen | Peran |
 | --- | --- |
 | `Utils` | Helper murni: parsing angka/uang, `numOrNull`, `statIndex`, `roleCode`, format |
-| `IGPCore` | Mesin heuristik murni & teruji: `designPriority`, `repairAdvice`, `rankSuppliers`, `compareSuppliers`, `rankManufacturerItems`, `stintSplit`, dll. |
+| `IGPCore` | Mesin heuristik murni & teruji: `designPriority`, `repairAdvice`, `rankSuppliers`, `compareSuppliers`, `rankManufacturerItems`, `rankSponsors`, `stintSplit`, dll. |
 | `IgpCarsAdapter` | Parser read-only halaman Cars → `{ attrs, best, designPoints, suppliers, … }`; tab Overview diurutkan/diberi label oleh `Advisor.mountDesign`, tab Repair oleh `Advisor.mountRepair` (kondisi, biaya tombol, stok) — keduanya in-place |
 | `IgpSupplyAdapter` | Parser read-only dialog Supply → `{ type, current, alternatives }` |
 | `IgpManufacturersAdapter` | Parser read-only tabel engine + chassis |
 | `IgpStaffAdapter` | Parser read-only Drivers & Staff (driver, staff, pit crew) |
 | `IgpTransfersAdapter` | Parser read-only pasar Transfers (driver + staff) |
+| `IgpSponsorAdapter` | Parser read-only dialog Sponsor (Primary/Secondary) → `{ termRaces, incomeKind, offers }` |
 | `Advisor` | Menulis rekomendasi ke teks/`title` elemen asli + restore otomatis |
 | `PageCapture` | Menu userscript: salin DOM teredaksi ke clipboard |
 | `boot()` | Gate host `igpmanager.com`, pasang Advisor + menu capture |
@@ -59,7 +61,8 @@ Tidak ada langkah jaringan, storage, atau sinkronisasi antar-tab.
 
 1. **Gate `#pageId`** — setiap adapter hanya aktif di halaman yang cocok
    (`cars`, `manufacturers`, `staff`, `transfers`; Supply via dialog
-   `.supplyDialog`).
+   `.supplyDialog`; Sponsor via dialog `#sponsorSignTable`, biasanya di
+   halaman Finances).
 2. **`#race` live, `#setup`, dan `#strategy` tidak pernah disentuh** — tidak
    ada advisor pra-balapan/live-race.
 3. **In-place** — tidak ada elemen baru; hanya text node, atribut `title`, dan
@@ -87,13 +90,13 @@ Tidak ada langkah jaringan, storage, atau sinkronisasi antar-tab.
 
 ## 6. Testing
 
-- `test/core.test.js` — 65 test murni untuk `IGPCore`/`Utils`.
+- `test/core.test.js` — 72 test murni untuk `IGPCore`/`Utils`.
 - `test/capture.test.js` — 8 test redaksi `PageCapture` (jsdom).
-- `test/advisor.test.js` — 26 test advisor vs fixture DOM nyata (jsdom):
+- `test/advisor.test.js` — 30 test advisor vs fixture DOM nyata (jsdom):
   in-place, restore, idempoten, `#race` zero-UI, menu capture.
 - `test/fixtures/*.html` — capture DOM tersanitasi (PII/script dibuang).
 
-Total **99 test**; dijalankan oleh `npm test` dan `npm run verify` (CI Node
+Total **110 test**; dijalankan oleh `npm test` dan `npm run verify` (CI Node
 22/24).
 
 ## 7. Sejarah singkat
@@ -108,6 +111,9 @@ Total **99 test**; dijalankan oleh `npm test` dan `npm run verify` (CI Node
   (tag `v0.8.6`).
 - v0.10.0 menghapus advisor **Setup** dan **Strategy** pra-balapan beserta
   adapter/helper-nya; fokus advisor kembali ke halaman studi.
+- v0.11.0 menambah advisor **Sponsor Primary & Secondary**: peringkat penawaran
+  pada dialog Sign (income/token per race, bonus per race, jaminan, break-even)
+  tanpa mengubah angka game.
 - Input manual/kalkulator mandiri tidak lagi disediakan sebagai UI.
 
 ## 8. Etika & batasan
