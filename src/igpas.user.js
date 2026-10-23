@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.9.6
-// @description  Read-only in-page study advisor for iGP Manager: color-coded design-priority rows and parts/engine repair buttons, supplier/manufacturer rankings, staff/transfer notes, and pre-race setup/fuel/tyre/stint estimates written only as text/title/style on original page elements (never the live Race tab). Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
-// @description:id Penasihat studi read-only in-page untuk iGP Manager: warna baris prioritas design dan tombol ganti parts/engine sesuai kondisi, peringkat supplier/manufacturer, catatan staff/transfers, dan estimasi setup/fuel/ban/stint pra-balapan — hanya teks/title/style pada elemen asli (bukan tab Race live). Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
+// @version      0.9.7
+// @description  Read-only in-page study advisor for iGP Manager: #1..#n sorted design-point priorities, color-coded supply and parts/engine repair buttons, supplier/manufacturer rankings, staff/transfer notes, and pre-race setup/fuel/tyre/stint estimates written only as text/title/style on original page elements (never the live Race tab). Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
+// @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design terurut #1..#n, warna tombol Supply dan ganti parts/engine, peringkat supplier/manufacturer, catatan staff/transfers, dan estimasi setup/fuel/ban/stint pra-balapan — hanya teks/title/style pada elemen asli (bukan tab Race live). Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
 // @supportURL   https://github.com/Cnagnn/igpas/issues
@@ -18,7 +18,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.9.6';
+    const VERSION = '0.9.7';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -1802,18 +1802,13 @@
         }
 
         /* Halaman Cars: prioritas alokasi design points vs benchmark liga.
-         * IN-PLACE PENUH (tanpa elemen baru): baris atribut ASLI diberi warna
-         * prioritas — merah = prioritas utama, amber = prioritas berikutnya,
-         * abu-abu = tidak perlu DP. Label asli TIDAK ditulisi; detail
-         * val/max/gap + estimasi DP tetap di atribut title baris. Style/title
-         * asli disimpan dan dikembalikan oleh restoreDesign(); captures selalu
+         * IN-PLACE PENUH (tanpa elemen baru): label ASLI tiap baris ditulis
+         * ulang jadi "#n Label · X DP" dan baris diurutkan #1, #2, ... dari
+         * atas ke bawah. Detail val/max/gap + label estimasi di atribut title
+         * baris yang sama. Angka & bar game tidak disentuh. Urutan/teks asli
+         * disimpan dan dikembalikan oleh restoreDesign(); captures selalu
          * berjalan setelah restore sehingga adapter tidak pernah membaca hasil
          * tulisan. */
-        const DESIGN_ROW_COLORS = {
-            now: { bg: 'rgba(192, 57, 43, 0.18)', accent: '#c0392b' },
-            soon: { bg: 'rgba(214, 137, 16, 0.16)', accent: '#d68910' },
-            hold: { bg: 'rgba(93, 109, 126, 0.10)', accent: '#5d6d7e' },
-        };
         function applyInlineStyle(el, props) {
             if (!el.hasAttribute('data-igpas-orig-style')) {
                 el.setAttribute('data-igpas-orig-style', el.getAttribute('style') || '');
@@ -1836,7 +1831,8 @@
             el.removeAttribute('data-igpas-written-style');
         }
         function restoreDesign() {
-            const rows = document.querySelectorAll('#carAttributesDisplay .attribute-row');
+            const display = document.getElementById('carAttributesDisplay');
+            const rows = display ? display.querySelectorAll('.attribute-row') : [];
             for (const row of rows) {
                 try {
                     const orig = row.getAttribute('data-igpas-orig');
@@ -1865,6 +1861,20 @@
                 row.removeAttribute('data-igpas-title');
                 row.removeAttribute('data-igpas-written-title');
             }
+            // Kembalikan urutan baris ke urutan asli game.
+            if (display) {
+                const marked = Array.from(display.children).filter(el =>
+                    el && el.classList && el.classList.contains('attribute-row') &&
+                    el.hasAttribute('data-igpas-orig-order'));
+                if (marked.length) {
+                    marked.sort((a, b) => Number(a.getAttribute('data-igpas-orig-order')) -
+                        Number(b.getAttribute('data-igpas-orig-order')));
+                    for (const row of marked) {
+                        display.appendChild(row);
+                        row.removeAttribute('data-igpas-orig-order');
+                    }
+                }
+            }
             // Sisa migrasi versi badge/panel: bersihkan tanpa menyentuh node game.
             for (const el of document.querySelectorAll('.igpas-adv-inline, .igpas-adv-inline-head')) el.remove();
             removeIfAny([PREFIX + '-design']);
@@ -1872,7 +1882,7 @@
         function mountDesign() {
             const anchor = (pageId() === 'cars') ? document.getElementById('carAttributesDisplay') : null;
             if (!anchor) { restoreDesign(); return; }
-            restoreDesign(); // teks/style asli kembali dulu agar captures baca data murni
+            restoreDesign(); // teks/urutan asli kembali dulu agar captures baca data murni
             const data = IgpCarsAdapter.captures(document);
             const res = IGPCore.designPriority({
                 attrs: data && data.attrs,
@@ -1883,28 +1893,41 @@
             if (!res.ok) return;
             const dpTotal = res.values.designPoints;
             const ranked = res.values.ranked;
-            const positives = ranked.filter(r => r.gap != null && r.gap > 0);
-            const hotCount = positives.length ? Math.max(1, Math.ceil(positives.length / 3)) : 0;
+            const rows = Array.from(anchor.children).filter(el =>
+                el && el.classList && el.classList.contains('attribute-row'));
+            if (!rows.length) return;
+            const byKey = new Map();
+            rows.forEach((row, i) => {
+                if (!row.hasAttribute('data-igpas-orig-order')) {
+                    row.setAttribute('data-igpas-orig-order', String(i));
+                }
+                if (row.id && row.id.indexOf('wrap-') === 0) byKey.set(row.id.slice(5), row);
+            });
+            // Urutkan #1..#n sesuai rank; baris tak terbaca tetap di belakang.
+            const ordered = [];
+            for (const r of ranked) {
+                const row = r && r.key != null ? byKey.get(String(r.key)) : null;
+                if (row && ordered.indexOf(row) === -1) ordered.push(row);
+            }
+            for (const row of rows) if (ordered.indexOf(row) === -1) ordered.push(row);
+            for (const row of ordered) anchor.appendChild(row);
             ranked.forEach((r, i) => {
                 if (r.key == null || !/^[A-Za-z0-9_-]+$/.test(String(r.key))) return;
                 let row = null;
                 try { row = document.getElementById('wrap-' + r.key); } catch { row = null; }
                 if (!row) return;
+                const label = row.querySelector('.attribute-rating-header span:not(.ratingVal)');
+                if (!label) return;
+                const orig = label.textContent;
                 const share = (r.sharePct != null ? r.sharePct : 0);
                 const dpEst = (dpTotal != null) ? Math.round(dpTotal * share / 100) : null;
-                const positiveRank = (r.gap != null && r.gap > 0) ? positives.indexOf(r) : -1;
-                const status = positiveRank < 0 ? 'hold' : (positiveRank < hotCount ? 'now' : 'soon');
-                const color = DESIGN_ROW_COLORS[status];
-                applyInlineStyle(row, {
-                    'background-color': color.bg,
-                    'box-shadow': 'inset 4px 0 0 ' + color.accent,
-                    'border-radius': '4px',
-                });
-                saveTitle(row);
-                const statusText = status === 'now' ? 'prioritas utama' :
-                    status === 'soon' ? 'prioritas berikutnya' : 'tidak perlu DP';
-                const advisorTitle = 'Prioritas #' + (i + 1) + ' (' + statusText + ') — ' +
-                    (r.label || 'atribut') + ': ' + r.val +
+                row.setAttribute('data-igpas-orig', orig);
+                row.setAttribute('data-igpas-title',
+                    row.hasAttribute('title') ? row.getAttribute('title') : '');
+                const newLabel = '#' + (i + 1) + ' ' + orig + (dpEst != null ? ' · ' + dpEst + ' DP' : '');
+                label.textContent = newLabel;
+                row.setAttribute('data-igpas-written', newLabel);
+                const advisorTitle = 'Prioritas #' + (i + 1) + ' — ' + (r.label || orig) + ': ' + r.val +
                     ' → max liga ' + (r.max == null ? '—' : r.max) +
                     ' (gap ' + (r.gap == null ? '—' : r.gap) + '). ' +
                     'Usulan ' + (dpEst != null ? '±' + dpEst + ' DP dari ' + dpTotal + ' DP' : share + '% porsi gap') +
@@ -2035,14 +2058,23 @@
             }
         }
 
-        /* Dialog Supply (engine/fuel/tyre): peringkat alternatif + verdict aktif.
-         * IN-PLACE PENUH (tanpa elemen baru): teks biaya tiap kartu alternatif
-         * ditulis ulang jadi "#n · 350k" (+ ★ nilai terbaik / · termurah);
-         * judul dialog ("Engine supply") ditulis ulang dengan verdict vs
-         * alternatif. Detail Σ bonus/nilai/1M + label estimasi di atribut title
-         * kartu yang sama. Teks asli disimpan di data-igpas-orig dan
-         * dikembalikan oleh restoreSupply() — captures selalu berjalan setelah
-         * restore sehingga adapter tidak pernah membaca hasil tulisan. */
+        /* Dialog Supply (engine/fuel/tyre): tombol alternatif diwarnai sesuai
+         * rekomendasi — merah = ganti ke supplier ini, amber = aktif/calon
+         * (tetap atau cek), abu-abu = bukan pilihan. Judul dialog tidak
+         * ditulisi; detail Σ bonus/nilai/1M + verdict tetap di title header dan
+         * title kartu. Teks biaya game TIDAK diubah. Style/title asli disimpan
+         * dan dikembalikan oleh restoreSupply(); captures selalu berjalan
+         * setelah restore sehingga adapter tidak pernah membaca hasil tulisan. */
+        const SUPPLY_BUTTON_COLORS = {
+            now: { bg: '#c0392b', fg: '#ffffff' },
+            soon: { bg: '#d68910', fg: '#1b2631' },
+            hold: { bg: '#5d6d7e', fg: '#ffffff' },
+        };
+        const SUPPLY_HEADER_COLORS = {
+            now: { bg: 'rgba(192, 57, 43, 0.18)', accent: '#c0392b' },
+            soon: { bg: 'rgba(214, 137, 16, 0.18)', accent: '#d68910' },
+            hold: { bg: 'rgba(93, 109, 126, 0.14)', accent: '#5d6d7e' },
+        };
         function restoreSupply() {
             // Cakupan STRICT dialog: data-igpas-* milik Cars/Manufacturers
             // tidak boleh tersentuh (renderAll me-mount berurutan).
@@ -2051,8 +2083,7 @@
             if (!dlg) return;
             for (const link of dlg.querySelectorAll('a[data-igpas-orig]')) {
                 try {
-                    // Restore teks yang kita tulis — kecuali game sudah
-                    // menggantinya dengan biaya baru setelah itu.
+                    // Restore teks versi lama — kecuali game sudah menggantinya.
                     restoreMarkedText(link);
                 } catch { /* jangan pernah merusak halaman game */ }
                 link.removeAttribute('data-igpas-orig');
@@ -2081,13 +2112,16 @@
                 el.removeAttribute('data-igpas-title');
                 el.removeAttribute('data-igpas-written-title');
             }
+            for (const el of dlg.querySelectorAll('[data-igpas-orig-style]')) {
+                try { restoreInlineStyle(el); } catch { /* abaikan */ }
+            }
         }
         function mountSupply() {
             // Sisa migrasi versi panel: bersihkan tanpa menyentuh node game.
             removeIfAny([PREFIX + '-supply', PREFIX + '-supply-compare']);
             const dlg = document.querySelector('.supplyDialog');
             if (!dlg) { restoreSupply(); return; }
-            restoreSupply(); // teks asli kembali dulu agar captures baca data murni
+            restoreSupply(); // teks/style asli kembali dulu agar captures baca data murni
             const s = IgpSupplyAdapter.captures(document);
             if (!s || !s.current || !Array.isArray(s.alternatives) || !s.alternatives.length) return;
             const rank = IGPCore.rankSuppliers({ items: s.alternatives });
@@ -2137,7 +2171,6 @@
             const totalOps = n + (curValuePerCost != null ? 1 : 0);
             const bestAltRank = bestAlt ? pool.findIndex(r => r === bestAlt) + 1 : null;
             const showRanks = curValuePerCost != null;
-            const bestId = switchRec ? bestAlt.id : null;
             const cheapId = rank.values.cheapestId;
             // Peta kartu per eId — parsing identik adapter (anti substring eId=1 vs eId=10).
             const cards = new Map();
@@ -2152,25 +2185,21 @@
                 const hit = cards.get(String(r.eId));
                 if (!hit || !hit.link) return;
                 const link = hit.link, card = hit.card;
-                let costNode = null;
-                try {
-                    for (const nd of link.childNodes) {
-                        if (nd.nodeType === 3 && nd.textContent.trim() !== '') { costNode = nd; break; }
-                    }
-                } catch { costNode = null; }
-                if (!costNode) return;
-                const orig = costNode.textContent;
                 const rankNo = ranks.get(String(r.eId)) || (i + 1);
-                const isBest = bestId != null && r.id === bestId;
+                const isBest = !!(bestAlt && r.id === bestAlt.id);
                 const isCheap = cheapId != null && r.id === cheapId;
-                link.setAttribute('data-igpas-orig', orig);
-                link.setAttribute('data-igpas-origmode', 'node');
-                const newCost = showRanks
-                    ? '#' + rankNo + ' · ' + (r.valuePerCost == null ? '—' : r.valuePerCost) +
-                      '/1M · ' + orig.trim() + (isBest ? ' ★' : '')
-                    : 'nilai ' + (r.valuePerCost == null ? '—' : r.valuePerCost) + '/1M · ' + orig.trim();
-                costNode.textContent = newCost;
-                link.setAttribute('data-igpas-written', newCost);
+                let status = 'hold';
+                if (isBest) {
+                    if (switchRec) status = 'now';
+                    else if (curValuePerCost == null) status = 'soon';
+                }
+                const bc = SUPPLY_BUTTON_COLORS[status];
+                applyInlineStyle(link, {
+                    'background-color': bc.bg,
+                    'background-image': 'none',
+                    'border-color': bc.bg,
+                    'color': bc.fg,
+                });
                 if (card) {
                     // Penanda title selalu dipasang ('' = semula tanpa title) agar
                     // restore presisi tanpa menyapu title milik game.
@@ -2191,33 +2220,24 @@
                     card.setAttribute('data-igpas-written-title', advisorTitle);
                 }
             });
-            // Verdict supplier aktif ditulis ke judul dialog (tanpa elemen baru).
+            // Header supplier aktif: amber bila aktif terbaca (tetap/cek), abu-abu
+            // bila aktif tak terbaca. Tombol merah = target ganti. Teks tidak diubah.
+            const activeStatus = curValuePerCost == null ? 'hold' : 'soon';
+            const subhead = dlg.querySelector('.dialog-subhead');
+            if (subhead) {
+                const hc = SUPPLY_HEADER_COLORS[activeStatus];
+                applyInlineStyle(subhead, {
+                    'background-color': hc.bg,
+                    'background-image': 'none',
+                    'box-shadow': 'inset 5px 0 0 ' + hc.accent,
+                });
+            }
+            // Verdict supplier aktif hanya di title (tanpa teks tambahan).
             if (cmp.ok) {
                 const h2 = dlg.querySelector('.dialog-subhead-content h2');
                 if (h2) {
-                    let verdictTxt;
-                    if (curValuePerCost != null && activeRank != null) {
-                        if (activeRank === 1) {
-                            verdictTxt = 'TERBAIK: AKTIF (' + curValuePerCost + '/1M) · tetap';
-                        } else if (bestAlt && bestAlt.valuePerCost != null) {
-                            verdictTxt = 'TERBAIK: ALTERNATIF #' + bestAltRank +
-                                ' (' + bestAlt.valuePerCost + '/1M' +
-                                (gainPct == null ? '' : ', +' + gainPct + '%') + ') · ' +
-                                (switchRec ? 'ganti dianjurkan' : 'tetap (untung tipis)');
-                        } else {
-                            verdictTxt = 'AKTIF #' + activeRank + ' (' + curValuePerCost + '/1M) · tetap';
-                        }
-                    } else {
-                        verdictTxt = 'AKTIF TAK TERBACA · bandingkan nilai/1M';
-                    }
-                    const origH2 = h2.textContent;
-                    h2.setAttribute('data-igpas-orig', origH2);
-                    h2.setAttribute('data-igpas-origmode', 'self');
                     h2.setAttribute('data-igpas-title',
                         h2.hasAttribute('title') ? h2.getAttribute('title') : '');
-                    const newH2 = origH2 + ' · ' + verdictTxt;
-                    h2.textContent = newH2;
-                    h2.setAttribute('data-igpas-written', newH2);
                     const advisorTitle = 'Supplier aktif #' +
                         (s.current.supplierId != null ? s.current.supplierId : '?') +
                         ': Σ bonus ' + (curBonus == null ? '—' : (curBonus > 0 ? '+' : '') + curBonus) +
@@ -2226,7 +2246,8 @@
                         (activeRank != null ? ' (#' + activeRank + ' dari ' + totalOps + ')' : '') + '. ' +
                         'Alternatif terbaik: ' + (bestAlt
                             ? '#' + bestAltRank + ' · nilai/1M ' + bestAlt.valuePerCost +
-                              ' · ' + fmtMoney(bestAlt.cost) + '/race'
+                              ' · ' + fmtMoney(bestAlt.cost) + '/race' +
+                              (gainPct == null ? '' : ' (+' + gainPct + '%)')
                             : '—') + '. ' +
                         'Aturan: ganti hanya bila alternatif ≥5% lebih efisien. ' +
                         'Kesimpulan: ' + (switchRec
