@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.9.5
-// @description  Read-only in-page study advisor for iGP Manager: design-point priorities, supplier/manufacturer rankings, color-coded parts/engine repair buttons, staff/transfer notes, and pre-race setup/fuel/tyre/stint estimates written only as text/title/style on original page elements (never the live Race tab). Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
-// @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design point, peringkat supplier/manufacturer, warna tombol ganti parts/engine sesuai kondisi, catatan staff/transfers, dan estimasi setup/fuel/ban/stint pra-balapan — hanya teks/title/style pada elemen asli (bukan tab Race live). Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
+// @version      0.9.6
+// @description  Read-only in-page study advisor for iGP Manager: color-coded design-priority rows and parts/engine repair buttons, supplier/manufacturer rankings, staff/transfer notes, and pre-race setup/fuel/tyre/stint estimates written only as text/title/style on original page elements (never the live Race tab). Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
+// @description:id Penasihat studi read-only in-page untuk iGP Manager: warna baris prioritas design dan tombol ganti parts/engine sesuai kondisi, peringkat supplier/manufacturer, catatan staff/transfers, dan estimasi setup/fuel/ban/stint pra-balapan — hanya teks/title/style pada elemen asli (bukan tab Race live). Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
 // @supportURL   https://github.com/Cnagnn/igpas/issues
@@ -18,7 +18,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.9.5';
+    const VERSION = '0.9.6';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -1802,21 +1802,51 @@
         }
 
         /* Halaman Cars: prioritas alokasi design points vs benchmark liga.
-         * IN-PLACE PENUH (tanpa elemen baru): teks label ASLI tiap baris game
-         * ditulis ulang jadi "#n Label · X DP"; detail val/max/gap + label
-         * estimasi di atribut title baris yang sama. Angka & bar game tidak
-         * pernah disentuh. Teks asli disimpan di data-igpas-orig dan
-         * dikembalikan oleh restoreDesign() — captures selalu berjalan
-         * setelah restore sehingga adapter tidak pernah membaca hasil tulisan. */
+         * IN-PLACE PENUH (tanpa elemen baru): baris atribut ASLI diberi warna
+         * prioritas — merah = prioritas utama, amber = prioritas berikutnya,
+         * abu-abu = tidak perlu DP. Label asli TIDAK ditulisi; detail
+         * val/max/gap + estimasi DP tetap di atribut title baris. Style/title
+         * asli disimpan dan dikembalikan oleh restoreDesign(); captures selalu
+         * berjalan setelah restore sehingga adapter tidak pernah membaca hasil
+         * tulisan. */
+        const DESIGN_ROW_COLORS = {
+            now: { bg: 'rgba(192, 57, 43, 0.18)', accent: '#c0392b' },
+            soon: { bg: 'rgba(214, 137, 16, 0.16)', accent: '#d68910' },
+            hold: { bg: 'rgba(93, 109, 126, 0.10)', accent: '#5d6d7e' },
+        };
+        function applyInlineStyle(el, props) {
+            if (!el.hasAttribute('data-igpas-orig-style')) {
+                el.setAttribute('data-igpas-orig-style', el.getAttribute('style') || '');
+            }
+            for (const prop of Object.keys(props)) {
+                el.style.setProperty(prop, props[prop], 'important');
+            }
+            el.setAttribute('data-igpas-written-style', el.getAttribute('style') || '');
+        }
+        function restoreInlineStyle(el) {
+            const saved = el.getAttribute('data-igpas-orig-style');
+            if (saved == null) return;
+            const written = el.getAttribute('data-igpas-written-style');
+            const current = el.getAttribute('style') || '';
+            if (written == null || current === written) {
+                if (saved === '') el.removeAttribute('style');
+                else el.setAttribute('style', saved);
+            }
+            el.removeAttribute('data-igpas-orig-style');
+            el.removeAttribute('data-igpas-written-style');
+        }
         function restoreDesign() {
-            const rows = document.querySelectorAll('#carAttributesDisplay .attribute-row[data-igpas-orig]');
+            const rows = document.querySelectorAll('#carAttributesDisplay .attribute-row');
             for (const row of rows) {
                 try {
-                    const label = row.querySelector('.attribute-rating-header span:not(.ratingVal)');
-                    const written = row.getAttribute('data-igpas-written');
-                    // Jangan menimpa label yang sudah diganti game setelah tulisan advisor.
-                    if (label && (written == null || label.textContent === written)) {
-                        label.textContent = row.getAttribute('data-igpas-orig');
+                    const orig = row.getAttribute('data-igpas-orig');
+                    if (orig != null) {
+                        const label = row.querySelector('.attribute-rating-header span:not(.ratingVal)');
+                        const written = row.getAttribute('data-igpas-written');
+                        // Jangan menimpa label yang sudah diganti game setelah tulisan advisor.
+                        if (label && (written == null || label.textContent === written)) {
+                            label.textContent = orig;
+                        }
                     }
                     const savedTitle = row.getAttribute('data-igpas-title');
                     if (savedTitle != null) {
@@ -1825,8 +1855,9 @@
                             if (savedTitle === '') row.removeAttribute('title');
                             else row.setAttribute('title', savedTitle);
                         }
-                    } else {
-                        row.removeAttribute('title');
+                    }
+                    if (row.hasAttribute('data-igpas-orig-style') || row.hasAttribute('data-igpas-written-style')) {
+                        restoreInlineStyle(row);
                     }
                 } catch { /* jangan pernah merusak halaman game */ }
                 row.removeAttribute('data-igpas-orig');
@@ -1841,7 +1872,7 @@
         function mountDesign() {
             const anchor = (pageId() === 'cars') ? document.getElementById('carAttributesDisplay') : null;
             if (!anchor) { restoreDesign(); return; }
-            restoreDesign(); // teks asli kembali dulu agar captures baca data murni
+            restoreDesign(); // teks/style asli kembali dulu agar captures baca data murni
             const data = IgpCarsAdapter.captures(document);
             const res = IGPCore.designPriority({
                 attrs: data && data.attrs,
@@ -1851,23 +1882,29 @@
             // Gagal jujur: tanpa angka, tanpa modifikasi apa pun (tanpa panel).
             if (!res.ok) return;
             const dpTotal = res.values.designPoints;
-            res.values.ranked.forEach((r, i) => {
+            const ranked = res.values.ranked;
+            const positives = ranked.filter(r => r.gap != null && r.gap > 0);
+            const hotCount = positives.length ? Math.max(1, Math.ceil(positives.length / 3)) : 0;
+            ranked.forEach((r, i) => {
                 if (r.key == null || !/^[A-Za-z0-9_-]+$/.test(String(r.key))) return;
                 let row = null;
                 try { row = document.getElementById('wrap-' + r.key); } catch { row = null; }
                 if (!row) return;
-                const label = row.querySelector('.attribute-rating-header span:not(.ratingVal)');
-                if (!label) return;
-                const orig = label.textContent;
                 const share = (r.sharePct != null ? r.sharePct : 0);
                 const dpEst = (dpTotal != null) ? Math.round(dpTotal * share / 100) : null;
-                row.setAttribute('data-igpas-orig', orig);
-                row.setAttribute('data-igpas-title',
-                    row.hasAttribute('title') ? row.getAttribute('title') : '');
-                const newLabel = '#' + (i + 1) + ' ' + orig + (dpEst != null ? ' · ' + dpEst + ' DP' : '');
-                label.textContent = newLabel;
-                row.setAttribute('data-igpas-written', newLabel);
-                const advisorTitle = 'Prioritas #' + (i + 1) + ' — ' + (r.label || orig) + ': ' + r.val +
+                const positiveRank = (r.gap != null && r.gap > 0) ? positives.indexOf(r) : -1;
+                const status = positiveRank < 0 ? 'hold' : (positiveRank < hotCount ? 'now' : 'soon');
+                const color = DESIGN_ROW_COLORS[status];
+                applyInlineStyle(row, {
+                    'background-color': color.bg,
+                    'box-shadow': 'inset 4px 0 0 ' + color.accent,
+                    'border-radius': '4px',
+                });
+                saveTitle(row);
+                const statusText = status === 'now' ? 'prioritas utama' :
+                    status === 'soon' ? 'prioritas berikutnya' : 'tidak perlu DP';
+                const advisorTitle = 'Prioritas #' + (i + 1) + ' (' + statusText + ') — ' +
+                    (r.label || 'atribut') + ': ' + r.val +
                     ' → max liga ' + (r.max == null ? '—' : r.max) +
                     ' (gap ' + (r.gap == null ? '—' : r.gap) + '). ' +
                     'Usulan ' + (dpEst != null ? '±' + dpEst + ' DP dari ' + dpTotal + ' DP' : share + '% porsi gap') +
@@ -1889,18 +1926,6 @@
             soon: { bg: '#d68910', fg: '#1b2631' },
             hold: { bg: '#5d6d7e', fg: '#ffffff' },
         };
-        function restoreRepairStyle(el) {
-            const saved = el.getAttribute('data-igpas-orig-style');
-            if (saved == null) return;
-            const written = el.getAttribute('data-igpas-written-style');
-            const current = el.getAttribute('style') || '';
-            if (written == null || current === written) {
-                if (saved === '') el.removeAttribute('style');
-                else el.setAttribute('style', saved);
-            }
-            el.removeAttribute('data-igpas-orig-style');
-            el.removeAttribute('data-igpas-written-style');
-        }
         function restoreRepair() {
             const repair = document.getElementById('repair');
             if (!repair) return;
@@ -1914,7 +1939,7 @@
                 try { restoreTitle(el); } catch { /* abaikan */ }
             }
             for (const el of repair.querySelectorAll('[data-igpas-orig-style], [data-igpas-written-style]')) {
-                try { restoreRepairStyle(el); } catch { /* abaikan */ }
+                try { restoreInlineStyle(el); } catch { /* abaikan */ }
             }
         }
         function repairVerdictText(part, kind) {
@@ -1951,14 +1976,12 @@
             if (!el || !part || part.value == null || part.status === 'unknown') return;
             const color = REPAIR_BUTTON_COLORS[part.status];
             if (!color) return;
-            if (!el.hasAttribute('data-igpas-orig-style')) {
-                el.setAttribute('data-igpas-orig-style', el.getAttribute('style') || '');
-            }
-            el.style.setProperty('background-color', color.bg, 'important');
-            el.style.setProperty('background-image', 'none', 'important');
-            el.style.setProperty('border-color', color.bg, 'important');
-            el.style.setProperty('color', color.fg, 'important');
-            el.setAttribute('data-igpas-written-style', el.getAttribute('style') || '');
+            applyInlineStyle(el, {
+                'background-color': color.bg,
+                'background-image': 'none',
+                'border-color': color.bg,
+                'color': color.fg,
+            });
             saveTitle(el);
             const tip = repairTitle(part, kind, restockRaces);
             el.setAttribute('title', tip);

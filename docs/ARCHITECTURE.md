@@ -3,7 +3,7 @@
 Penasihat studi **read-only** untuk iGP Manager dalam satu file userscript,
 tanpa build step, tanpa web GUI, tanpa jaringan, dan tanpa penyimpanan.
 
-Versi saat ini 0.9.5.
+Versi saat ini 0.9.6.
 
 ## 1. Ruang lingkup
 
@@ -11,6 +11,7 @@ Versi saat ini 0.9.5.
   Supply, Drivers & Staff, Transfers) dan tab **Setup/Strategy pra-balapan**.
 - ✅ Menu capture DOM dengan redaksi PII untuk pemetaan fixture.
 - ✅ Supply **switch-aware**: efisiensi = Σ bonus per 1jt biaya. Peringkat menggabungkan supplier aktif + alternatif (seri dimenangkan aktif), judul menulis `TERBAIK: AKTIF` atau `TERBAIK: ALTERNATIF #1`; `★`/`ganti dianjurkan` hanya bila alternatif ≥5% lebih efisien — mencegah loop ganti supplier.
+- ✅ Cars **Overview**: baris atribut diwarnai prioritas DP — merah top-3 gap, amber prioritas berikutnya, abu-abu tanpa gap. Label asli tidak ditulisi; val/max/gap + estimasi DP di `title`; angka & bar game tidak disentuh.
 - ✅ Cars **Repair**: tombol `Fix`/`Replace` diwarnai dari kondisi yang tampil + rekomendasi — merah ≤50% (ganti), amber 50–60% (siap-siap), abu-abu >60% (tunda). Judul kartu tidak diubah; biaya/stok/restock/ambang di `title`; tidak mengklik tombol.
 - ❌ Tidak ada Command Center / web GUI / GitHub Pages.
 - ❌ Tidak ada mailbox antar-tab, GM storage, profil, atau snapshot.
@@ -23,7 +24,7 @@ Versi saat ini 0.9.5.
 | --- | --- |
 | `Utils` | Helper murni: parsing angka/uang, `numOrNull`, `statIndex`, `roleCode`, format |
 | `IGPCore` | Mesin heuristik murni & teruji: `designPriority`, `repairAdvice`, `rankSuppliers`, `compareSuppliers`, `rankManufacturerItems`, `describeTrack`, `summarizePracticeLaps`, `recommendRaceFuel`, `practiceTyreLife`, `summarizeStrategy`, `stintSplit`, `parseLapTime`, dll. |
-| `IgpCarsAdapter` | Parser read-only halaman Cars → `{ attrs, best, designPoints, suppliers, … }`; tab Repair dibaca langsung oleh `Advisor.mountRepair` (kondisi, biaya tombol, stok) dan diwarnai in-place |
+| `IgpCarsAdapter` | Parser read-only halaman Cars → `{ attrs, best, designPoints, suppliers, … }`; tab Overview diwarnai oleh `Advisor.mountDesign`, tab Repair oleh `Advisor.mountRepair` (kondisi, biaya tombol, stok) — keduanya in-place |
 | `IgpSupplyAdapter` | Parser read-only dialog Supply → `{ type, current, alternatives }` |
 | `IgpManufacturersAdapter` | Parser read-only tabel engine + chassis |
 | `IgpStaffAdapter` | Parser read-only Drivers & Staff (driver, staff, pit crew) |
@@ -63,7 +64,7 @@ Tidak ada langkah jaringan, storage, atau sinkronisasi antar-tab.
    `#setup`/`#strategy`; Supply via dialog `.supplyDialog`).
 2. **`#race` live tidak pernah ditulis** — hanya dibaca `IgpTrackAdapter`.
 3. **In-place** — tidak ada elemen baru; hanya text node, atribut `title`, dan
-   style sementara pada elemen milik game (warna tombol Repair).
+   style sementara pada elemen milik game (warna baris design + tombol Repair).
 4. **Restore-pertama** — sebelum setiap pembacaan, tulisan advisor
    dikembalikan agar adapter selalu membaca data game murni. Setiap tulisan
    menyimpan `data-igpas-orig` + `data-igpas-written` (atau pasangan

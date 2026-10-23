@@ -1,6 +1,6 @@
 // Test Advisor in-page (v0.7.0) — userscript sebenarnya atas fixture DOM nyata
 // (jsdom, runScripts outside-only). Verifikasi:
-//   - label design (Cars) ditulis ulang in-place di baris asli + label "estimasi";
+//   - baris design (Cars) diwarnai prioritas in-place + label "estimasi" di title;
 //   - panel supply di dalam .supplyDialog saat dialog terbuka;
 //   - panel ranking engine+chassis di halaman Manufacturers;
 //   - TIDAK ada jejak UI advisor di halaman lain (race dsb.);
@@ -59,7 +59,7 @@ const URL_IGP = "https://www.igpmanager.com/app/p=cars";
 const URL_TRANSFERS = "https://www.igpmanager.com/app/p=transfers";
 const URL_RACE = "https://www.igpmanager.com/app/index.php?page=race&tab=race";
 
-t("Design advisor: peringkat ditulis ke label asli Cars, tanpa elemen baru", () => {
+t("Design advisor: baris atribut Cars diwarnai prioritas, label asli utuh", () => {
   const s = bootOn(load("cars.html"), URL_IGP);
   // Tanpa section/badge baru: satu-satunya elemen advisor = toggle (+ style di head).
   assert(!s.doc.querySelector("section.igpas-adv-panel"), "panel terpisah masih ada");
@@ -70,20 +70,26 @@ t("Design advisor: peringkat ditulis ke label asli Cars, tanpa elemen baru", () 
     rows,
     r => r.querySelector(".attribute-rating-header span:not(.ratingVal)").textContent
   );
+  // Tidak ada anotasi teks "#n ..." di label; label game tetap asli.
   assert(
-    labels.every(x => /^#\d+ /.test(x)),
-    "semua label harus diawali peringkat (dapat: " + labels.join(" | ") + ")"
+    labels.every(x => !/^#\d+ /.test(x)),
+    "label masih dianotasi teks (dapat: " + labels.join(" | ") + ")"
   );
-  assert(labels.filter(x => /^#1 /.test(x)).length === 1, "harus tepat satu peringkat #1");
+  assert(labels[0] === "Acceleration" && labels[4] === "Fuel economy", "label asli berubah");
+  // Top-3 gap = merah; gap berikutnya = amber. Fuel/tyre/cooling adalah top-3.
+  const styleOf = id => s.doc.getElementById(id).getAttribute("style") || "";
+  assert(/rgba\(192, 57, 43, 0\.18\)/.test(styleOf("wrap-fuel_economy")), "Fuel harus merah");
+  assert(/rgba\(192, 57, 43, 0\.18\)/.test(styleOf("wrap-tyre_economy")), "Tyre harus merah");
+  assert(/rgba\(192, 57, 43, 0\.18\)/.test(styleOf("wrap-cooling")), "Cooling harus merah");
   assert(
-    /^#1 Fuel economy · 26 DP$/.test(labels.filter(x => /^#1 /.test(x))[0]),
-    "peringkat #1 harus Fuel economy ±26 DP (dapat: " + labels.join(" | ") + ")"
+    /rgba\(214, 137, 16, 0\.16\)/.test(styleOf("wrap-acceleration")),
+    "Acceleration harus amber"
   );
-  // Teks asli tersimpan untuk restore; angka & bar game tidak disentuh.
   assert(
-    s.doc.querySelector("#wrap-acceleration").getAttribute("data-igpas-orig") === "Acceleration",
-    "teks asli tidak disimpan di data-igpas-orig"
+    !s.doc.querySelector("#carAttributesDisplay .attribute-row[data-igpas-orig]"),
+    "masih ada anotasi teks"
   );
+  // Angka & bar game tidak disentuh.
   assert(
     s.doc.querySelector("#wrap-acceleration .ratingVal").textContent.trim() === "53",
     "nilai game ikut berubah"
@@ -93,7 +99,9 @@ t("Design advisor: peringkat ditulis ke label asli Cars, tanpa elemen baru", () 
     "bar game ikut berubah"
   );
   // Detail + estimasi di title baris yang sama.
-  const t1 = s.doc.querySelector("#wrap-fuel_economy").getAttribute("title");
+  const t1 = s.doc.getElementById("wrap-fuel_economy").getAttribute("title");
+  assert(/Prioritas #1/.test(t1), "title tanpa peringkat #1: " + t1);
+  assert(/prioritas utama/i.test(t1), "title tanpa status prioritas: " + t1);
   assert(/max liga/i.test(t1), "title tanpa max liga");
   assert(/estimasi/i.test(t1), "title tanpa label estimasi");
   s.close();
@@ -886,7 +894,7 @@ t("Race practice multi-lap: rata-rata 3 lap benar + idempoten render", () => {
 });
 
 ta(
-  "Render instan: baris Cars yang disuntik game async langsung berlabel tanpa aksi user",
+  "Render instan: baris Cars yang disuntik game async langsung diwarnai tanpa aksi user",
   async () => {
     // Bangun fixture render-async: tabel kosong (game belum commit DOM).
     const base = new JSDOM(load("cars.html"));
@@ -902,8 +910,8 @@ ta(
     const disp = s.doc.getElementById("carAttributesDisplay");
     assert(disp && disp.children.length === 0, "pra-kondisi: tabel harus kosong");
     assert(
-      !s.doc.querySelector(".attribute-row[data-igpas-orig]"),
-      "pra-kondisi: belum ada tulisan"
+      !s.doc.querySelector(".attribute-row[data-igpas-orig-style]"),
+      "pra-kondisi: belum ada warna"
     );
     // Game commit DOM async (satu innerHTML, tanpa klik/keyboard/navigasi dari user).
     disp.innerHTML = rowsHtml;
@@ -917,12 +925,21 @@ ta(
     );
     assert(labels.length === 8, "observer tidak me-render: " + labels.length + " label");
     assert(
-      labels.every(x => /^#\d+ /.test(x)),
-      "label tanpa peringkat: " + labels.join(" | ")
+      labels.every(x => !/^#\d+ /.test(x)),
+      "label masih dianotasi teks: " + labels.join(" | ")
     );
-    const first = labels.filter(x => /^#1 /.test(x))[0] || "";
-    assert(/^#1 Fuel economy · 26 DP$/.test(first), "prioritas #1 salah: " + labels.join(" | "));
+    const fuel = s.doc.getElementById("wrap-fuel_economy");
+    const accel = s.doc.getElementById("wrap-acceleration");
+    assert(
+      fuel && /rgba\(192, 57, 43, 0\.18\)/.test(fuel.getAttribute("style") || ""),
+      "Fuel belum merah"
+    );
+    assert(
+      accel && /rgba\(214, 137, 16, 0\.16\)/.test(accel.getAttribute("style") || ""),
+      "Acceleration belum amber"
+    );
     // Stabil: tidak ada loop render (satu pass tambahan tidak mengubah hasil).
+    const beforeStyle = fuel.getAttribute("style");
     await new Promise(r => setTimeout(r, 100));
     const labels2 = Array.prototype.map.call(
       s.doc.querySelectorAll(
@@ -931,30 +948,29 @@ ta(
       el => el.textContent
     );
     assert(labels2.join("|") === labels.join("|"), "label berubah sendiri (loop observer?)");
+    assert(fuel.getAttribute("style") === beforeStyle, "style berubah sendiri (loop observer?)");
     s.close();
   }
 );
 
 const tick = ms => new Promise(r => setTimeout(r, ms || 20));
 
-ta("Restore: game update label Cars → anotasi tunggal & orig ikut teks baru", async () => {
+ta("Restore: game update label Cars → label game utuh, warna/title dihitung ulang", async () => {
   const s = bootOn(load("cars.html"), URL_IGP);
   await tick();
-  const row = s.doc.querySelector("#carAttributesDisplay .attribute-row[data-igpas-orig]");
-  assert(row, "pra-kondisi: advisor belum menulis label");
+  const row = s.doc.getElementById("wrap-acceleration");
+  assert(row && row.hasAttribute("data-igpas-orig-style"), "pra-kondisi: baris belum diwarnai");
   const label = row.querySelector(".attribute-rating-header span:not(.ratingVal)");
   label.textContent = "Acceleration MAX"; // game menulis ulang label
   await tick(40);
-  const text = label.textContent;
   assert(
-    /^#\d+ Acceleration MAX · \d+ DP$/.test(text),
-    "anotasi tidak mengikuti teks game baru: " + text
+    label.textContent === "Acceleration MAX",
+    "label game ditimpa advisor: " + label.textContent
   );
-  assert((text.match(/ · /g) || []).length === 1, "anotasi menumpuk: " + text);
-  assert(
-    row.getAttribute("data-igpas-orig") === "Acceleration MAX",
-    "data-igpas-orig basi: " + row.getAttribute("data-igpas-orig")
-  );
+  assert(row.hasAttribute("data-igpas-orig-style"), "warna hilang setelah render ulang");
+  const title = row.getAttribute("title") || "";
+  assert(/Acceleration MAX/.test(title), "title tidak mengikuti label baru: " + title);
+  assert(/Prioritas #\d+/.test(title), "title bukan prioritas: " + title);
   s.close();
 });
 
@@ -987,23 +1003,25 @@ ta("Restore: game update judul Supply → verdict dihitung ulang tanpa duplikasi
   s.close();
 });
 
-ta("Restore: navigasi keluar mengembalikan teks game TERBARU (bukan teks lama)", async () => {
+ta("Restore: navigasi keluar mengembalikan style/title Cars, label game terbaru utuh", async () => {
   const s = bootOn(load("cars.html"), URL_IGP);
   await tick();
-  const row = s.doc.querySelector("#carAttributesDisplay .attribute-row[data-igpas-orig]");
-  assert(row, "pra-kondisi: advisor belum menulis label");
+  const row = s.doc.getElementById("wrap-acceleration");
+  assert(row && row.hasAttribute("data-igpas-orig-style"), "pra-kondisi: baris belum diwarnai");
   const label = row.querySelector(".attribute-rating-header span:not(.ratingVal)");
-  label.textContent = "Braking MAX";
+  label.textContent = "Acceleration MAX";
   await tick(40);
   // Game berpindah halaman studi → bukan halaman yang di-advisor-i.
   s.doc.getElementById("pageId").value = "standings";
   s.doc.dispatchEvent(new s.win.Event("click", { bubbles: true }));
   await tick(350); // debounce navigasi 250 ms
   assert(
-    label.textContent === "Braking MAX",
-    "label tidak dikembalikan ke teks game terbaru: " + label.textContent
+    label.textContent === "Acceleration MAX",
+    "label game terbaru berubah: " + label.textContent
   );
-  assert(!row.hasAttribute("data-igpas-orig"), "data-igpas-orig tertinggal");
+  assert(!row.hasAttribute("style"), "style advisor tertinggal: " + row.getAttribute("style"));
+  assert(!row.hasAttribute("data-igpas-orig-style"), "data-igpas-orig-style tertinggal");
+  assert(!row.hasAttribute("data-igpas-written-style"), "data-igpas-written-style tertinggal");
   assert(!row.hasAttribute("title"), "title advisor tertinggal: " + row.getAttribute("title"));
   s.close();
 });
