@@ -1,8 +1,8 @@
 {
   "name": "igpas",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "private": true,
-  "description": "I.G.P.A.S \u2014 iGP Analytics & Study System (userscript studi strategi iGP Manager, tanpa build step)",
+  "description": "I.G.P.A.S — iGP Analytics & Study System (userscript studi strategi iGP Manager, tanpa build step)",
   "license": "GPL-3.0-or-later",
   "type": "commonjs",
   "engines": {

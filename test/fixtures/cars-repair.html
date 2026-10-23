@@ -1,0 +1,161 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Cars</title>
+  </head>
+  <body>
+    <input type="hidden" id="pageId" value="cars" />
+    <div id="page-content">
+      <span id="page-title-text">Cars</span>
+      <div class="tabs two-tabs">
+        <a href="#overview" id="carTut3">Overview</a>
+        <a href="#repair" id="carTut1" class="active">Repair</a>
+      </div>
+      <div class="tabs-content w-full max-w-none">
+        <div id="overview" style="display: none"></div>
+        <div id="repair">
+          <div class="w-full">
+            <div class="notice">
+              <a href="d=parts" class="btn"
+                ><span class="totalParts font-heading">51</span></a
+              >
+              Parts
+              <a href="d=parts&amp;tab=engines" class="btn"
+                ><span class="totalEngines font-heading">40</span></a
+              >
+              Engines
+              <br />
+              <span class="max-xs:text-[0.8em] grey"
+                >Race(s) to next engine restock: 15</span
+              >
+            </div>
+          </div>
+
+          <div class="grid w-full grid-cols-1 gap-2 md:grid-cols-2 md:gap-2">
+            <div class="min-w-0">
+              <div class="c-wrap mb-0" id="carTut2">
+                <div class="c-head font-heading dull px-2 py-2 text-center">Car 1</div>
+                <div class="flex justify-between gap-2">
+                  <div>
+                    <div class="staffImage halfImage cursor-pointer loaded" id="d1Pic">
+                      <a href="d=driver&amp;id=1" class="linkParent" data-parent="#d1Pic"></a>
+                      <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" />
+                      <div class="driverName"><span class="font-heading">Smith</span></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div
+                      class="ratingCircle red"
+                      data-value="30"
+                      data-max="100"
+                      data-percentage="false"
+                      id="c6745727Condition"
+                    >
+                      <div class="ratingCircle-content"></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div
+                      class="ratingCircle orange"
+                      data-value="62"
+                      data-max="100"
+                      data-percentage="false"
+                      id="c6745727Engine"
+                    >
+                      <div class="ratingCircle-content"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="c-foot flex justify-between gap-2 px-2 py-2">
+                  <div>
+                    <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" />
+                  </div>
+                  <div>
+                    <a
+                      href="type=fix&amp;car=6745727&amp;btn=c1PartSwap&amp;jsReply=fix"
+                      id="c1PartSwap"
+                      class="btn w-full m-0 liveLock tooltip"
+                      data-tip="Your league applies a 0.9× parts multiplier"
+                      >Fix
+                      <svg class="icon-24"><use xlink:href="#turbo"></use></svg> 6</a
+                    >
+                  </div>
+                  <div>
+                    <a
+                      href="type=engine&amp;car=6745727&amp;btn=c1EngSwap&amp;jsReply=engine"
+                      id="c1EngSwap"
+                      class="btn w-full m-0 liveLock"
+                      >Replace
+                      <svg class="icon-24"><use xlink:href="#engine"></use></svg> 1</a
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="min-w-0">
+              <div class="c-wrap mb-0">
+                <div class="c-head font-heading dull px-2 py-2 text-center">Car 2</div>
+                <div class="flex justify-between gap-2">
+                  <div>
+                    <div class="staffImage halfImage cursor-pointer loaded" id="d2Pic">
+                      <a href="d=driver&amp;id=2" class="linkParent" data-parent="#d2Pic"></a>
+                      <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" />
+                      <div class="driverName"><span class="font-heading">Kapur</span></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div
+                      class="ratingCircle red"
+                      data-value="31"
+                      data-max="100"
+                      data-percentage="false"
+                      id="c6745728Condition"
+                    >
+                      <div class="ratingCircle-content"></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div
+                      class="ratingCircle orange"
+                      data-value="64"
+                      data-max="100"
+                      data-percentage="false"
+                      id="c6745728Engine"
+                    >
+                      <div class="ratingCircle-content"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="c-foot flex justify-between gap-2 px-2 py-2">
+                  <div>
+                    <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" />
+                  </div>
+                  <div>
+                    <a
+                      href="type=fix&amp;car=6745728&amp;btn=c2PartSwap&amp;jsReply=fix"
+                      id="c2PartSwap"
+                      class="btn w-full m-0 liveLock tooltip"
+                      data-tip="Your league applies a 0.9× parts multiplier"
+                      >Fix
+                      <svg class="icon-24"><use xlink:href="#turbo"></use></svg> 6</a
+                    >
+                  </div>
+                  <div>
+                    <a
+                      href="type=engine&amp;car=6745728&amp;btn=c2EngSwap&amp;jsReply=engine"
+                      id="c2EngSwap"
+                      class="btn w-full m-0 liveLock"
+                      >Replace
+                      <svg class="icon-24"><use xlink:href="#engine"></use></svg> 1</a
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

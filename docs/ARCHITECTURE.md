@@ -3,7 +3,7 @@
 Penasihat studi **read-only** untuk iGP Manager dalam satu file userscript,
 tanpa build step, tanpa web GUI, tanpa jaringan, dan tanpa penyimpanan.
 
-Versi saat ini 0.9.3.
+Versi saat ini 0.9.4.
 
 ## 1. Ruang lingkup
 
@@ -11,6 +11,7 @@ Versi saat ini 0.9.3.
   Supply, Drivers & Staff, Transfers) dan tab **Setup/Strategy pra-balapan**.
 - ✅ Menu capture DOM dengan redaksi PII untuk pemetaan fixture.
 - ✅ Supply **switch-aware**: efisiensi = Σ bonus per 1jt biaya. Peringkat menggabungkan supplier aktif + alternatif (seri dimenangkan aktif), judul menulis `TERBAIK: AKTIF` atau `TERBAIK: ALTERNATIF #1`; `★`/`ganti dianjurkan` hanya bila alternatif ≥5% lebih efisien — mencegah loop ganti supplier.
+- ✅ Cars **Repair**: saran `FIX parts` / `REPLACE engine` dari kondisi yang tampil + biaya tombol + stok; ambang heuristik ≤50% ganti, ≤60% siap-siap, >60% tunda. Tidak mengklik tombol; stok kurang ditandai `⚠`.
 - ❌ Tidak ada Command Center / web GUI / GitHub Pages.
 - ❌ Tidak ada mailbox antar-tab, GM storage, profil, atau snapshot.
 - ❌ Tidak scrape/automasi saat balapan live; `#race` tidak pernah ditulis.
@@ -21,8 +22,8 @@ Versi saat ini 0.9.3.
 | Komponen | Peran |
 | --- | --- |
 | `Utils` | Helper murni: parsing angka/uang, `numOrNull`, `statIndex`, `roleCode`, format |
-| `IGPCore` | Mesin heuristik murni & teruji: `designPriority`, `rankSuppliers`, `compareSuppliers`, `rankManufacturerItems`, `describeTrack`, `summarizePracticeLaps`, `recommendRaceFuel`, `practiceTyreLife`, `summarizeStrategy`, `stintSplit`, `parseLapTime`, dll. |
-| `IgpCarsAdapter` | Parser read-only halaman Cars → `{ attrs, best, designPoints, suppliers, … }` |
+| `IGPCore` | Mesin heuristik murni & teruji: `designPriority`, `repairAdvice`, `rankSuppliers`, `compareSuppliers`, `rankManufacturerItems`, `describeTrack`, `summarizePracticeLaps`, `recommendRaceFuel`, `practiceTyreLife`, `summarizeStrategy`, `stintSplit`, `parseLapTime`, dll. |
+| `IgpCarsAdapter` | Parser read-only halaman Cars → `{ attrs, best, designPoints, suppliers, … }`; tab Repair dibaca langsung oleh `Advisor.mountRepair` (kondisi, biaya tombol, stok) |
 | `IgpSupplyAdapter` | Parser read-only dialog Supply → `{ type, current, alternatives }` |
 | `IgpManufacturersAdapter` | Parser read-only tabel engine + chassis |
 | `IgpStaffAdapter` | Parser read-only Drivers & Staff (driver, staff, pit crew) |
@@ -85,13 +86,13 @@ Tidak ada langkah jaringan, storage, atau sinkronisasi antar-tab.
 
 ## 6. Testing
 
-- `test/core.test.js` — 82 test murni untuk `IGPCore`/`Utils`.
+- `test/core.test.js` — 85 test murni untuk `IGPCore`/`Utils`.
 - `test/capture.test.js` — 8 test redaksi `PageCapture` (jsdom).
-- `test/advisor.test.js` — 28 test advisor vs fixture DOM nyata (jsdom):
+- `test/advisor.test.js` — 30 test advisor vs fixture DOM nyata (jsdom):
   in-place, restore, idempoten, `#race` zero-UI, menu capture.
 - `test/fixtures/*.html` — capture DOM tersanitasi (PII/script dibuang).
 
-Total **118 test**; dijalankan oleh `npm test` dan `npm run verify` (CI Node
+Total **123 test**; dijalankan oleh `npm test` dan `npm run verify` (CI Node
 22/24).
 
 ## 7. Sejarah singkat

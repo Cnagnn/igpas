@@ -1,6 +1,6 @@
 # PRIVACY & RISIKO — I.G.P.A.S
 
-Berlaku untuk v0.9.3. Ringkas dan faktual: apa yang tidak dilakukan userscript,
+Berlaku untuk v0.9.4. Ringkas dan faktual: apa yang tidak dilakukan userscript,
 apa yang disunting saat capture, dan risiko apa yang tetap ada.
 
 ## 1. Tidak ada jaringan

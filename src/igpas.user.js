@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.9.3
-// @description  Read-only in-page study advisor for iGP Manager: design-point priorities, supplier/manufacturer rankings, staff/transfer notes, and pre-race setup/fuel/tyre/stint estimates written only as text/title on original page elements (never the live Race tab). Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
-// @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design point, peringkat supplier/manufacturer, catatan staff/transfers, dan estimasi setup/fuel/ban/stint pra-balapan — hanya teks/title pada elemen asli (bukan tab Race live). Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
+// @version      0.9.4
+// @description  Read-only in-page study advisor for iGP Manager: design-point priorities, supplier/manufacturer rankings, parts/engine repair advice, staff/transfer notes, and pre-race setup/fuel/tyre/stint estimates written only as text/title on original page elements (never the live Race tab). Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
+// @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design point, peringkat supplier/manufacturer, saran ganti parts/engine, catatan staff/transfers, dan estimasi setup/fuel/ban/stint pra-balapan — hanya teks/title pada elemen asli (bukan tab Race live). Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
 // @supportURL   https://github.com/Cnagnn/igpas/issues
@@ -18,7 +18,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.9.3';
+    const VERSION = '0.9.4';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -435,6 +435,58 @@
                     totalGap: totalGap,
                     designPoints: numOrNull(p ? p.designPoints : null),
                     unbenchmarked: rows.filter(r => r.gap == null).length,
+                },
+            };
+        },
+
+        /**
+         * Saran ganti parts/engine dari kondisi mobil (v0.9.4 Advisor).
+         * Membaca kondisi yang MEMANG tampil di halaman + biaya tombol
+         * Fix/Replace + stok gudang. Ambang eksplisit (bukan rumus game):
+         *   ≤50% = ganti sekarang, 50–60% = siap-siap, >60% = tunda.
+         * "enough" hanya dihitung bila biaya DAN stok terbaca; null = tidak
+         * diketahui (jangan dikarang menjadi cukup/kurang).
+         * @param {object} p {
+         *   condition, engine, partCost, engineCost,
+         *   partsStock, engineStock, restockRaces
+         * }
+         */
+        repairAdvice(p) {
+            const numOrNull = Utils.numOrNull;
+            const src = p || {};
+            const condition = numOrNull(src.condition);
+            const engine = numOrNull(src.engine);
+            if (condition == null && engine == null) {
+                return { ok: false, error: 'Kondisi parts/engine belum terbaca' };
+            }
+            if (condition != null && (condition < 0 || condition > 100)) {
+                return { ok: false, error: 'Kondisi parts harus 0–100' };
+            }
+            if (engine != null && (engine < 0 || engine > 100)) {
+                return { ok: false, error: 'Kondisi engine harus 0–100' };
+            }
+            const partsStock = numOrNull(src.partsStock);
+            const engineStock = numOrNull(src.engineStock);
+            const partCost = numOrNull(src.partCost);
+            const engineCost = numOrNull(src.engineCost);
+            const restockRaces = numOrNull(src.restockRaces);
+            const judge = (value, cost, stock) => {
+                if (value == null) {
+                    return { value: null, status: 'unknown', cost: cost, stock: stock, enough: null };
+                }
+                const status = (value <= 50) ? 'now' : (value <= 60) ? 'soon' : 'hold';
+                const enough = (cost == null || stock == null) ? null : (stock >= cost);
+                return { value: value, status: status, cost: cost, stock: stock, enough: enough };
+            };
+            return {
+                ok: true,
+                values: {
+                    parts: judge(condition, partCost, partsStock),
+                    engine: judge(engine, engineCost, engineStock),
+                    partsStock: partsStock,
+                    engineStock: engineStock,
+                    restockRaces: restockRaces,
+                    thresholds: { now: 50, soon: 60 },
                 },
             };
         },
@@ -1825,6 +1877,133 @@
             });
         }
 
+        /* Halaman Cars tab Repair: saran FIX parts / REPLACE engine.
+         * IN-PLACE PENUH (tanpa elemen baru): judul kartu "Car N" ditulis
+         * ulang jadi "Car N | FIX parts 30% · engine 62% (tunda)"; detail
+         * biaya/stok/ambang di title kartu + kedua lingkaran kondisi. Teks
+         * asli disimpan di data-igpas-orig dan dikembalikan oleh
+         * restoreRepair(); tombol game tidak pernah diklik/diubah. */
+        function restoreRepair() {
+            const repair = document.getElementById('repair');
+            if (!repair) return;
+            for (const el of repair.querySelectorAll('[data-igpas-orig]')) {
+                try { restoreMarkedText(el); } catch { /* jangan pernah merusak halaman game */ }
+                el.removeAttribute('data-igpas-orig');
+                el.removeAttribute('data-igpas-origmode');
+                el.removeAttribute('data-igpas-written');
+            }
+            for (const el of repair.querySelectorAll('[data-igpas-title], [data-igpas-written-title]')) {
+                try { restoreTitle(el); } catch { /* abaikan */ }
+            }
+        }
+        function repairStatusText(part, kind) {
+            const value = part && part.value != null ? part.value : null;
+            const status = part ? part.status : 'unknown';
+            if (value == null || status === 'unknown') {
+                return kind === 'parts' ? 'parts tidak terbaca' : 'engine tidak terbaca';
+            }
+            if (kind === 'parts') {
+                if (status === 'now') return 'FIX parts ' + value + '%';
+                if (status === 'soon') return 'parts ' + value + '% (siap)';
+                return 'parts ' + value + '% (ok)';
+            }
+            if (status === 'now') return 'REPLACE engine ' + value + '%';
+            if (status === 'soon') return 'engine ' + value + '% (siap)';
+            return 'engine ' + value + '% (tunda)';
+        }
+        function repairVerdictText(part, kind) {
+            const status = part ? part.status : 'unknown';
+            if (status === 'unknown') return 'kondisi tidak terbaca';
+            if (kind === 'parts') {
+                if (status === 'now') return 'fix sekarang';
+                if (status === 'soon') return 'siap-siap fix';
+                return 'masih layak — tunda fix';
+            }
+            if (status === 'now') return 'replace sekarang';
+            if (status === 'soon') return 'siap-siap replace';
+            return 'tunda replace';
+        }
+        function repairTitle(part, kind, restockRaces) {
+            if (!part || part.value == null) {
+                return (kind === 'parts' ? 'Parts' : 'Engine') +
+                    ' tidak terbaca — tidak ada saran yang dikarang.';
+            }
+            const unit = kind === 'parts' ? 'parts' : 'engine';
+            const bits = [repairVerdictText(part, kind)];
+            if (part.cost != null) {
+                bits.push(part.cost + ' ' + unit + (part.stock != null ? '; stok ' + part.stock : '; stok tidak terbaca'));
+            } else {
+                bits.push('biaya tombol tidak terbaca');
+            }
+            if (part.enough === false) bits.push('STOK KURANG');
+            if (kind === 'engine' && restockRaces != null) bits.push('restock ' + restockRaces + ' race');
+            bits.push('ambang studi ≤50% ganti, ≤60% siap-siap');
+            return (kind === 'parts' ? 'Parts ' : 'Engine ') + part.value + '% — ' + bits.join(' · ') +
+                ' — estimasi, bukan rumus game.';
+        }
+        function mountRepair() {
+            if (pageId() !== 'cars') { restoreRepair(); return; }
+            const repair = document.getElementById('repair');
+            if (!repair) { restoreRepair(); return; }
+            restoreRepair(); // teks asli kembali dulu agar captures baca data murni
+            const notice = repair.querySelector('.notice');
+            const numOf = el => (el ? Utils.numOrNull(el.textContent) : null);
+            const partsStock = numOf(repair.querySelector('.notice .totalParts'));
+            const engineStock = numOf(repair.querySelector('.notice .totalEngines'));
+            const restockM = notice ? Utils.clean(notice.textContent)
+                .match(/Race\(s\) to next engine restock:\s*(\d+)/i) : null;
+            const restockRaces = restockM ? Number(restockM[1]) : null;
+            for (const card of repair.querySelectorAll('.c-wrap')) {
+                const head = card.querySelector('.c-head');
+                const condEl = card.querySelector('.ratingCircle[id$="Condition"]');
+                const engEl = card.querySelector('.ratingCircle[id$="Engine"]');
+                if (!head || (!condEl && !engEl)) continue;
+                const valueOf = el => (el ? Utils.numOrNull(el.getAttribute('data-value')) : null);
+                const costOf = (el, label) => {
+                    if (!el) return null;
+                    const m = Utils.clean(el.textContent).match(new RegExp(label + '\\s*(\\d+)', 'i'));
+                    return m ? Number(m[1]) : null;
+                };
+                const partCost = costOf(card.querySelector('a[id$="PartSwap"]'), 'Fix');
+                const engineCost = costOf(card.querySelector('a[id$="EngSwap"]'), 'Replace');
+                const res = IGPCore.repairAdvice({
+                    condition: valueOf(condEl),
+                    engine: valueOf(engEl),
+                    partCost: partCost,
+                    engineCost: engineCost,
+                    partsStock: partsStock,
+                    engineStock: engineStock,
+                    restockRaces: restockRaces,
+                });
+                if (!res.ok) continue;
+                const parts = res.values.parts;
+                const engine = res.values.engine;
+                const warn = part => (part && part.enough === false ? ' ⚠' : '');
+                const orig = Utils.clean(head.textContent);
+                const newHead = orig + ' | ' + repairStatusText(parts, 'parts') + warn(parts) +
+                    ' · ' + repairStatusText(engine, 'engine') + warn(engine);
+                writeSelfText(head, newHead);
+                saveTitle(head);
+                const headTip = 'Saran repair: ' + repairStatusText(parts, 'parts') + ' · ' +
+                    repairStatusText(engine, 'engine') + '. Stok parts ' +
+                    (partsStock == null ? '—' : partsStock) + ' · engine ' +
+                    (engineStock == null ? '—' : engineStock) +
+                    (restockRaces != null ? ' · restock engine ' + restockRaces + ' race' : '') +
+                    '. Ambang studi 50%/60% — estimasi, bukan rumus game.';
+                head.setAttribute('title', headTip);
+                head.setAttribute('data-igpas-written-title', headTip);
+                const annotateCircle = (el, part, kind) => {
+                    if (!el) return;
+                    saveTitle(el);
+                    const tip = repairTitle(part, kind, restockRaces);
+                    el.setAttribute('title', tip);
+                    el.setAttribute('data-igpas-written-title', tip);
+                };
+                annotateCircle(condEl, parts, 'parts');
+                annotateCircle(engEl, engine, 'engine');
+            }
+        }
+
         /* Dialog Supply (engine/fuel/tyre): peringkat alternatif + verdict aktif.
          * IN-PLACE PENUH (tanpa elemen baru): teks biaya tiap kartu alternatif
          * ditulis ulang jadi "#n · 350k" (+ ★ nilai terbaik / · termurah);
@@ -2261,7 +2440,7 @@
             el.removeAttribute('data-igpas-written-title');
         }
         function restoreTeamInPlace() {
-            const SKIP = '#carAttributesDisplay, .supplyDialog, #engine-table, #chassis-table, #setup, #strategy';
+            const SKIP = '#carAttributesDisplay, .supplyDialog, #engine-table, #chassis-table, #setup, #strategy, #repair';
             for (const el of document.querySelectorAll('[data-igpas-orig]')) {
                 if (el.closest(SKIP)) continue;
                 try {
@@ -2531,7 +2710,7 @@
         let renderObserver = null;
         let renderObserving = false;
         const WATCH_SEL = '#carAttributesDisplay, #carAttributes, #carsDesignPoints,' +
-            ' #leagueDesignData, #carAttributesBonuses, .carsSuppliers, .supplyDialog,' +
+            ' #leagueDesignData, #carAttributesBonuses, .carsSuppliers, #repair, .supplyDialog,' +
             ' #engine-table, #chassis-table, #drivers, #staff, #driverStatsTable,' +
             ' #driver-table, #staff-table, #cdTransfersRefresh, #setup, #strategy, #pageId';
         function observeOff() {
@@ -2617,6 +2796,7 @@
                     PREFIX + '-rsetup', PREFIX + '-rsetup-wrap',
                     PREFIX + '-rstrategy', PREFIX + '-rstrategy-wrap']);
                 restoreDesign(); // kembalikan teks label asli (tanpa elemen baru)
+                restoreRepair(); // kembalikan judul kartu + title kondisi
                 restoreSupply(); // kembalikan teks biaya kartu + judul dialog
                 restoreManufacturers(); // kembalikan teks nama baris
                 restoreTeamInPlace(); // kembalikan nama staff/transfers + title
@@ -2627,11 +2807,13 @@
             removeIfAny([PREFIX + '-style']);
             try {
                 restoreDesign();
+                restoreRepair();
                 restoreSupply();
                 restoreManufacturers();
                 restoreTeamInPlace();
                 restoreRaceInPlace();
                 mountDesign();
+                mountRepair();
                 mountSupply();
                 mountManufacturers();
                 mountTeam();

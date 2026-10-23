@@ -988,6 +988,54 @@ t("designPriority: designPoints null → null (bukan 0 DP)", () => {
   assert.strictEqual(z.values.designPoints, 0);
 });
 
+t("repairAdvice: parts 30% fix sekarang, engine 62% tunda replace", () => {
+  const r = IGPCore.repairAdvice({
+    condition: "30",
+    engine: "62",
+    partCost: "6",
+    engineCost: "1",
+    partsStock: "51",
+    engineStock: "40",
+    restockRaces: "15",
+  });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.values.parts.value, 30);
+  assert.strictEqual(r.values.parts.status, "now");
+  assert.strictEqual(r.values.parts.cost, 6);
+  assert.strictEqual(r.values.parts.stock, 51);
+  assert.strictEqual(r.values.parts.enough, true);
+  assert.strictEqual(r.values.engine.value, 62);
+  assert.strictEqual(r.values.engine.status, "hold");
+  assert.strictEqual(r.values.engine.enough, true);
+  assert.strictEqual(r.values.restockRaces, 15);
+  assert.deepStrictEqual(r.values.thresholds, { now: 50, soon: 60 });
+});
+
+t("repairAdvice: batas ambang 50/60 dan stok kurang", () => {
+  const at = v => IGPCore.repairAdvice({ condition: v, partsStock: 10, partCost: 6 }).values.parts;
+  assert.strictEqual(at(50).status, "now");
+  assert.strictEqual(at(51).status, "soon");
+  assert.strictEqual(at(60).status, "soon");
+  assert.strictEqual(at(61).status, "hold");
+  const short = IGPCore.repairAdvice({
+    condition: 30,
+    partCost: 6,
+    partsStock: 5,
+  }).values.parts;
+  assert.strictEqual(short.enough, false);
+});
+
+t("repairAdvice: data tak terbaca tidak dikarang", () => {
+  assert.strictEqual(IGPCore.repairAdvice({}).ok, false);
+  assert.strictEqual(IGPCore.repairAdvice({ condition: 101 }).ok, false);
+  const r = IGPCore.repairAdvice({ condition: 30, engine: null });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.values.engine.value, null);
+  assert.strictEqual(r.values.engine.status, "unknown");
+  assert.strictEqual(r.values.engine.enough, null);
+  assert.strictEqual(r.values.parts.enough, null); // biaya & stok tidak terbaca
+});
+
 t("recommendRaceFuel: reserve wajib eksplisit; buffer dihitung vs total", () => {
   assert.strictEqual(IGPCore.recommendRaceFuel({ raceLaps: 63, fuelPerLap: 2.4 }).ok, false);
   assert.strictEqual(
