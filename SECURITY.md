@@ -25,8 +25,8 @@ Kami akan konfirmasi dalam **48 jam** dan rilis fix + advisory setelah patch sia
 
 - `src/igpas.user.js` **tidak boleh** mengandung `fetch`/`XHR`/`GM_xmlhttpRequest`/`eval`/`unsafeWindow`
   — di-guard oleh `ci.yml`. Jika Anda menemukan pelanggaran, laporkan segera.
-- Userscript hanya membaca DOM yang tampak (read-only) + storage lokal (`GM_*`);
-  tidak ada exfiltrasi.
+- Userscript membaca DOM yang tampil dan hanya menulis teks/`title`/warna sementara pada
+  elemen asli — tanpa klik/submit, tanpa storage lokal (`GM_*`), tanpa exfiltrasi.
 
 ## Hardening untuk kontributor
 

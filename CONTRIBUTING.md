@@ -22,7 +22,7 @@ Butuh Node ≥ 22.22.2 (lihat `.nvmrc`).
 | Format       | `npm run format:check`   | `prettier --check .` (fix: `npm run format`)                         |
 | Version sync | `npm run versions:check` | source: `package.json` → `@version` + `const VERSION` + README badge |
 | Guards       | `npm run guards:check`   | `@match` hanya igpmanager.com + 0 network/eval/remote code           |
-| Tests        | `npm test`               | 118 tests (82 core + 8 capture + 28 advisor)                         |
+| Tests        | `npm test`               | 110 tests (72 core + 8 capture + 30 advisor)                         |
 
 CI (`.github/workflows/ci.yml`) menjalankan `npm run verify` di Node 22 **dan** 24. Guard menolak `fetch`/XHR/`sendBeacon`/WebSocket/EventSource/dynamic
 import/`eval`/`unsafeWindow`, `@require`/`@connect`, dan `@match` di luar
