@@ -141,7 +141,8 @@ t("Supply advisor: peringkat ditulis ke kartu asli dialog (engine), tanpa elemen
   // Verdict aktif ditulis ke judul dialog asli.
   const h2 = s.doc.querySelector(".dialog-subhead-content h2");
   assert(
-    h2.textContent === "Engine supply · bonus kalah, biaya kalah vs alternatif",
+    h2.textContent ===
+      "Engine supply · bonus kalah, biaya kalah vs alternatif · pertimbangkan ganti (#1, +88% nilai/1M)",
     "judul verdict salah: " + h2.textContent
   );
   assert(
@@ -153,6 +154,48 @@ t("Supply advisor: peringkat ditulis ke kartu asli dialog (engine), tanpa elemen
     "title judul tanpa pembanding termurah"
   );
   assert(/estimasi/i.test(h2.getAttribute("title") || ""), "title judul tanpa label estimasi");
+  s.close();
+});
+
+t("Supply advisor: supplier aktif lebih efisien → alternatif tanpa #1/★", () => {
+  // Skenario keluhan: supplier aktif Σ4 @250k = 16/1M, alternatif terbaik
+  // Σ6 @400k = 15/1M. Jangan menobatkan alternatif #1 — itu memicu loop ganti
+  // supplier. Tampilkan nilai/1M saja dan tegaskan "tetap".
+  const s = bootOn(load("supply-engine.html").replace("500k per race", "250k per race"), URL_IGP);
+  const links = Array.prototype.slice.call(s.doc.querySelectorAll(".supplyDialog a.btn.confirm"));
+  const texts = links.map(a => {
+    for (const nd of a.childNodes) {
+      if (nd.nodeType === 3 && nd.textContent.trim() !== "") return nd.textContent;
+    }
+    return "";
+  });
+  assert(texts.length === 5, "kartu alternatif harus 5, dapat " + texts.length);
+  assert(
+    texts.every(x => !/^#/.test(x)),
+    "alternatif masih diberi peringkat saat aktif lebih efisien: " + texts.join(" | ")
+  );
+  assert(
+    texts.every(x => !/★/.test(x)),
+    "alternatif masih diberi ★ saat aktif lebih efisien: " + texts.join(" | ")
+  );
+  assert(
+    texts.every(x => /^nilai .+\/1M · /.test(x)),
+    "label nilai/1M tidak ditulis: " + texts.join(" | ")
+  );
+  const h2 = s.doc.querySelector(".dialog-subhead-content h2");
+  assert(
+    / · tetap \(aktif 16\/1M\)$/.test(h2.textContent),
+    "judul harus menegaskan tetap: " + h2.textContent
+  );
+  assert(
+    /nilai\/1M aktif 16/.test(h2.getAttribute("title") || ""),
+    "title judul tanpa nilai/1M aktif: " + h2.getAttribute("title")
+  );
+  const card = links[0].closest(".inline-block");
+  assert(
+    /aktif 16\/1M lebih efisien — tetap/.test(card.getAttribute("title") || ""),
+    "title kartu tidak menegaskan tetap: " + card.getAttribute("title")
+  );
   s.close();
 });
 
@@ -820,7 +863,10 @@ ta("Restore: game update judul Supply → verdict dihitung ulang tanpa duplikasi
     /^Fuel supply · /.test(h2.textContent),
     "verdict tidak mengikuti judul baru: " + h2.textContent
   );
-  assert((h2.textContent.match(/ · /g) || []).length === 1, "verdict menumpuk: " + h2.textContent);
+  assert(
+    (h2.textContent.match(/ · bonus /g) || []).length === 1,
+    "verdict menumpuk: " + h2.textContent
+  );
   assert(
     h2.getAttribute("data-igpas-orig") === "Fuel supply",
     "orig judul basi: " + h2.getAttribute("data-igpas-orig")

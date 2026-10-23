@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.9.0
+// @version      0.9.1
 // @description  Read-only in-page study advisor for iGP Manager: design-point priorities, supplier/manufacturer rankings, staff/transfer notes, and pre-race setup/fuel/tyre/stint estimates written only as text/title on original page elements (never the live Race tab). Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
 // @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design point, peringkat supplier/manufacturer, catatan staff/transfers, dan estimasi setup/fuel/ban/stint pra-balapan — hanya teks/title pada elemen asli (bukan tab Race live). Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
 // @license      GPL-3.0-or-later
@@ -18,7 +18,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.9.0';
+    const VERSION = '0.9.1';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -1884,7 +1884,30 @@
             // Gagal jujur: tanpa angka, tanpa modifikasi apa pun (tanpa panel).
             if (!rank.ok) return;
             const cmp = IGPCore.compareSuppliers({ current: s.current, alternatives: s.alternatives });
-            const bestId = rank.values.bestValueId;
+            // Efisiensi supplier aktif (Σ bonus per 1M biaya) memakai metrik yang
+            // sama dengan rankSuppliers. Ganti supplier HANYA dianjurkan bila
+            // alternatif jelas lebih efisien: tanpa ambang ini, alternatif selalu
+            // "menang" peringkat dan user berpindah supplier berulang-ulang
+            // (biaya sign-on berulang = loop mahal).
+            const SWITCH_MARGIN = 1.05; // minimal 5% lebih efisien
+            const curBonus = cmp.ok ? cmp.values.current.bonus : null;
+            const curCost = cmp.ok ? cmp.values.current.cost : null;
+            const curValuePerCost = (curBonus != null && curCost != null && curCost > 0)
+                ? Math.round((curBonus / curCost) * 1e6 * 100) / 100
+                : null;
+            const bestAlt = rank.values.ranked.find(r => r.valuePerCost != null) || null;
+            const switchRec = !!(curValuePerCost != null && bestAlt &&
+                (curValuePerCost <= 0
+                    ? bestAlt.valuePerCost > 0
+                    : bestAlt.valuePerCost > curValuePerCost * SWITCH_MARGIN));
+            // Tanpa rekomendasi ganti: kartu menampilkan nilai/1M, bukan #1 —
+            // peringkat pada daftar alternatif tidak boleh mendorong churn.
+            const showRanks = switchRec;
+            const bestId = switchRec ? bestAlt.id : null;
+            const bestRank = switchRec ? rank.values.ranked.findIndex(r => r.eId === bestAlt.eId) + 1 : null;
+            const gainPct = (switchRec && curValuePerCost > 0 && bestAlt.valuePerCost != null)
+                ? Math.round((bestAlt.valuePerCost / curValuePerCost - 1) * 100)
+                : null;
             const cheapId = rank.values.cheapestId;
             // Peta kartu per eId — parsing identik adapter (anti substring eId=1 vs eId=10).
             const cards = new Map();
@@ -1909,11 +1932,13 @@
                 if (!costNode) return;
                 const orig = costNode.textContent;
                 const isBest = bestId != null && r.id === bestId;
-                const isCheap = !isBest && cheapId != null && r.id === cheapId;
+                const isCheap = showRanks && !isBest && cheapId != null && r.id === cheapId;
                 link.setAttribute('data-igpas-orig', orig);
                 link.setAttribute('data-igpas-origmode', 'node');
-                const newCost = '#' + (i + 1) + ' · ' + orig.trim() +
-                    (isBest ? ' ★' : '') + (isCheap ? ' · termurah' : '');
+                const newCost = showRanks
+                    ? '#' + (i + 1) + ' · ' + orig.trim() +
+                      (isBest ? ' ★' : '') + (isCheap ? ' · termurah' : '')
+                    : 'nilai ' + (r.valuePerCost == null ? '—' : r.valuePerCost) + '/1M · ' + orig.trim();
                 costNode.textContent = newCost;
                 link.setAttribute('data-igpas-written', newCost);
                 if (card) {
@@ -1921,11 +1946,16 @@
                     // restore presisi tanpa menyapu title milik game.
                     card.setAttribute('data-igpas-title',
                         card.hasAttribute('title') ? card.getAttribute('title') : '');
-                    const advisorTitle = '#' + (i + 1) + ' dari ' + n +
-                        (isBest ? ' · nilai terbaik' : '') + (isCheap ? ' · termurah' : '') +
+                    const advisorTitle = (showRanks ? '#' + (i + 1) + ' dari ' + n : 'Alternatif') +
+                        (isBest ? ' · rekomendasi ganti' : '') +
+                        (isCheap ? ' · termurah' : '') +
                         ' — Σ bonus ' + (r.value == null ? '—' : (r.value > 0 ? '+' : '') + r.value) +
                         ' · ' + fmtMoney(r.cost) + '/race · nilai/1M ' +
                         (r.valuePerCost == null ? '—' : r.valuePerCost) +
+                        (curValuePerCost != null
+                            ? ' · aktif ' + curValuePerCost + '/1M' +
+                              (switchRec ? '' : ' lebih efisien — tetap')
+                            : ' · aktif tak terbaca') +
                         ' — estimasi, bukan rumus game.';
                     card.setAttribute('title', advisorTitle);
                     card.setAttribute('data-igpas-written-title', advisorTitle);
@@ -1941,14 +1971,23 @@
                     const kc = kata(cmp.values.cost.verdict);
                     if (kb) parts.push('bonus ' + kb);
                     if (kc) parts.push('biaya ' + kc);
-                    if (parts.length) {
+                    let verdictTxt = parts.length ? parts.join(', ') + ' vs alternatif' : '';
+                    if (curValuePerCost != null) {
+                        verdictTxt += (verdictTxt ? ' · ' : '') + (switchRec
+                            ? 'pertimbangkan ganti (#' + bestRank +
+                              (gainPct == null ? '' : ', +' + gainPct + '% nilai/1M') + ')'
+                            : 'tetap (aktif ' + curValuePerCost + '/1M)');
+                    } else {
+                        verdictTxt += (verdictTxt ? ' · ' : '') + 'aktif tak terbaca';
+                    }
+                    if (verdictTxt) {
                         const origH2 = h2.textContent;
                         const v = cmp.values;
                         h2.setAttribute('data-igpas-orig', origH2);
                         h2.setAttribute('data-igpas-origmode', 'self');
                         h2.setAttribute('data-igpas-title',
                             h2.hasAttribute('title') ? h2.getAttribute('title') : '');
-                        const newH2 = origH2 + ' · ' + parts.join(', ') + ' vs alternatif';
+                        const newH2 = origH2 + ' · ' + verdictTxt;
                         h2.textContent = newH2;
                         h2.setAttribute('data-igpas-written', newH2);
                         const advisorTitle = 'Supplier aktif #' +
@@ -1957,7 +1996,13 @@
                             ' · ' + fmtMoney(v.current.cost) + '/race. Alternatif ' + n +
                             ': bonus tertinggi Σ' + (v.bestBonus ? (v.bestBonus.value > 0 ? '+' : '') + v.bestBonus.value + ' (#' + v.bestBonus.id + ')' : '—') +
                             ', termurah ' + (v.cheapest ? fmtMoney(v.cheapest.value) + ' (#' + v.cheapest.id + ')' : '—') +
-                            '. Kesimpulan: ' + v.basis + ' ' + v.verdict + ' — estimasi, bukan rumus game.';
+                            (curValuePerCost != null ? ' · nilai/1M aktif ' + curValuePerCost : '') +
+                            '. Kesimpulan: ' + (switchRec
+                                ? 'ganti dianjurkan' + (gainPct == null ? '' : ' (+' + gainPct + '% nilai/1M)')
+                                : (curValuePerCost != null
+                                    ? 'tetap — alternatif tidak ≥5% lebih efisien'
+                                    : 'aktif tak terbaca — bandingkan manual')) +
+                            ' — estimasi, bukan rumus game.';
                         h2.setAttribute('title', advisorTitle);
                         h2.setAttribute('data-igpas-written-title', advisorTitle);
                     }
