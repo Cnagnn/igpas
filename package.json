@@ -1,6 +1,6 @@
 {
   "name": "igpas",
-  "version": "0.8.6",
+  "version": "0.9.0",
   "private": true,
   "description": "I.G.P.A.S \u2014 iGP Analytics & Study System (userscript studi strategi iGP Manager, tanpa build step)",
   "license": "GPL-3.0-or-later",
@@ -9,7 +9,7 @@
     "node": ">=22.22.2"
   },
   "scripts": {
-    "test": "node test/core.test.js && node test/snapshots.test.js && node test/storage.test.js && node test/capture.test.js && node test/mailbox.test.js && node test/gui.test.js && node test/advisor.test.js",
+    "test": "node test/core.test.js && node test/capture.test.js && node test/advisor.test.js",
     "test:verbose": "npm test --silent 2>&1 | cat",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -19,7 +19,6 @@
     "versions:check": "node scripts/check-versions.mjs",
     "guards:check": "node scripts/check-guards.mjs",
     "verify": "npm run syntax && npm run lint && npm run format:check && npm run versions:check && npm run guards:check && npm test",
-    "dev": "python -m http.server 8787 --directory docs",
     "prepare": "git config core.hooksPath scripts/githooks || true"
   },
   "devDependencies": {

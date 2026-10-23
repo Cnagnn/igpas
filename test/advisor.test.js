@@ -12,17 +12,12 @@ const { JSDOM } = require("jsdom");
 const load = fixtureFile => fs.readFileSync(path.join(__dirname, "fixtures", fixtureFile), "utf8");
 
 function bootOn(html, url, snapshotIds) {
-  const store = new Map();
+  const writes = []; // spion: userscript TIDAK boleh menulis storage
   const dom = new JSDOM(html, { url, runScripts: "outside-only", pretendToBeVisual: true });
   const win = dom.window;
-  win.GM_getValue = (k, d) => (store.has(k) ? store.get(k) : d);
   win.GM_setValue = (k, v) => {
-    store.set(k, v);
+    writes.push(k);
   };
-  win.GM_deleteValue = k => {
-    store.delete(k);
-  };
-  win.GM_listValues = () => [...store.keys()];
   win.GM_setClipboard = () => {}; // stub; test override utk capture
   win.GM_registerMenuCommand = (label, fn) => {
     win.__igpasMenuHandler = fn;
@@ -36,7 +31,7 @@ function bootOn(html, url, snapshotIds) {
   }
   win.eval(fs.readFileSync(path.join(__dirname, "../src/igpas.user.js"), "utf8"));
   win.document.dispatchEvent(new win.Event("DOMContentLoaded")); // idempoten di sisi userscript
-  return { win, doc: win.document, store, before, close: () => win.close() };
+  return { win, doc: win.document, writes, before, close: () => win.close() };
 }
 
 function assert(ok, msg) {
@@ -337,16 +332,9 @@ t(
   }
 );
 
-t("Advisor read-only: tidak mengirim packet mailbox (tidak memicu request game)", () => {
+t("Advisor read-only: tidak menulis GM storage", () => {
   const s = bootOn(load("cars.html"), URL_IGP);
-  // Kunci mailbox berbentuk "igpas:mb:<base36>" — filter lama
-  // ("igpas:mb:collect-") tidak pernah cocok sehingga assertion selalu lolos.
-  const sent = [...s.store.keys()]
-    .filter(k => k.indexOf("igpas:mb:") === 0)
-    .map(k => s.store.get(k))
-    .filter(p => p && typeof p === "object")
-    .map(p => p.type);
-  assert(!sent.length, "advisor mengirim packet: " + sent.join(","));
+  assert(!s.writes.length, "advisor menulis storage: " + s.writes.join(","));
   s.close();
 });
 

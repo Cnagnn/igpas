@@ -3,7 +3,7 @@
 //  - setiap GM_* yang dipakai WAJIB punya @grant yang cocok (bug nyata: menu
 //    capture v0.7.1 memanggil GM_registerMenuCommand tanpa @grant);
 //  - @match dibatasi allowlist: userscript tidak boleh disuntik ke sembarang
-//    domain (localhost tetap diizinkan; peran GUI dibatasi /app/ di runtime);
+//    domain (hanya igpmanager.com; web GUI/deploy sudah dihapus di v0.9.0);
 //  - tidak boleh ada jalur jaringan / eksekusi dinamis / remote code:
 //    fetch, XHR, sendBeacon, WebSocket, EventSource, dynamic import,
 //    @require, @resource, @connect, @updateURL;
@@ -21,12 +21,7 @@ const files = fs.readdirSync(SRC_DIR).filter(f => f.endsWith(".user.js"));
 if (!files.length) errors.push("src/: tidak ada *.user.js");
 
 // Allowlist @match — perubahan harus disengaja dan di-review.
-const ALLOWED_MATCH = [
-  /^https:\/\/igpmanager\.com\/\*$/,
-  /^https:\/\/\*\.igpmanager\.com\/\*$/,
-  /^http:\/\/localhost\/\*$/,
-  /^https:\/\/cnagnn\.github\.io\/igpas\/\*$/,
-];
+const ALLOWED_MATCH = [/^https:\/\/igpmanager\.com\/\*$/, /^https:\/\/\*\.igpmanager\.com\/\*$/];
 
 // Metadata yang bisa menarik kode/endpoint eksternal saat update.
 const FORBIDDEN_META = ["@require", "@resource", "@connect", "@updateURL", "@downloadURL", "@icon"];

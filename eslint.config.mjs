@@ -13,11 +13,7 @@ export default [
       sourceType: "script",
       globals: {
         ...globals.browser,
-        // Tampermonkey / Greasemonkey grants
-        GM_getValue: "readonly",
-        GM_setValue: "readonly",
-        GM_deleteValue: "readonly",
-        GM_listValues: "readonly",
+        // Tampermonkey / Greasemonkey grants (v0.9.0: tanpa GM storage)
         GM_setClipboard: "readonly",
         GM_registerMenuCommand: "readonly",
         GM_notification: "readonly",
@@ -46,10 +42,6 @@ export default [
       globals: {
         ...globals.node,
         ...globals.browser,
-        GM_getValue: "readonly",
-        GM_setValue: "readonly",
-        GM_deleteValue: "readonly",
-        GM_listValues: "readonly",
       },
     },
     rules: {

@@ -1,8 +1,7 @@
 # PRIVACY & RISIKO — I.G.P.A.S
 
-Berlaku untuk v0.8.6. Dokumen ini menggantikan `docs/COMPLIANCE.md` (dicabut). Ringkas dan faktual:
-apa yang disimpan, ke mana data pergi, apa yang disunting saat capture, dan
-risiko apa yang tetap ada.
+Berlaku untuk v0.9.0. Ringkas dan faktual: apa yang tidak dilakukan userscript,
+apa yang disunting saat capture, dan risiko apa yang tetap ada.
 
 ## 1. Tidak ada jaringan
 
@@ -12,21 +11,16 @@ oleh `scripts/check-guards.mjs` di `npm run verify` dan CI.
 
 Tidak ada server I.G.P.A.S. Tidak ada telemetri. Tidak ada akun.
 
-## 2. Data yang disimpan (lokal, di pengelola userscript)
+## 2. Tidak ada penyimpanan data
 
-| Kunci | Isi | Umur |
-|---|---|---|
-| `igpas:snapshots` | snapshot akun (nama manajer, level, rank, saldo, token), mobil, supply, manufacturers, tim/staff, pasar transfers | **30 hari** sejak capture; record rusak/tanpa `ts` dianggap kedaluwarsa dan dihapus saat dibaca |
-| `igpas:profiles` | setup yang Anda simpan sendiri (angka input) | sampai Anda hapus |
-| `igpas:advisor` | preferensi tampilan advisor | sampai Anda hapus |
-| `igpas:mb:*` | paket mailbox antar-tab | permintaan **10 menit**, hasil **2 menit** (dibersihkan poll mana pun) |
-| `igpas:gui:heartbeat` | detak GUI untuk badge sensor | ditimpa tiap 2 detik |
+Sejak v0.9.0 userscript **tidak memakai GM storage** (`GM_getValue`,
+`GM_setValue`, `GM_deleteValue`, `GM_listValues` sudah dihapus, termasuk
+grant-nya). Tidak ada snapshot, profil, mailbox, atau heartbeat.
 
-Semua berada di penyimpanan userscript (GM storage) di browser Anda. Tidak
-disinkronkan ke mana pun. Tombol **Hapus snapshot** menghapus snapshot seketika.
-
-Jika penyimpanan penuh/ditolak (mode privat, kuota), userscript **melaporkan
-gagal** — tidak berpura-pura "tersimpan".
+- Advisor hanya menulis **teks/`title` sementara** pada elemen asli halaman dan
+  **me-restore**-nya otomatis; tidak ada salinan yang dipersistenkan.
+- Clipboard hanya terisi ketika Anda sendiri memilih menu **"salin capture DOM
+  halaman ini"**. Tidak ada penyalinan/pengiriman otomatis.
 
 ## 3. Capture DOM (`salin capture`)
 
@@ -39,10 +33,17 @@ Dibuang/diredaksi:
   `<script>` eksekutabel, komentar HTML, dan atribut `srcdoc`/`on*`;
 - nilai PII yang dikenal dari halaman (nama manajer, saldo, token, rank) di
   **seluruh** teks dan atribut — termasuk `aria-label`, `alt`, `src`, `style`;
-- email dan string token panjang (32+ hex / 40+ alfanumerik) di teks, atribut,
-  URL, dan JSON;
+- isi field sensitif (input/textarea), email, dan string token panjang
+  (32+ hex / 40+ alfanumerik) di teks, atribut, URL, dan JSON;
 - kunci JSON sensitif (`csrf`, `token`, `session`, `auth`, `password`,
-  `secret`, `apiKey`, `email`, `manager`, `username`).
+  `secret`, `apiKey`, `email`, `manager`, `username`);
+- parameter URL identitas (`manager`, `uid`, `userid`, `account`, `profile`,
+  `email`, `username`, token/csrf/session/auth/key); semua `id=` dalam konteks
+  `p=manager`/`page=manager` (profil akun/pemain);
+- path avatar/akun `/img/user/<id>/…` dan `/av/<id>…`;
+- atribut pelacak `data-sharkid`, `visitor`, `tracker`, `analytics`,
+  `fingerprint`, `device`;
+- `id` level atas pada script bootstrap identitas (`userBootstrap` dsb.).
 
 **Sisa risiko yang disengaja** (periksa sendiri sebelum menempel di publik):
 - nama manajer pihak ketiga / nama tim yang tampil sebagai data permainan
@@ -55,26 +56,18 @@ Dibuang/diredaksi:
 Untuk fixture, gunakan capture dari halaman **studi** (bukan halaman profil)
 dan buang ID unik sebelum menempel.
 
-## 4. Mailbox antar-tab
+## 4. Tidak ada GUI web / mailbox
 
-- Hanya aktif di origin yang cocok dengan `@match` (igpmanager.com, localhost,
-  `cnagnn.github.io/igpas/`).
-- Peran GUI dibatasi: `localhost` hanya pada path `/app/`, GitHub Pages hanya
-  `/igpas/app/`; halaman lain menjadi `unknown` dan **tidak** memulai polling.
-- Paket berisi `from` (peran + instance id) dan ditampilkan di GUI. Hasil
-  capture **dialamatkan** ke `gui:<instance>` yang meminta; GUI hanya menerima
-  paket untuk instance-nya dari pengirim berperan `sensor:*`, lalu memvalidasi
-  skema data per jenis (dan batas 256 KB) sebelum menyimpan.
-- Ini **bukan autentikasi kriptografis**. Penyimpanan GM bersifat per-userscript
-  (halaman biasa tidak bisa menulisnya), tetapi tab mana pun yang menjalankan
-  userscript ini dapat mengirim paket. Karena itu **jangan membuka halaman lokal
-  tidak tepercaya di `localhost/app/` saat tab iGP terbuka**.
-- Snapshot yang diterima tetap lokal; tidak ada eksfiltrasi oleh userscript.
+Web Command Center, GitHub Pages, dan mailbox antar-tab sudah dihapus di
+v0.9.0. Userscript hanya berjalan di `igpmanager.com` dan tidak berkomunikasi
+dengan tab lain. Implementasi lama tetap ada di riwayat git (tag `v0.8.6`)
+tetapi tidak lagi dipelihara atau didistribusikan.
 
 ## 5. Risiko ToS
 
 I.G.P.A.S adalah alat studi read-only: tidak mengklik, tidak submit, tidak
-mengotomasi balapan. Risiko interpretasi Terms of Service iGP Manager
+mengotomasi balapan. Advisor menulis ulang teks/`title` pada elemen asli game
+(ToS § V.J tentang scripts). Risiko interpretasi Terms of Service iGP Manager
 sepenuhnya ditanggung pengguna. Jika ragu, jangan pasang userscript saat
 balapan live.
 

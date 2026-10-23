@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // check-versions.mjs — pastikan versi sinkron di seluruh repo userscript
 // Sumber kebenaran: package.json version
-// Diperiksa: src/igpas.user.js (@version + const VERSION), README, docs/index.html, docs/app
+// Diperiksa: src/igpas.user.js (@version + const VERSION), README, docs/ARCHITECTURE.md, docs/PRIVACY.md
 
 import fs from "node:fs";
 import path from "node:path";
@@ -63,9 +63,8 @@ mustContain(
   /const VERSION\s*=\s*['"]([0-9]+\.[0-9]+\.[0-9]+)['"]/,
   "const VERSION"
 );
-// Wajib: halaman publik & lockfile tidak boleh drift dari package.json —
-// rilis 0.8.3 sempat terkirim dengan docs/index.html v0.8.0 (warning-only).
-mustContain("docs/index.html", /<b>v([0-9]+\.[0-9]+\.[0-9]+)<\/b>/, "docs/index.html version");
+// Wajib: lockfile tidak boleh drift dari package.json (rilis 0.8.3 sempat
+// terkirim dengan docs/index.html v0.8.0 — halaman web itu sudah dihapus).
 const lock = JSON.parse(read("package-lock.json"));
 if (lock.version !== expected) {
   errors.push(`package-lock.json: version = ${lock.version} (expected ${expected})`);
@@ -83,11 +82,6 @@ if (lockRoot && lockRoot.version !== expected) {
 
 // Opsional tapi disarankan: docs & README menampilkan versi yang sama
 shouldContain("README.md", /<b>v([0-9]+\.[0-9]+\.[0-9]+)<\/b>/, "README badge version");
-shouldContain(
-  "docs/app/index.html",
-  /GUI v([0-9]+\.[0-9]+\.[0-9]+)/,
-  "docs/app GUI version (test fixture)"
-);
 // ARCHITECTURE/PRIVACY sering menyebut versi — cek longgar
 shouldContain(
   "docs/ARCHITECTURE.md",
