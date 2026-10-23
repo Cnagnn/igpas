@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.9.7
+// @version      0.9.8
 // @description  Read-only in-page study advisor for iGP Manager: #1..#n sorted design-point priorities, color-coded supply and parts/engine repair buttons, supplier/manufacturer rankings, staff/transfer notes, and pre-race setup/fuel/tyre/stint estimates written only as text/title/style on original page elements (never the live Race tab). Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
 // @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design terurut #1..#n, warna tombol Supply dan ganti parts/engine, peringkat supplier/manufacturer, catatan staff/transfers, dan estimasi setup/fuel/ban/stint pra-balapan — hanya teks/title/style pada elemen asli (bukan tab Race live). Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
 // @license      GPL-3.0-or-later
@@ -18,7 +18,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.9.7';
+    const VERSION = '0.9.8';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -1540,8 +1540,9 @@
             // mentah melahap pemisah itu — ganti <br> jadi spasi dulu.
             const nameOf = el => {
                 if (!el) return null;
-                // Nama asli (data-igpas-orig) dikembalikan dulu: advisor menempelkan
-                // suffix practice pada span nama, dan snapshot harus data game murni.
+                // Nama asli (data-igpas-orig) dikembalikan dulu: advisor (≤v0.9.7)
+                // pernah menempelkan suffix practice pada span nama, dan snapshot
+                // harus data game murni.
                 const c = el.cloneNode(true);
                 for (const m of c.querySelectorAll('[data-igpas-orig]')) {
                     m.textContent = m.getAttribute('data-igpas-orig');
@@ -2555,9 +2556,12 @@
          * karakteristik trek. restore-pertama via restoreRaceInPlace().
          * Jangkar tulis:
          *  - Setup: span nama driver (#setup .driverNInclude .driverName span)
-         *    = teks ringkas fuel/ban per lap; title = agregasi + hint track +
-         *    arah slider game; p engineer (#dNSetupComments .shrinkText) = title
-         *    saja (struktur span merah dipertahankan).
+         *    = TIDAK ditulis lagi (v0.9.8; teks asli game tetap); title = agregasi
+         *    practice + hint track + arah slider game. Label slider asli
+         *    (.setupSlider-label) = `· ideal <titik tengah bar>` setelah practice
+         *    history muncul; title = penjelasan + nilai sekarang. p engineer
+         *    (#dNSetupComments .shrinkText) = title saja (struktur span merah
+         *    dipertahankan).
          *  - Strategy: komentar pembalap TIDAK ditulis lagi. Teks + title
          *    ditulis pada label asli "Fuel (litres)" di .c-wrap #dNAdvancedFuel
          *    (estimasi practice/lap × Total laps estimate vs fuel terisi) dan
@@ -2600,15 +2604,12 @@
                 })));
                 if (!sum.ok) continue;
                 const v = sum.values;
-                // Span nama driver (teks polos "Pratama"): suffix ringkas terlihat.
+                // Span nama driver (teks polos "Pratama") TIDAK diberi suffix
+                // lagi (v0.9.8): teks game dibiarkan apa adanya, agregasi pindah
+                // ke title nama + title engineer.
                 const span = document.querySelector(
                     '#setup .choiceDivInclude.driver' + d.num + 'Include .driverName span:last-child');
                 if (span) {
-                    const short = ' · ' + v.count + ' lap practice: ' +
-                        (v.fuelAvg != null ? v.fuelAvg + 'L/lap' : 'BBM —') + ', ' +
-                        (v.tyreAvg != null ? v.tyreAvg + '%/lap' : 'ban —') +
-                        (v.bestLap !== '—' ? ', terbaik ' + v.bestLap : '');
-                    writeSelfText(span, (span.getAttribute('data-igpas-orig') || span.textContent) + short);
                     saveTitle(span);
                     const tip = 'Agregasi practice (' + v.count + ' lap): fuel ' +
                         (v.fuelAvg != null ? v.fuelAvg + ' L/lap' : '—') + ' · ban ' +
@@ -2617,6 +2618,36 @@
                         ' — estimasi, bukan rumus game.';
                     span.setAttribute('title', tip);
                     span.setAttribute('data-igpas-written-title', tip);
+                }
+                // Slider asli (Ride/Suspension/Wing): teks ideal terlihat pada
+                // label slider setelah practice history ada. Titik tengah bar
+                // ideal game = estimasi; bar penuh (width >= 100%) = belum
+                // diketahui — jangan mengarang angka. Nilai slider tak diubah.
+                for (const sw of document.querySelectorAll('#setup .setupSliderWrap[id^="d' + d.num + '"]')) {
+                    const lbl = sw.querySelector('.setupSlider-label');
+                    if (!lbl) continue;
+                    const irange = sw.querySelector('.setupSlider-idealRange');
+                    const input = sw.querySelector('input');
+                    const adv = IGPCore.setupAdvice({
+                        ideal: IGPCore.parseSliderIdeal(irange ? irange.getAttribute('style') : null),
+                        current: input ? Utils.numOrNull(input.value) : null,
+                    });
+                    const orig = lbl.getAttribute('data-igpas-orig') || lbl.textContent;
+                    writeSelfText(lbl, orig + (adv.learned
+                        ? ' · ideal ' + adv.mid
+                        : ' · ideal belum diketahui'));
+                    saveTitle(lbl);
+                    const tip = adv.learned
+                        ? 'Ideal ' + adv.mid + ' (titik tengah bar ideal game)' +
+                            (adv.delta != null && adv.delta !== 0
+                                ? '; sekarang ' + adv.current + ' → geser ' + (adv.delta > 0 ? '-' : '+') +
+                                    Math.abs(adv.delta)
+                                : '; sekarang ' + (adv.current == null ? '—' : adv.current)) +
+                            ' — estimasi, bukan rumus game.'
+                        : 'Bar ideal game masih selebar track: game belum punya cukup ' +
+                            'data practice untuk slider ini. Jalankan practice dulu.';
+                    lbl.setAttribute('title', tip);
+                    lbl.setAttribute('data-igpas-written-title', tip);
                 }
                 // Komentar engineer: title saja (span merah di dalamnya utuh).
                 const eng = document.querySelector('#d' + d.num + 'SetupComments .shrinkText');

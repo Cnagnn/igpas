@@ -4,7 +4,7 @@ Penasihat studi **read-only** untuk [iGP Manager](https://igpmanager.com), berup
 **satu userscript tanpa build step**. Tidak ada web GUI, tidak ada server, tidak
 ada jaringan, dan tidak ada data yang disimpan.
 
-> **Versi saat ini: <b>v0.9.7</b>.** ⚠️ **Alat studi — bukan alat balapan.**
+> **Versi saat ini: <b>v0.9.8</b>.** ⚠️ **Alat studi — bukan alat balapan.**
 > Tidak ada otomasi, tidak ada aksi ke situs, tidak membantu kendali saat
 > balapan live. Risiko banned/pelanggaran ToS iGP Manager **ditanggung penuh
 > oleh user**.
@@ -25,7 +25,7 @@ setiap re-render dan saat pindah halaman.
 | **Supply** (dialog Engine/Fuel/Tyres terbuka) | Tombol alternatif diwarnai: merah = supplier ini direkomendasikan ganti (≥5% lebih efisien), amber = aktif/calon (tetap atau cek), abu-abu = bukan pilihan. Teks biaya & judul dialog tidak diubah; peringkat gabungan, Σ bonus, nilai/1jt, dan aturan ambang di `title`                                          |
 | **Drivers & Staff**                           | Label nama driver jadi `Nama \| Full Recover 13j 55m` (countdown dari health + laju pulih, dibulatkan ke atas); health/laju/estimasi di `title`; gaji & kontrak staff di `title` kartu                                                                                                                            |
 | **Transfers**                                 | Peringkat pada text node nama baris (`#n Nama ★ rekomendasi`); overall/fee di `title` — link kontrak & flag tetap hidup                                                                                                                                                                                           |
-| **Setup** (pra-balapan)                       | Ringkasan practice pada span nama driver + `title` agregasi; hint trek; arah slider game                                                                                                                                                                                                                          |
+| **Setup** (pra-balapan)                       | Nama driver **tidak ditulisi**; setelah practice history muncul, label slider asli mendapat `· ideal <titik tengah bar ideal>` (Ride/Suspension/Wing) atau `· ideal belum diketahui` bila bar masih penuh; agregasi/hint/arah slider di `title`                                                                   |
 | **Strategy** (pra-balapan)                    | Estimasi fuel pada label asli **Fuel (litres)**; ringkasan stint/ban di `title`; komentar pembalap tidak ditulis                                                                                                                                                                                                  |
 | **Race live (`#race`)**                       | **Tidak pernah ditulis.** Hanya dibaca read-only untuk karakteristik trek (overtaking/bumpiness/fuel/wear + panjang sirkuit)                                                                                                                                                                                      |
 
