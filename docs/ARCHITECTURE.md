@@ -3,20 +3,20 @@
 Penasihat studi **read-only** untuk iGP Manager dalam satu file userscript,
 tanpa build step, tanpa web GUI, tanpa jaringan, dan tanpa penyimpanan.
 
-Versi saat ini 0.9.9.
+Versi saat ini 0.10.0.
 
 ## 1. Ruang lingkup
 
 - ✅ Rekomendasi in-page pada halaman **studi** iGP (Cars, Manufacturers,
-  Supply, Drivers & Staff, Transfers) dan tab **Setup/Strategy pra-balapan**.
+  Supply, Drivers & Staff, Transfers). Tab **Setup/Strategy pra-balapan**
+  tidak lagi diberi advisor (dihapus v0.10.0).
 - ✅ Menu capture DOM dengan redaksi PII untuk pemetaan fixture.
 - ✅ Supply **switch-aware**: efisiensi = Σ bonus per 1jt biaya. Peringkat menggabungkan supplier aktif + alternatif (seri dimenangkan aktif); tombol alternatif diwarnai merah bila rekomendasi ganti (≥5% lebih efisien), amber untuk aktif/calon, abu-abu untuk bukan pilihan. Teks biaya & judul tidak diubah; verdict + detail di `title` — mencegah loop ganti supplier.
 - ✅ Cars **Overview**: baris atribut diurutkan `#1..#n` dari atas ke bawah dan label asli ditulis `#n Atribut · X DP`; val/max/gap + estimasi DP di `title`; tanpa warna; angka & bar game tidak disentuh.
 - ✅ Cars **Repair**: tombol `Fix`/`Replace` diwarnai dari kondisi yang tampil + rekomendasi — merah ≤50% (ganti), amber 50–60% (siap-siap), abu-abu >60% (tunda). Judul kartu tidak diubah; biaya/stok/restock/ambang di `title`; tidak mengklik tombol.
-- ✅ Setup pra-balapan: nama driver tidak ditulisi; baris `Lap N: ...` driver mendapat `· ideal Ride/Susp/Wing <nilai>` yang dihitung dari bar ideal game (anchor `input[name]` di form `#dNsetup`, dikonversi ke nilai slider dan dibulatkan ke step). Bar penuh (width ≥100%) → `ideal belum diketahui`, bukan angka karangan; arah geser per slider di `title` label. Nilai slider, bar, dan tombol game tidak diubah.
 - ❌ Tidak ada Command Center / web GUI / GitHub Pages.
 - ❌ Tidak ada mailbox antar-tab, GM storage, profil, atau snapshot.
-- ❌ Tidak scrape/automasi saat balapan live; `#race` tidak pernah ditulis.
+- ❌ Tidak scrape/automasi saat balapan live; `#race`, `#setup`, dan `#strategy` tidak pernah disentuh (tidak dibaca, tidak ditulis).
 - ❌ Tidak ada klik/submit/fetch/XHR.
 
 ## 2. Komponen
@@ -24,15 +24,12 @@ Versi saat ini 0.9.9.
 | Komponen | Peran |
 | --- | --- |
 | `Utils` | Helper murni: parsing angka/uang, `numOrNull`, `statIndex`, `roleCode`, format |
-| `IGPCore` | Mesin heuristik murni & teruji: `designPriority`, `repairAdvice`, `rankSuppliers`, `compareSuppliers`, `rankManufacturerItems`, `describeTrack`, `summarizePracticeLaps`, `recommendRaceFuel`, `practiceTyreLife`, `summarizeStrategy`, `stintSplit`, `parseLapTime`, dll. |
+| `IGPCore` | Mesin heuristik murni & teruji: `designPriority`, `repairAdvice`, `rankSuppliers`, `compareSuppliers`, `rankManufacturerItems`, `stintSplit`, dll. |
 | `IgpCarsAdapter` | Parser read-only halaman Cars → `{ attrs, best, designPoints, suppliers, … }`; tab Overview diurutkan/diberi label oleh `Advisor.mountDesign`, tab Repair oleh `Advisor.mountRepair` (kondisi, biaya tombol, stok) — keduanya in-place |
 | `IgpSupplyAdapter` | Parser read-only dialog Supply → `{ type, current, alternatives }` |
 | `IgpManufacturersAdapter` | Parser read-only tabel engine + chassis |
 | `IgpStaffAdapter` | Parser read-only Drivers & Staff (driver, staff, pit crew) |
 | `IgpTransfersAdapter` | Parser read-only pasar Transfers (driver + staff) |
-| `IgpRaceSetupAdapter` | Parser read-only tab Setup (slider, kondisi, riwayat practice) |
-| `IgpRaceStrategyAdapter` | Parser read-only tab Strategy (fuel, stint, ban, aturan) |
-| `IgpTrackAdapter` | Parser read-only `.raceInfoTable` di div `#race` (tanpa menulis) |
 | `Advisor` | Menulis rekomendasi ke teks/`title` elemen asli + restore otomatis |
 | `PageCapture` | Menu userscript: salin DOM teredaksi ke clipboard |
 | `boot()` | Gate host `igpmanager.com`, pasang Advisor + menu capture |
@@ -61,9 +58,10 @@ Tidak ada langkah jaringan, storage, atau sinkronisasi antar-tab.
 ## 4. Disiplin DOM
 
 1. **Gate `#pageId`** — setiap adapter hanya aktif di halaman yang cocok
-   (`cars`, `manufacturers`, `staff`, `transfers`, `race` + wadah
-   `#setup`/`#strategy`; Supply via dialog `.supplyDialog`).
-2. **`#race` live tidak pernah ditulis** — hanya dibaca `IgpTrackAdapter`.
+   (`cars`, `manufacturers`, `staff`, `transfers`; Supply via dialog
+   `.supplyDialog`).
+2. **`#race` live, `#setup`, dan `#strategy` tidak pernah disentuh** — tidak
+   ada advisor pra-balapan/live-race.
 3. **In-place** — tidak ada elemen baru; hanya text node, atribut `title`, dan
    style sementara pada elemen milik game (warna tombol Supply/Repair).
 4. **Restore-pertama** — sebelum setiap pembacaan, tulisan advisor
@@ -89,13 +87,13 @@ Tidak ada langkah jaringan, storage, atau sinkronisasi antar-tab.
 
 ## 6. Testing
 
-- `test/core.test.js` — 85 test murni untuk `IGPCore`/`Utils`.
+- `test/core.test.js` — 65 test murni untuk `IGPCore`/`Utils`.
 - `test/capture.test.js` — 8 test redaksi `PageCapture` (jsdom).
-- `test/advisor.test.js` — 31 test advisor vs fixture DOM nyata (jsdom):
+- `test/advisor.test.js` — 26 test advisor vs fixture DOM nyata (jsdom):
   in-place, restore, idempoten, `#race` zero-UI, menu capture.
 - `test/fixtures/*.html` — capture DOM tersanitasi (PII/script dibuang).
 
-Total **124 test**; dijalankan oleh `npm test` dan `npm run verify` (CI Node
+Total **99 test**; dijalankan oleh `npm test` dan `npm run verify` (CI Node
 22/24).
 
 ## 7. Sejarah singkat
@@ -108,8 +106,9 @@ Total **124 test**; dijalankan oleh `npm test` dan `npm run verify` (CI Node
   mailbox, adapter registry, dan GM storage — dan mempertahankan Advisor
   in-page + capture. Implementasi lama tetap tersedia di riwayat git
   (tag `v0.8.6`).
-- Input manual/kalkulator mandiri tidak lagi disediakan sebagai UI; estimasi
-  yang relevan ditampilkan in-page pada halaman Setup/Strategy.
+- v0.10.0 menghapus advisor **Setup** dan **Strategy** pra-balapan beserta
+  adapter/helper-nya; fokus advisor kembali ke halaman studi.
+- Input manual/kalkulator mandiri tidak lagi disediakan sebagai UI.
 
 ## 8. Etika & batasan
 
