@@ -675,14 +675,49 @@ t("roleCode: label & kode peran ternormalisasi agar roster/pasar sebanding", () 
 
 /* ---------- parseSliderIdeal / setupAdvice (v0.7.3) ---------- */
 
-t("parseSliderIdeal: style bar ideal game → {left,width}", () => {
+t("parseSliderIdeal: style bar ideal game → {left,width,point}", () => {
   const r = IGPCore.parseSliderIdeal("left:calc(0% + 2px);width:calc(100% - 4px)");
-  assert.deepStrictEqual(r, { left: 0, width: 100 });
+  assert.deepStrictEqual(r, { left: 0, width: 100, point: false });
   const n = IGPCore.parseSliderIdeal("left:calc(20% + 2px);width:calc(40% - 4px)");
-  assert.deepStrictEqual(n, { left: 20, width: 40 });
+  assert.deepStrictEqual(n, { left: 20, width: 40, point: false });
+  // Bar menyempit jadi titik: hanya left% yang ada (width px) → ideal persis.
+  const p = IGPCore.parseSliderIdeal("left: calc(37.5% - 4px + 2px); width: calc(8px - 4px)");
+  assert.deepStrictEqual(p, { left: 37.5, width: 0, point: true });
   assert.strictEqual(IGPCore.parseSliderIdeal("width:40px"), null);
   assert.strictEqual(IGPCore.parseSliderIdeal(null), null);
   assert.strictEqual(IGPCore.parseSliderIdeal(""), null);
+});
+
+t("setupAdvice: min/max slider → nilai nyata + bulat ke step", () => {
+  // Ride: bar 0..85% di slider min 1 max 100 step 1 → tengah 42.5% = 43.075 → 43.
+  const r = IGPCore.setupAdvice({
+    ideal: { left: 0, width: 85 },
+    current: 50,
+    min: 1,
+    max: 100,
+    step: 1,
+  });
+  assert.strictEqual(r.learned, true);
+  assert.strictEqual(r.mid, 43);
+  assert.strictEqual(r.delta, 7);
+  // Suspension: 15..100% → 57.5% = 57.925 → 58.
+  const s = IGPCore.setupAdvice({
+    ideal: { left: 15, width: 85 },
+    current: 50,
+    min: 1,
+    max: 100,
+    step: 1,
+  });
+  assert.strictEqual(s.mid, 58);
+  // Bar titik: ideal = posisi left (37.5% → 38).
+  const p = IGPCore.setupAdvice({
+    ideal: { left: 37.5, width: 0, point: true },
+    current: 50,
+    min: 1,
+    max: 100,
+    step: 1,
+  });
+  assert.strictEqual(p.mid, 38);
 });
 
 t("setupAdvice: bar setebal track (width 100%) = ideal belum dipelajari", () => {

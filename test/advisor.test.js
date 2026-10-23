@@ -694,97 +694,144 @@ ta("Restore manufacturers: nama asli kembali persis, tanpa penggandaan", async (
   s.close();
 });
 
-t(
-  "Race setup in-place: nama driver bersih + saran ideal di label slider, #race tak ditulis",
-  () => {
-    const s = bootOn(load("race.html"), URL_RACE);
-    const raceBox = s.doc.getElementById("race");
-    assert(
-      raceBox && !raceBox.querySelector("[data-igpas-orig]"),
-      "#race ikut ditulis (live-race harus bersih)"
-    );
-    assert(!raceBox.querySelector("[data-igpas-title]"), "title #race ikut ditulis");
-    const span = s.doc.querySelector("#setup .driver1Include .driverName span:last-child");
-    assert(
-      span && span.textContent.trim() === "Pratama",
-      "nama driver masih disisipi teks: " + (span && span.textContent)
-    );
-    assert(/estimasi/i.test(span.getAttribute("title") || ""), "title nama tanpa estimasi");
-    // Label slider asli: titik tengah bar ideal. Ride 0+85/2 = 42.5,
-    // Suspension 15+85/2 = 57.5, Wing 0+85/2 = 42.5.
-    const lbl = key => s.doc.querySelector("#setup #d1" + key + " .setupSlider-label");
-    assert(
-      /^Ride height · ideal 42\.5$/.test(lbl("Ride").textContent),
-      "saran Ride salah: " + lbl("Ride").textContent
-    );
-    assert(
-      /^Suspension · ideal 57\.5$/.test(lbl("Suspension").textContent),
-      "saran Suspension salah: " + lbl("Suspension").textContent
-    );
-    assert(
-      /^Wing level · ideal 42\.5$/.test(lbl("Aerodynamics").textContent),
-      "saran Wing salah: " + lbl("Aerodynamics").textContent
-    );
-    assert(
-      /estimasi/i.test(lbl("Ride").getAttribute("title") || ""),
-      "title slider tanpa estimasi"
-    );
-    assert(
-      s.doc.getElementById("d1Ride").querySelector("input").value === "50",
-      "nilai slider game ikut diubah"
-    );
-    const eng = s.doc.querySelector("#d1SetupComments .shrinkText");
-    assert(
-      eng && /estimasi/i.test(eng.getAttribute("title") || ""),
-      "title engineer tanpa estimasi"
-    );
-    assert(eng.querySelector(".red"), "struktur span merah engineer rusak");
-    s.close();
-  }
-);
-
-t("Race setup: tanpa practice history tidak ada saran ideal (jujur)", () => {
+t("Race setup in-place: nama driver bersih + saran ideal di baris lap, #race tak ditulis", () => {
   const s = bootOn(load("race.html"), URL_RACE);
-  // Driver 2 belum punya baris practice → slider-nya tidak disentuh.
-  const lbl = s.doc.querySelector("#setup #d2Ride .setupSlider-label");
-  assert(lbl.textContent.trim() === "Ride height", "driver tanpa history disisipi saran");
-  assert(!lbl.hasAttribute("title"), "driver tanpa history diberi title");
-  assert(!lbl.hasAttribute("data-igpas-orig"), "driver tanpa history ditandai");
+  const raceBox = s.doc.getElementById("race");
+  assert(
+    raceBox && !raceBox.querySelector("[data-igpas-orig]"),
+    "#race ikut ditulis (live-race harus bersih)"
+  );
+  assert(!raceBox.querySelector("[data-igpas-title]"), "title #race ikut ditulis");
+  const span = s.doc.querySelector("#setup .driver1Include .driverName span:last-child");
+  assert(
+    span && span.textContent.trim() === "Pratama",
+    "nama driver masih disisipi teks: " + (span && span.textContent)
+  );
+  assert(/estimasi/i.test(span.getAttribute("title") || ""), "title nama tanpa estimasi");
+  // Baris lap: tengah bar ideal → nilai slider (min 1, max 100, step 1).
+  // Ride 42.5% = 43; Suspension 57.5% = 58; Wing 42.5% = 43.
+  const lap = s.doc.querySelector("#d1SetupComments span.font-heading");
+  assert(
+    /^Lap 1: 1:22\.512 · ideal Ride 43 · Susp 58 · Wing 43$/.test(lap.textContent),
+    "saran ideal salah: " + lap.textContent
+  );
+  assert(/estimasi/i.test(lap.getAttribute("title") || ""), "title saran tanpa estimasi");
+  // Label slider asli tidak diubah; detail per slider hanya di title.
+  const lbl = key => s.doc.querySelector("#setup #d1" + key + " .setupSlider-label");
+  assert(
+    lbl("Ride").textContent === "Ride height",
+    "label Ride diubah: " + lbl("Ride").textContent
+  );
+  assert(
+    lbl("Suspension").textContent === "Suspension",
+    "label Suspension diubah: " + lbl("Suspension").textContent
+  );
+  assert(
+    lbl("Aerodynamics").textContent === "Wing level",
+    "label Wing diubah: " + lbl("Aerodynamics").textContent
+  );
+  assert(/estimasi/i.test(lbl("Ride").getAttribute("title") || ""), "title slider tanpa estimasi");
+  assert(
+    s.doc.getElementById("d1Ride").querySelector("input").value === "50",
+    "nilai slider game ikut diubah"
+  );
+  const eng = s.doc.querySelector("#d1SetupComments .shrinkText");
+  assert(eng && /estimasi/i.test(eng.getAttribute("title") || ""), "title engineer tanpa estimasi");
+  assert(eng.querySelector(".red"), "struktur span merah engineer rusak");
+  s.close();
+});
+
+t("Race setup: ideal tampil dari bar game walau tabel practice tak terbaca", () => {
+  const base = new JSDOM(load("race.html"));
+  const bdoc = base.window.document;
+  // Bar ideal tetap ada, tapi tabel practice dikosongkan (mis. render beda).
+  bdoc.querySelector("#d1Laps tbody").innerHTML = "";
+  const html = base.serialize();
+  base.window.close();
+  const s = bootOn(html, URL_RACE);
+  const lap = s.doc.querySelector("#d1SetupComments span.font-heading");
+  assert(
+    /· ideal Ride 43 · Susp 58 · Wing 43$/.test(lap.textContent),
+    "ideal tidak tampil tanpa tabel practice: " + lap.textContent
+  );
+  s.close();
+});
+
+t("Race setup: ideal tetap tampil walau adapter tak menemukan slider wrap", () => {
+  const base = new JSDOM(load("race.html"));
+  const bdoc = base.window.document;
+  // Simulasi perubahan id wrap oleh UI game: adapter kosong, tapi form +
+  // input[name] tetap ada — saran ideal harus tetap muncul.
+  for (const el of bdoc.querySelectorAll("#setup .setupSliderWrap")) el.removeAttribute("id");
+  const html = base.serialize();
+  base.window.close();
+  const s = bootOn(html, URL_RACE);
+  const lap = s.doc.querySelector("#d1SetupComments span.font-heading");
+  assert(
+    /· ideal Ride 43 · Susp 58 · Wing 43$/.test(lap.textContent),
+    "ideal hilang saat id wrap berubah: " + lap.textContent
+  );
   s.close();
 });
 
 t("Race setup: bar ideal selebar track → 'belum diketahui', bukan angka karangan", () => {
   const base = new JSDOM(load("race.html"));
   const bdoc = base.window.document;
-  // Driver 2 punya practice, tapi bar ideal-nya masih penuh (width 100%).
-  bdoc.querySelector("#d2Laps tbody").innerHTML +=
-    '<tr><td class="ts-SS">1</td><td>50</td><td>50</td><td>50</td><td><span class="red">-2.4</span></td><td><span class="red">-6%</span></td><td>1:22.400</td></tr>';
+  for (const id of ["d1Ride", "d1Suspension", "d1Aerodynamics"]) {
+    bdoc
+      .querySelector("#" + id + " .setupSlider-idealRange")
+      .setAttribute("style", "left:calc(0% + 2px);width:calc(100% - 4px)");
+  }
   const html = base.serialize();
   base.window.close();
   const s = bootOn(html, URL_RACE);
-  const lbl = s.doc.querySelector("#setup #d2Ride .setupSlider-label");
+  const lap = s.doc.querySelector("#d1SetupComments span.font-heading");
   assert(
-    /^Ride height · ideal belum diketahui$/.test(lbl.textContent),
-    "ideal tak dikenal dikarang: " + lbl.textContent
+    /^Lap 1: 1:22\.512 · ideal belum diketahui$/.test(lap.textContent),
+    "ideal tak dikenal dikarang: " + lap.textContent
   );
-  assert(/practice/i.test(lbl.getAttribute("title") || ""), "title belum diketahui tanpa alasan");
+  assert(/practice/i.test(lap.getAttribute("title") || ""), "title belum diketahui tanpa alasan");
+  assert(
+    !s.doc.querySelector("#d1Ride .setupSlider-label").hasAttribute("title"),
+    "label diberi title walau bar belum dipelajari"
+  );
+  s.close();
+});
+
+t("Race setup: label slider tak belajar tetap '?' bila slider lain belajar", () => {
+  const base = new JSDOM(load("race.html"));
+  const bdoc = base.window.document;
+  bdoc
+    .querySelector("#d1Ride .setupSlider-idealRange")
+    .setAttribute("style", "left:calc(0% + 2px);width:calc(100% - 4px)");
+  const html = base.serialize();
+  base.window.close();
+  const s = bootOn(html, URL_RACE);
+  const lap = s.doc.querySelector("#d1SetupComments span.font-heading");
+  assert(
+    /· ideal Ride \? · Susp 58 · Wing 43$/.test(lap.textContent),
+    "slider belum belajar salah tampil: " + lap.textContent
+  );
   s.close();
 });
 
 ta("Race setup: saran ideal + title dipulihkan saat pindah halaman", async () => {
   const s = bootOn(load("race.html"), URL_RACE);
   const lbl = s.doc.querySelector("#setup #d1Ride .setupSlider-label");
+  const lap = s.doc.querySelector("#d1SetupComments span.font-heading");
   const span = s.doc.querySelector("#setup .driver1Include .driverName span:last-child");
-  assert(/ideal/.test(lbl.textContent), "precondition: saran ideal belum tertulis");
+  assert(/ideal/.test(lap.textContent), "precondition: saran ideal belum tertulis");
   s.doc.getElementById("pageId").value = "cars";
   s.doc.getElementById("setup").appendChild(s.doc.createElement("div"));
   await new Promise(r => setTimeout(r, 25));
   assert(
-    lbl.textContent.trim() === "Ride height",
-    "label slider tidak dipulihkan: " + lbl.textContent
+    lap.textContent.trim() === "Lap 1: 1:22.512",
+    "baris lap tidak dipulihkan: " + lap.textContent
   );
+  assert(!lap.hasAttribute("title"), "title saran tertinggal: " + lap.getAttribute("title"));
+  assert(!lap.hasAttribute("data-igpas-orig"), "data-igpas-orig saran tertinggal");
+  assert(lbl.textContent.trim() === "Ride height", "label slider berubah: " + lbl.textContent);
   assert(!lbl.hasAttribute("title"), "title slider tertinggal: " + lbl.getAttribute("title"));
-  assert(!lbl.hasAttribute("data-igpas-orig"), "data-igpas-orig label tertinggal");
   assert(!span.hasAttribute("title"), "title nama tertinggal: " + span.getAttribute("title"));
   assert(span.textContent.trim() === "Pratama", "nama driver berubah setelah restore");
   s.close();
@@ -947,10 +994,10 @@ t("Race practice multi-lap: rata-rata 3 lap benar + idempoten render", () => {
   assert(/practice \(3 lap\)/.test(tip), "count 3 lap salah: " + tip);
   assert(/2\.4 L\/lap/.test(tip), "avg fuel 2.4 salah: " + tip);
   assert(/terbaik 1:21\.900/.test(tip), "best lap salah: " + tip);
-  // Idempoten: label ideal hanya sekali (tidak mengganda).
-  const lbl = s.doc.querySelector("#setup #d1Ride .setupSlider-label").textContent;
-  assert((lbl.match(/ideal/g) || []).length === 1, "saran ideal mengganda: " + lbl);
-  assert((lbl.match(/Ride height/g) || []).length === 1, "label asli mengganda: " + lbl);
+  // Idempoten: saran ideal hanya sekali di baris lap (tidak mengganda).
+  const lap = s.doc.querySelector("#d1SetupComments span.font-heading").textContent;
+  assert((lap.match(/ideal/g) || []).length === 1, "saran ideal mengganda: " + lap);
+  assert((lap.match(/Lap 1: 1:22\.512/g) || []).length === 1, "teks lap asli mengganda: " + lap);
   s.close();
 });
 

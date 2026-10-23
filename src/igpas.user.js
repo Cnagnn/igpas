@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.9.8
+// @version      0.9.9
 // @description  Read-only in-page study advisor for iGP Manager: #1..#n sorted design-point priorities, color-coded supply and parts/engine repair buttons, supplier/manufacturer rankings, staff/transfer notes, and pre-race setup/fuel/tyre/stint estimates written only as text/title/style on original page elements (never the live Race tab). Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
 // @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design terurut #1..#n, warna tombol Supply dan ganti parts/engine, peringkat supplier/manufacturer, catatan staff/transfers, dan estimasi setup/fuel/ban/stint pra-balapan — hanya teks/title/style pada elemen asli (bukan tab Race live). Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
 // @license      GPL-3.0-or-later
@@ -18,7 +18,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.9.8';
+    const VERSION = '0.9.9';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -804,32 +804,36 @@
         },
 
         /**
-         * Baca posisi BAR IDEAL slider setup dari atribut stylenya (v0.7.3).
-         * Game menulis: left:calc(X% + Npx);width:calc(Y% - Npx) pada
-         * .setupSlider-idealRange. Ekstraksi murni regex persen — tanpa asumsi
-         * lain. Bar setebal track penuh (width >= 100%) = ideal BELUM
-         * dipelajari; pemanggil wajib menampilkan "belum diketahui", bukan
-         * mengarang angka tengah.
+         * Baca posisi BAR IDEAL slider setup dari atribut stylenya (v0.7.3,
+         * v0.9.9: bar menyempit jadi titik). Game menulis:
+         * left:calc(X% + Npx);width:calc(Y% - Npx) pada .setupSlider-idealRange.
+         * Saat game menyempitkan bar ke titik (width px, bukan %), posisi left
+         * = ideal persis → width 0, point:true. Bar setebal track penuh
+         * (width >= 100%) = ideal BELUM dipelajari.
          * @param {string|null} styleAttr atribut style mentah
-         * @returns {{left:Number,width:Number}|null}
+         * @returns {{left:Number,width:Number,point:Boolean}|null}
          */
         parseSliderIdeal(styleAttr) {
             const m = String(styleAttr == null ? '' : styleAttr).match(/-?\d+(?:\.\d+)?%/g);
-            if (!m || m.length < 2) return null;
+            if (!m || !m.length) return null;
             const left = parseFloat(m[0]);
-            const width = parseFloat(m[1]);
+            const width = m.length >= 2 ? parseFloat(m[1]) : 0;
             if (!Number.isFinite(left) || !Number.isFinite(width)) return null;
             return {
                 left: Math.round(left * 10) / 10,
                 width: Math.round(width * 10) / 10,
+                point: m.length < 2,
             };
         },
 
         /**
-         * Estimasi satu slider vs bar ideal game (v0.7.3). Titik tengah bar di
-         * pakai sebagai estimasi ideal; selisih = nilai slider sekarang − mid.
-         * Bar penuh (width >= 100%) → learned:false (data belum cukup).
-         * @param {object} p { ideal:{left,width}|null, current:Number-like|null }
+         * Estimasi satu slider vs bar ideal game (v0.7.3, v0.9.9 nilai nyata).
+         * Titik tengah bar dipakai sebagai estimasi ideal. Bila min/max slider
+         * diberikan, persen dikonversi ke nilai slider dan dibulatkan ke step
+         * (angka yang bisa dipilih game). Bar penuh (width >= 100%) →
+         * learned:false (data belum cukup).
+         * @param {object} p { ideal:{left,width}|null, current:Number-like|null,
+         *                     min?:Number, max?:Number, step?:Number }
          */
         setupAdvice(p) {
             const cur = (p && p.current != null && Number.isFinite(Number(p.current)))
@@ -838,9 +842,19 @@
             if (!ideal || ideal.width == null || ideal.width >= 100) {
                 return { learned: false, current: cur };
             }
-            const mid = Math.round((ideal.left + ideal.width / 2) * 10) / 10;
+            const midPct = Math.round((ideal.left + ideal.width / 2) * 10) / 10;
+            const num = v => ((v != null && String(v) !== '' && Number.isFinite(Number(v))) ? Number(v) : null);
+            const min = num(p && p.min);
+            const max = num(p && p.max);
+            const step = num(p && p.step);
+            let mid = midPct;
+            if (min != null && max != null && max > min) {
+                mid = min + (midPct / 100) * (max - min);
+                if (step != null && step > 0) mid = min + Math.round((mid - min) / step) * step;
+                mid = Math.round(mid * 10) / 10;
+            }
             const delta = (cur != null) ? Math.round((cur - mid) * 10) / 10 : null;
-            return { learned: true, mid: mid, delta: delta, current: cur };
+            return { learned: true, mid: mid, midPct: midPct, delta: delta, current: cur };
         },
 
         /**
@@ -2556,12 +2570,13 @@
          * karakteristik trek. restore-pertama via restoreRaceInPlace().
          * Jangkar tulis:
          *  - Setup: span nama driver (#setup .driverNInclude .driverName span)
-         *    = TIDAK ditulis lagi (v0.9.8; teks asli game tetap); title = agregasi
-         *    practice + hint track + arah slider game. Label slider asli
-         *    (.setupSlider-label) = `· ideal <titik tengah bar>` setelah practice
-         *    history muncul; title = penjelasan + nilai sekarang. p engineer
-         *    (#dNSetupComments .shrinkText) = title saja (struktur span merah
-         *    dipertahankan).
+         *    = TIDAK ditulis (teks asli game tetap). Baris lap driver
+         *    (#dNSetupComments .font-heading) = `· ideal Ride/Susp/Wing <nilai>`
+         *    dari bar ideal game (anchor input[name] di form #dNsetup); bar
+         *    penuh (width >= 100%) → "ideal belum diketahui". Title label
+         *    slider = ideal + arah geser. Title span nama = agregasi practice +
+         *    hint track + arah slider game; p engineer (#dNSetupComments
+         *    .shrinkText) = title saja (struktur span merah dipertahankan).
          *  - Strategy: komentar pembalap TIDAK ditulis lagi. Teks + title
          *    ditulis pada label asli "Fuel (litres)" di .c-wrap #dNAdvancedFuel
          *    (estimasi practice/lap × Total laps estimate vs fuel terisi) dan
@@ -2591,12 +2606,72 @@
             if (pageId() !== 'race') { restoreRaceInPlace(); return; }
             if (!document.getElementById('setup')) { restoreRaceInPlace(); return; }
             restoreRaceInPlace(); // teks asli kembali dulu agar captures baca data murni
+            // 1) Setup ideal (v0.9.9): jangkar = input[name] milik game di form
+            // #dNsetup (Ride/Suspension/Wing) — persis anchor yang dipakai game
+            // sendiri, jadi tidak bergantung pada id wrap yang bisa berubah.
+            // Sumber angka = bar ideal game. Bar menyempit = sudah dipelajari;
+            // bar penuh (width >= 100%) = belum → "?". Tulisan terlihat di
+            // baris "Lap N: ..." driver; detail per slider di title label.
+            for (const n of [1, 2]) {
+                const form = document.getElementById('d' + n + 'setup');
+                if (!form) continue;
+                const idealParts = [];
+                let idealLearned = false;
+                for (const pair of [['ride', 'Ride'], ['suspension', 'Susp'], ['rwing', 'Wing']]) {
+                    const input = form.querySelector('input[name="' + pair[0] + '"]');
+                    if (!input) continue;
+                    const wrap = input.closest('.setupSliderWrap') || form;
+                    const lbl = wrap.querySelector('.setupSlider-label');
+                    const irange = wrap.querySelector('.setupSlider-idealRange');
+                    const adv = IGPCore.setupAdvice({
+                        ideal: IGPCore.parseSliderIdeal(irange ? irange.getAttribute('style') : null),
+                        current: Utils.numOrNull(input.value),
+                        min: Utils.numOrNull(input.getAttribute('min')),
+                        max: Utils.numOrNull(input.getAttribute('max')),
+                        step: Utils.numOrNull(input.getAttribute('step')),
+                    });
+                    idealParts.push(pair[1] + ' ' + (adv.learned ? adv.mid : '?'));
+                    if (!adv.learned) continue;
+                    idealLearned = true;
+                    if (lbl) {
+                        saveTitle(lbl);
+                        const now = (adv.current == null) ? '—' : adv.current;
+                        const shift = (adv.delta != null && adv.delta !== 0)
+                            ? now + ' → geser ' + (adv.delta > 0 ? '-' : '+') + Math.abs(adv.delta)
+                            : now;
+                        const tip = 'Ideal ' + adv.mid + ' = titik tengah bar ideal game; ' +
+                            shift + ' — estimasi, bukan rumus game.';
+                        lbl.setAttribute('title', tip);
+                        lbl.setAttribute('data-igpas-written-title', tip);
+                    }
+                }
+                if (!idealParts.length) continue;
+                const box = document.getElementById('d' + n + 'SetupComments');
+                const lap = box ? (box.querySelector('.font-heading') ||
+                    Array.from(box.children).find(el =>
+                        el.tagName === 'SPAN' && /lap/i.test(el.textContent))) : null;
+                if (!lap) continue;
+                const orig = (lap.getAttribute('data-igpas-orig') || lap.textContent).trim();
+                const txt = idealLearned
+                    ? orig + ' · ideal ' + idealParts.join(' · ')
+                    : orig + ' · ideal belum diketahui';
+                writeFirstTextNode(lap, txt);
+                saveTitle(lap);
+                const tip = idealLearned
+                    ? 'Ideal dari bar game: ' + idealParts.join(' · ') +
+                        '. Titik tengah bar = estimasi, bukan rumus game.'
+                    : 'Bar ideal game masih selebar track: game belum punya cukup ' +
+                        'data practice untuk slider ini. Jalankan practice dulu.';
+                lap.setAttribute('title', tip);
+                lap.setAttribute('data-igpas-written-title', tip);
+            }
             const s = IgpRaceSetupAdapter.captures(document);
             if (!s) return;
             const track = IgpTrackAdapter.captures(document);
             const desc = track ? IGPCore.describeTrack(track) : null;
             const hintTxt = (desc && desc.ok) ? desc.values.hints.join('; ') : null;
             for (const d of (s.drivers || [])) {
+                // 2) Agregasi practice: hanya title (tanpa suffix nama driver).
                 const hist = d.practiceHistory && d.practiceHistory.length ? d.practiceHistory : null;
                 if (!hist) continue;
                 const sum = IGPCore.summarizePracticeLaps(hist.map(h => ({
@@ -2604,9 +2679,6 @@
                 })));
                 if (!sum.ok) continue;
                 const v = sum.values;
-                // Span nama driver (teks polos "Pratama") TIDAK diberi suffix
-                // lagi (v0.9.8): teks game dibiarkan apa adanya, agregasi pindah
-                // ke title nama + title engineer.
                 const span = document.querySelector(
                     '#setup .choiceDivInclude.driver' + d.num + 'Include .driverName span:last-child');
                 if (span) {
@@ -2618,36 +2690,6 @@
                         ' — estimasi, bukan rumus game.';
                     span.setAttribute('title', tip);
                     span.setAttribute('data-igpas-written-title', tip);
-                }
-                // Slider asli (Ride/Suspension/Wing): teks ideal terlihat pada
-                // label slider setelah practice history ada. Titik tengah bar
-                // ideal game = estimasi; bar penuh (width >= 100%) = belum
-                // diketahui — jangan mengarang angka. Nilai slider tak diubah.
-                for (const sw of document.querySelectorAll('#setup .setupSliderWrap[id^="d' + d.num + '"]')) {
-                    const lbl = sw.querySelector('.setupSlider-label');
-                    if (!lbl) continue;
-                    const irange = sw.querySelector('.setupSlider-idealRange');
-                    const input = sw.querySelector('input');
-                    const adv = IGPCore.setupAdvice({
-                        ideal: IGPCore.parseSliderIdeal(irange ? irange.getAttribute('style') : null),
-                        current: input ? Utils.numOrNull(input.value) : null,
-                    });
-                    const orig = lbl.getAttribute('data-igpas-orig') || lbl.textContent;
-                    writeSelfText(lbl, orig + (adv.learned
-                        ? ' · ideal ' + adv.mid
-                        : ' · ideal belum diketahui'));
-                    saveTitle(lbl);
-                    const tip = adv.learned
-                        ? 'Ideal ' + adv.mid + ' (titik tengah bar ideal game)' +
-                            (adv.delta != null && adv.delta !== 0
-                                ? '; sekarang ' + adv.current + ' → geser ' + (adv.delta > 0 ? '-' : '+') +
-                                    Math.abs(adv.delta)
-                                : '; sekarang ' + (adv.current == null ? '—' : adv.current)) +
-                            ' — estimasi, bukan rumus game.'
-                        : 'Bar ideal game masih selebar track: game belum punya cukup ' +
-                            'data practice untuk slider ini. Jalankan practice dulu.';
-                    lbl.setAttribute('title', tip);
-                    lbl.setAttribute('data-igpas-written-title', tip);
                 }
                 // Komentar engineer: title saja (span merah di dalamnya utuh).
                 const eng = document.querySelector('#d' + d.num + 'SetupComments .shrinkText');

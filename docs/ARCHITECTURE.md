@@ -3,7 +3,7 @@
 Penasihat studi **read-only** untuk iGP Manager dalam satu file userscript,
 tanpa build step, tanpa web GUI, tanpa jaringan, dan tanpa penyimpanan.
 
-Versi saat ini 0.9.8.
+Versi saat ini 0.9.9.
 
 ## 1. Ruang lingkup
 
@@ -13,7 +13,7 @@ Versi saat ini 0.9.8.
 - ✅ Supply **switch-aware**: efisiensi = Σ bonus per 1jt biaya. Peringkat menggabungkan supplier aktif + alternatif (seri dimenangkan aktif); tombol alternatif diwarnai merah bila rekomendasi ganti (≥5% lebih efisien), amber untuk aktif/calon, abu-abu untuk bukan pilihan. Teks biaya & judul tidak diubah; verdict + detail di `title` — mencegah loop ganti supplier.
 - ✅ Cars **Overview**: baris atribut diurutkan `#1..#n` dari atas ke bawah dan label asli ditulis `#n Atribut · X DP`; val/max/gap + estimasi DP di `title`; tanpa warna; angka & bar game tidak disentuh.
 - ✅ Cars **Repair**: tombol `Fix`/`Replace` diwarnai dari kondisi yang tampil + rekomendasi — merah ≤50% (ganti), amber 50–60% (siap-siap), abu-abu >60% (tunda). Judul kartu tidak diubah; biaya/stok/restock/ambang di `title`; tidak mengklik tombol.
-- ✅ Setup pra-balapan: nama driver tidak ditulisi; setelah practice history muncul, label slider asli (Ride/Suspension/Wing) mendapat `· ideal <titik tengah bar ideal game>` — bar penuh (width ≥100%) ditulis `ideal belum diketahui`, bukan angka karangan. Nilai slider, bar, dan tombol game tidak diubah.
+- ✅ Setup pra-balapan: nama driver tidak ditulisi; baris `Lap N: ...` driver mendapat `· ideal Ride/Susp/Wing <nilai>` yang dihitung dari bar ideal game (anchor `input[name]` di form `#dNsetup`, dikonversi ke nilai slider dan dibulatkan ke step). Bar penuh (width ≥100%) → `ideal belum diketahui`, bukan angka karangan; arah geser per slider di `title` label. Nilai slider, bar, dan tombol game tidak diubah.
 - ❌ Tidak ada Command Center / web GUI / GitHub Pages.
 - ❌ Tidak ada mailbox antar-tab, GM storage, profil, atau snapshot.
 - ❌ Tidak scrape/automasi saat balapan live; `#race` tidak pernah ditulis.
