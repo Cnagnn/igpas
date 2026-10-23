@@ -99,49 +99,83 @@ t("Design advisor: peringkat ditulis ke label asli Cars, tanpa elemen baru", () 
   s.close();
 });
 
-t("Repair advisor: saran fix parts/engine ditulis di judul kartu asli", () => {
+t("Repair advisor: tombol Fix/Replace diwarnai, judul kartu tidak ditulisi", () => {
   const s = bootOn(load("cars-repair.html"), URL_IGP);
   const clean = el =>
     String(el.textContent || "")
       .replace(/\s+/g, " ")
       .trim();
+  const bg = el => String(el.style.getPropertyValue("background-color") || "").toLowerCase();
   const heads = Array.prototype.slice.call(s.doc.querySelectorAll("#repair .c-head"));
   assert(heads.length === 2, "kartu mobil harus 2, dapat " + heads.length);
-  assert(
-    clean(heads[0]) === "Car 1 | FIX parts 30% · engine 62% (tunda)",
-    "saran Car 1 salah: " + clean(heads[0])
-  );
-  assert(
-    clean(heads[1]) === "Car 2 | FIX parts 31% · engine 64% (tunda)",
-    "saran Car 2 salah: " + clean(heads[1])
-  );
-  // Teks asli tersimpan untuk restore; tombol game tidak diubah/diklik.
-  assert(heads[0].getAttribute("data-igpas-orig") === "Car 1", "teks asli Car 1 tidak disimpan");
+  // Tidak ada teks saran yang ditambahkan ke judul kartu.
+  assert(clean(heads[0]) === "Car 1", "judul Car 1 berubah: " + clean(heads[0]));
+  assert(clean(heads[1]) === "Car 2", "judul Car 2 berubah: " + clean(heads[1]));
+  assert(!heads[0].hasAttribute("data-igpas-orig"), "judul Car 1 ditulisi advisor");
+  assert(!heads[0].hasAttribute("title"), "title advisor menempel di judul Car 1");
   const fix = s.doc.getElementById("c1PartSwap");
   const eng = s.doc.getElementById("c1EngSwap");
+  // Tombol tetap tombol game: teks & href utuh, tidak ada klik.
   assert(/^Fix\s+6$/.test(clean(fix)), "teks tombol Fix berubah: " + clean(fix));
   assert(/^Replace\s+1$/.test(clean(eng)), "teks tombol Replace berubah: " + clean(eng));
   assert(fix.getAttribute("href").indexOf("btn=c1PartSwap") >= 0, "href tombol Fix berubah");
   assert(!fix.hasAttribute("data-igpas-orig"), "tombol Fix ikut ditulisi advisor");
-  // Detail stok/restock/estimasi ada di title kartu dan lingkaran kondisi.
-  const headTitle = heads[0].getAttribute("title") || "";
+  // Parts 30% = merah (aksi sekarang); engine 62% = abu-abu (tunda).
+  assert(
+    bg(fix) === "#c0392b" || bg(fix) === "rgb(192, 57, 43)",
+    "Fix 30% harus merah, dapat: " + bg(fix)
+  );
+  assert(
+    bg(eng) === "#5d6d7e" || bg(eng) === "rgb(93, 109, 126)",
+    "Replace 62% harus abu-abu, dapat: " + bg(eng)
+  );
+  // Detail stok/restock/estimasi tetap ada di title tombol + lingkaran.
+  const fixTitle = fix.getAttribute("title") || "";
+  const engTitle = eng.getAttribute("title") || "";
   const condTitle = s.doc.getElementById("c6745727Condition").getAttribute("title") || "";
-  const engTitle = s.doc.getElementById("c6745727Engine").getAttribute("title") || "";
-  assert(/fix sekarang/.test(condTitle), "title parts tanpa saran fix: " + condTitle);
-  assert(/6 parts/.test(condTitle) && /stok 51/.test(condTitle), "title parts tanpa biaya/stok");
-  assert(/tunda replace/.test(engTitle), "title engine tanpa saran tunda: " + engTitle);
-  assert(/1 engine/.test(engTitle) && /stok 40/.test(engTitle), "title engine tanpa biaya/stok");
-  assert(/restock 15 race/.test(engTitle), "title engine tanpa restock");
-  assert(/estimasi/i.test(headTitle), "title kartu tanpa label estimasi");
+  assert(/fix sekarang/.test(fixTitle), "title tombol Fix tanpa saran: " + fixTitle);
+  assert(/6 parts/.test(fixTitle) && /stok 51/.test(fixTitle), "title Fix tanpa biaya/stok");
+  assert(/tunda replace/.test(engTitle), "title tombol Replace tanpa saran: " + engTitle);
+  assert(/1 engine/.test(engTitle) && /stok 40/.test(engTitle), "title Replace tanpa biaya/stok");
+  assert(/restock 15 race/.test(engTitle), "title Replace tanpa restock");
+  assert(/fix sekarang/.test(condTitle), "title kondisi parts tanpa saran");
+  assert(/estimasi/i.test(fixTitle), "title tombol tanpa label estimasi");
   assert(!s.doc.querySelector("#repair [class*='igpas-adv']"), "elemen advisor bocor di Repair");
   s.close();
 });
 
-ta("Restore: judul Repair kembali setelah pindah halaman", async () => {
+t("Repair advisor: kondisi 55% memakai warna amber (siap-siap)", () => {
+  const html = load("cars-repair.html")
+    .replace(/data-value="30"/g, 'data-value="55"')
+    .replace(/data-value="62"/g, 'data-value="55"');
+  const s = bootOn(html, URL_IGP);
+  const bg = el => String(el.style.getPropertyValue("background-color") || "").toLowerCase();
+  const fix = s.doc.getElementById("c1PartSwap");
+  const eng = s.doc.getElementById("c1EngSwap");
+  assert(
+    bg(fix) === "#d68910" || bg(fix) === "rgb(214, 137, 16)",
+    "Fix 55% harus amber, dapat: " + bg(fix)
+  );
+  assert(
+    bg(eng) === "#d68910" || bg(eng) === "rgb(214, 137, 16)",
+    "Replace 55% harus amber, dapat: " + bg(eng)
+  );
+  assert(/siap-siap fix/.test(fix.getAttribute("title") || ""), "title Fix bukan siap-siap");
+  assert(
+    /siap-siap replace/.test(eng.getAttribute("title") || ""),
+    "title Replace bukan siap-siap"
+  );
+  s.close();
+});
+
+ta("Restore: warna/title tombol Repair kembali setelah pindah halaman", async () => {
   const s = bootOn(load("cars-repair.html"), URL_IGP);
   const head = s.doc.querySelector("#repair .c-head");
   const cond = s.doc.getElementById("c6745727Condition");
-  assert(/ \| FIX parts /.test(head.textContent), "saran Repair tidak terpasang");
+  const fix = s.doc.getElementById("c1PartSwap");
+  assert(head.textContent.replace(/\s+/g, " ").trim() === "Car 1", "judul Repair berubah");
+  assert(fix.getAttribute("style"), "warna tombol Repair tidak terpasang");
+  assert(fix.getAttribute("title"), "title tombol Repair tidak terpasang");
   assert(cond.getAttribute("title"), "title kondisi tidak terpasang");
   s.doc.getElementById("pageId").value = "staff";
   s.doc.getElementById("repair").appendChild(s.doc.createElement("div"));
@@ -152,6 +186,13 @@ ta("Restore: judul Repair kembali setelah pindah halaman", async () => {
   );
   assert(!head.hasAttribute("data-igpas-orig"), "data-igpas-orig tertinggal di judul");
   assert(!head.hasAttribute("title"), "title advisor tertinggal di judul");
+  assert(
+    !fix.hasAttribute("style"),
+    "style tombol Repair tertinggal: " + fix.getAttribute("style")
+  );
+  assert(!fix.hasAttribute("title"), "title tombol Repair tertinggal");
+  assert(!fix.hasAttribute("data-igpas-orig-style"), "data-igpas-orig-style tertinggal");
+  assert(!fix.hasAttribute("data-igpas-written-style"), "data-igpas-written-style tertinggal");
   assert(!cond.hasAttribute("title"), "title advisor tertinggal di kondisi");
   assert(!cond.hasAttribute("data-igpas-title"), "data-igpas-title tertinggal di kondisi");
   s.close();

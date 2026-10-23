@@ -4,7 +4,7 @@ Penasihat studi **read-only** untuk [iGP Manager](https://igpmanager.com), berup
 **satu userscript tanpa build step**. Tidak ada web GUI, tidak ada server, tidak
 ada jaringan, dan tidak ada data yang disimpan.
 
-> **Versi saat ini: <b>v0.9.4</b>.** ⚠️ **Alat studi — bukan alat balapan.**
+> **Versi saat ini: <b>v0.9.5</b>.** ⚠️ **Alat studi — bukan alat balapan.**
 > Tidak ada otomasi, tidak ada aksi ke situs, tidak membantu kendali saat
 > balapan live. Risiko banned/pelanggaran ToS iGP Manager **ditanggung penuh
 > oleh user**.
@@ -13,20 +13,21 @@ ada jaringan, dan tidak ada data yang disimpan.
 
 Hanya berjalan di `igpmanager.com`. Userscript **tidak menambahkan elemen apa
 pun** ke halaman: tanpa panel, tanpa badge, tanpa tombol. Rekomendasi ditulis
-sebagai **teks pada node asli** dan **detail di atribut `title` elemen yang
-sama**; angka, bar, link, flag, dan ikon game tidak disentuh. Teks/title asli
-disimpan dan **di-restore otomatis** setiap re-render dan saat pindah halaman.
+sebagai **teks pada node asli**, **detail di atribut `title` elemen yang sama**,
+dan **warna sementara pada tombol Repair**; angka, bar, link, flag, dan ikon
+game tidak disentuh. Teks/title/style asli disimpan dan **di-restore otomatis**
+setiap re-render dan saat pindah halaman.
 
-| Halaman (gate `#pageId`)                      | Yang ditulis di elemen asli                                                                                                                                                                                                                                                                                                |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Cars**                                      | Tab Overview: prioritas design point — label baris jadi `#1 Fuel economy · 26 DP` (gap vs max rival liga); val/max/gap di `title`. Tab Repair: judul kartu jadi `Car 1 \| FIX parts 30% · engine 62% (tunda)`; saran `FIX`/`REPLACE` memakai ambang 50%/60%, biaya tombol, stok, restock, dan stok kurang (`⚠`) di `title` |
-| **Manufacturers**                             | Peringkat nama baris engine/chassis (`#n Nama`, `★` terbaik); rating/biaya/rating-per-1jt di `title`                                                                                                                                                                                                                       |
-| **Supply** (dialog Engine/Fuel/Tyres terbuka) | Peringkat gabungan aktif + alternatif di kartu asli (`#n · nilai/1jt · biaya`); judul menjawab langsung `TERBAIK: AKTIF` atau `TERBAIK: ALTERNATIF #1`, plus `tetap`/`ganti dianjurkan`. `★` hanya bila alternatif ≥5% lebih efisien; detail Σ bonus, biaya/race, aturan ambang di `title`                                 |
-| **Drivers & Staff**                           | Label nama driver jadi `Nama \| Full Recover 13j 55m` (countdown dari health + laju pulih, dibulatkan ke atas); health/laju/estimasi di `title`; gaji & kontrak staff di `title` kartu                                                                                                                                     |
-| **Transfers**                                 | Peringkat pada text node nama baris (`#n Nama ★ rekomendasi`); overall/fee di `title` — link kontrak & flag tetap hidup                                                                                                                                                                                                    |
-| **Setup** (pra-balapan)                       | Ringkasan practice pada span nama driver + `title` agregasi; hint trek; arah slider game                                                                                                                                                                                                                                   |
-| **Strategy** (pra-balapan)                    | Estimasi fuel pada label asli **Fuel (litres)**; ringkasan stint/ban di `title`; komentar pembalap tidak ditulis                                                                                                                                                                                                           |
-| **Race live (`#race`)**                       | **Tidak pernah ditulis.** Hanya dibaca read-only untuk karakteristik trek (overtaking/bumpiness/fuel/wear + panjang sirkuit)                                                                                                                                                                                               |
+| Halaman (gate `#pageId`)                      | Yang ditulis di elemen asli                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cars**                                      | Tab Overview: prioritas design point — label baris jadi `#1 Fuel economy · 26 DP` (gap vs max rival liga); val/max/gap di `title`. Tab Repair: tombol `Fix`/`Replace` diwarnai merah (≤50% ganti), amber (50–60% siap-siap), abu-abu (>60% tunda); judul kartu tidak diubah; biaya/stok/restock/ambang di `title` |
+| **Manufacturers**                             | Peringkat nama baris engine/chassis (`#n Nama`, `★` terbaik); rating/biaya/rating-per-1jt di `title`                                                                                                                                                                                                              |
+| **Supply** (dialog Engine/Fuel/Tyres terbuka) | Peringkat gabungan aktif + alternatif di kartu asli (`#n · nilai/1jt · biaya`); judul menjawab langsung `TERBAIK: AKTIF` atau `TERBAIK: ALTERNATIF #1`, plus `tetap`/`ganti dianjurkan`. `★` hanya bila alternatif ≥5% lebih efisien; detail Σ bonus, biaya/race, aturan ambang di `title`                        |
+| **Drivers & Staff**                           | Label nama driver jadi `Nama \| Full Recover 13j 55m` (countdown dari health + laju pulih, dibulatkan ke atas); health/laju/estimasi di `title`; gaji & kontrak staff di `title` kartu                                                                                                                            |
+| **Transfers**                                 | Peringkat pada text node nama baris (`#n Nama ★ rekomendasi`); overall/fee di `title` — link kontrak & flag tetap hidup                                                                                                                                                                                           |
+| **Setup** (pra-balapan)                       | Ringkasan practice pada span nama driver + `title` agregasi; hint trek; arah slider game                                                                                                                                                                                                                          |
+| **Strategy** (pra-balapan)                    | Estimasi fuel pada label asli **Fuel (litres)**; ringkasan stint/ban di `title`; komentar pembalap tidak ditulis                                                                                                                                                                                                  |
+| **Race live (`#race`)**                       | **Tidak pernah ditulis.** Hanya dibaca read-only untuk karakteristik trek (overtaking/bumpiness/fuel/wear + panjang sirkuit)                                                                                                                                                                                      |
 
 Semua tulisan berlabel **"estimasi — bukan rumus game"** di `title`: heuristik
 transparan atas angka yang memang tampil, bukan kepastian performa. Render
@@ -83,7 +84,7 @@ docs/ARCHITECTURE.md     arsitektur & peta komponen
 docs/PRIVACY.md          data, redaksi, risiko ToS
 ```
 
-`npm test` menjalankan **123 test** (85 core + 8 capture + 30 advisor). Butuh
+`npm test` menjalankan **124 test** (85 core + 8 capture + 31 advisor). Butuh
 **Node ≥ 22.22.2** (lihat `.nvmrc`); `jsdom@30` menarik `undici@8` yang
 mensyaratkan Node ≥ 22.19.
 
@@ -94,7 +95,7 @@ mensyaratkan Node ≥ 22.19.
 | Format  | `npm run format:check`   | `prettier --check .` (fix: `npm run format`)                                   |
 | Version | `npm run versions:check` | `@version` + `const VERSION` vs `package.json`                                 |
 | Guards  | `npm run guards:check`   | `@grant` lengkap, `@match` hanya igpmanager.com, nol jaringan/eval/remote code |
-| Tests   | `npm test`               | 123 test                                                                       |
+| Tests   | `npm test`               | 124 test                                                                       |
 
 CI (`.github/workflows/ci.yml`) menjalankan `npm run verify` di Node 22 **dan** 24. Release (`.github/workflows/release.yml`) terpicu pada tag `v*.*.*`,
 memvalidasi tag = `package.json`, dan mengunggah asset userscript.

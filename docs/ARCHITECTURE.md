@@ -3,7 +3,7 @@
 Penasihat studi **read-only** untuk iGP Manager dalam satu file userscript,
 tanpa build step, tanpa web GUI, tanpa jaringan, dan tanpa penyimpanan.
 
-Versi saat ini 0.9.4.
+Versi saat ini 0.9.5.
 
 ## 1. Ruang lingkup
 
@@ -11,7 +11,7 @@ Versi saat ini 0.9.4.
   Supply, Drivers & Staff, Transfers) dan tab **Setup/Strategy pra-balapan**.
 - ✅ Menu capture DOM dengan redaksi PII untuk pemetaan fixture.
 - ✅ Supply **switch-aware**: efisiensi = Σ bonus per 1jt biaya. Peringkat menggabungkan supplier aktif + alternatif (seri dimenangkan aktif), judul menulis `TERBAIK: AKTIF` atau `TERBAIK: ALTERNATIF #1`; `★`/`ganti dianjurkan` hanya bila alternatif ≥5% lebih efisien — mencegah loop ganti supplier.
-- ✅ Cars **Repair**: saran `FIX parts` / `REPLACE engine` dari kondisi yang tampil + biaya tombol + stok; ambang heuristik ≤50% ganti, ≤60% siap-siap, >60% tunda. Tidak mengklik tombol; stok kurang ditandai `⚠`.
+- ✅ Cars **Repair**: tombol `Fix`/`Replace` diwarnai dari kondisi yang tampil + rekomendasi — merah ≤50% (ganti), amber 50–60% (siap-siap), abu-abu >60% (tunda). Judul kartu tidak diubah; biaya/stok/restock/ambang di `title`; tidak mengklik tombol.
 - ❌ Tidak ada Command Center / web GUI / GitHub Pages.
 - ❌ Tidak ada mailbox antar-tab, GM storage, profil, atau snapshot.
 - ❌ Tidak scrape/automasi saat balapan live; `#race` tidak pernah ditulis.
@@ -23,7 +23,7 @@ Versi saat ini 0.9.4.
 | --- | --- |
 | `Utils` | Helper murni: parsing angka/uang, `numOrNull`, `statIndex`, `roleCode`, format |
 | `IGPCore` | Mesin heuristik murni & teruji: `designPriority`, `repairAdvice`, `rankSuppliers`, `compareSuppliers`, `rankManufacturerItems`, `describeTrack`, `summarizePracticeLaps`, `recommendRaceFuel`, `practiceTyreLife`, `summarizeStrategy`, `stintSplit`, `parseLapTime`, dll. |
-| `IgpCarsAdapter` | Parser read-only halaman Cars → `{ attrs, best, designPoints, suppliers, … }`; tab Repair dibaca langsung oleh `Advisor.mountRepair` (kondisi, biaya tombol, stok) |
+| `IgpCarsAdapter` | Parser read-only halaman Cars → `{ attrs, best, designPoints, suppliers, … }`; tab Repair dibaca langsung oleh `Advisor.mountRepair` (kondisi, biaya tombol, stok) dan diwarnai in-place |
 | `IgpSupplyAdapter` | Parser read-only dialog Supply → `{ type, current, alternatives }` |
 | `IgpManufacturersAdapter` | Parser read-only tabel engine + chassis |
 | `IgpStaffAdapter` | Parser read-only Drivers & Staff (driver, staff, pit crew) |
@@ -62,12 +62,13 @@ Tidak ada langkah jaringan, storage, atau sinkronisasi antar-tab.
    (`cars`, `manufacturers`, `staff`, `transfers`, `race` + wadah
    `#setup`/`#strategy`; Supply via dialog `.supplyDialog`).
 2. **`#race` live tidak pernah ditulis** — hanya dibaca `IgpTrackAdapter`.
-3. **In-place** — tidak ada elemen baru; hanya text node/atribut `title` pada
-   elemen milik game.
+3. **In-place** — tidak ada elemen baru; hanya text node, atribut `title`, dan
+   style sementara pada elemen milik game (warna tombol Repair).
 4. **Restore-pertama** — sebelum setiap pembacaan, tulisan advisor
    dikembalikan agar adapter selalu membaca data game murni. Setiap tulisan
-   menyimpan `data-igpas-orig` + `data-igpas-written`; restore tidak menimpa
-   teks yang sudah diganti game.
+   menyimpan `data-igpas-orig` + `data-igpas-written` (atau pasangan
+   `data-igpas-orig-style` + `data-igpas-written-style`); restore tidak menimpa
+   teks/style yang sudah diganti game.
 5. **Gagal jujur** — data tak terbaca → tidak ada tulisan/angka karangan,
    bukan `0`.
 6. **Render instan** — MutationObserver bereaksi saat game commit DOM; tanpa
@@ -88,11 +89,11 @@ Tidak ada langkah jaringan, storage, atau sinkronisasi antar-tab.
 
 - `test/core.test.js` — 85 test murni untuk `IGPCore`/`Utils`.
 - `test/capture.test.js` — 8 test redaksi `PageCapture` (jsdom).
-- `test/advisor.test.js` — 30 test advisor vs fixture DOM nyata (jsdom):
+- `test/advisor.test.js` — 31 test advisor vs fixture DOM nyata (jsdom):
   in-place, restore, idempoten, `#race` zero-UI, menu capture.
 - `test/fixtures/*.html` — capture DOM tersanitasi (PII/script dibuang).
 
-Total **123 test**; dijalankan oleh `npm test` dan `npm run verify` (CI Node
+Total **124 test**; dijalankan oleh `npm test` dan `npm run verify` (CI Node
 22/24).
 
 ## 7. Sejarah singkat

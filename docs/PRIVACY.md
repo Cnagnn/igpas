@@ -1,6 +1,6 @@
 # PRIVACY & RISIKO — I.G.P.A.S
 
-Berlaku untuk v0.9.4. Ringkas dan faktual: apa yang tidak dilakukan userscript,
+Berlaku untuk v0.9.5. Ringkas dan faktual: apa yang tidak dilakukan userscript,
 apa yang disunting saat capture, dan risiko apa yang tetap ada.
 
 ## 1. Tidak ada jaringan
@@ -17,8 +17,9 @@ Sejak v0.9.0 userscript **tidak memakai GM storage** (`GM_getValue`,
 `GM_setValue`, `GM_deleteValue`, `GM_listValues` sudah dihapus, termasuk
 grant-nya). Tidak ada snapshot, profil, mailbox, atau heartbeat.
 
-- Advisor hanya menulis **teks/`title` sementara** pada elemen asli halaman dan
-  **me-restore**-nya otomatis; tidak ada salinan yang dipersistenkan.
+- Advisor hanya menulis **teks/`title`/warna tombol sementara** pada elemen
+  asli halaman dan **me-restore**-nya otomatis; tidak ada salinan yang
+  dipersistenkan.
 - Clipboard hanya terisi ketika Anda sendiri memilih menu **"salin capture DOM
   halaman ini"**. Tidak ada penyalinan/pengiriman otomatis.
 
@@ -66,7 +67,7 @@ tetapi tidak lagi dipelihara atau didistribusikan.
 ## 5. Risiko ToS
 
 I.G.P.A.S adalah alat studi read-only: tidak mengklik, tidak submit, tidak
-mengotomasi balapan. Advisor menulis ulang teks/`title` pada elemen asli game
+mengotomasi balapan. Advisor menulis ulang teks/`title`/warna tombol pada elemen asli game
 (ToS § V.J tentang scripts). Risiko interpretasi Terms of Service iGP Manager
 sepenuhnya ditanggung pengguna. Jika ragu, jangan pasang userscript saat
 balapan live.

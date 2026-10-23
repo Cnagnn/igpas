@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.9.4
-// @description  Read-only in-page study advisor for iGP Manager: design-point priorities, supplier/manufacturer rankings, parts/engine repair advice, staff/transfer notes, and pre-race setup/fuel/tyre/stint estimates written only as text/title on original page elements (never the live Race tab). Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
-// @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design point, peringkat supplier/manufacturer, saran ganti parts/engine, catatan staff/transfers, dan estimasi setup/fuel/ban/stint pra-balapan — hanya teks/title pada elemen asli (bukan tab Race live). Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
+// @version      0.9.5
+// @description  Read-only in-page study advisor for iGP Manager: design-point priorities, supplier/manufacturer rankings, color-coded parts/engine repair buttons, staff/transfer notes, and pre-race setup/fuel/tyre/stint estimates written only as text/title/style on original page elements (never the live Race tab). Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
+// @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design point, peringkat supplier/manufacturer, warna tombol ganti parts/engine sesuai kondisi, catatan staff/transfers, dan estimasi setup/fuel/ban/stint pra-balapan — hanya teks/title/style pada elemen asli (bukan tab Race live). Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
 // @supportURL   https://github.com/Cnagnn/igpas/issues
@@ -18,7 +18,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.9.4';
+    const VERSION = '0.9.5';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -1878,11 +1878,29 @@
         }
 
         /* Halaman Cars tab Repair: saran FIX parts / REPLACE engine.
-         * IN-PLACE PENUH (tanpa elemen baru): judul kartu "Car N" ditulis
-         * ulang jadi "Car N | FIX parts 30% · engine 62% (tunda)"; detail
-         * biaya/stok/ambang di title kartu + kedua lingkaran kondisi. Teks
-         * asli disimpan di data-igpas-orig dan dikembalikan oleh
-         * restoreRepair(); tombol game tidak pernah diklik/diubah. */
+         * IN-PLACE PENUH (tanpa elemen baru): tombol game diwarnai sesuai
+         * kondisi — merah ≤50% (ganti sekarang), amber 50–60% (siap-siap),
+         * abu-abu >60% (tunda). Judul kartu TIDAK ditulisi; detail biaya/stok/
+         * ambang tetap di title tombol + lingkaran kondisi. Style/title asli
+         * disimpan dan dikembalikan oleh restoreRepair(); tombol tidak pernah
+         * diklik/di-submit. */
+        const REPAIR_BUTTON_COLORS = {
+            now: { bg: '#c0392b', fg: '#ffffff' },
+            soon: { bg: '#d68910', fg: '#1b2631' },
+            hold: { bg: '#5d6d7e', fg: '#ffffff' },
+        };
+        function restoreRepairStyle(el) {
+            const saved = el.getAttribute('data-igpas-orig-style');
+            if (saved == null) return;
+            const written = el.getAttribute('data-igpas-written-style');
+            const current = el.getAttribute('style') || '';
+            if (written == null || current === written) {
+                if (saved === '') el.removeAttribute('style');
+                else el.setAttribute('style', saved);
+            }
+            el.removeAttribute('data-igpas-orig-style');
+            el.removeAttribute('data-igpas-written-style');
+        }
         function restoreRepair() {
             const repair = document.getElementById('repair');
             if (!repair) return;
@@ -1895,21 +1913,9 @@
             for (const el of repair.querySelectorAll('[data-igpas-title], [data-igpas-written-title]')) {
                 try { restoreTitle(el); } catch { /* abaikan */ }
             }
-        }
-        function repairStatusText(part, kind) {
-            const value = part && part.value != null ? part.value : null;
-            const status = part ? part.status : 'unknown';
-            if (value == null || status === 'unknown') {
-                return kind === 'parts' ? 'parts tidak terbaca' : 'engine tidak terbaca';
+            for (const el of repair.querySelectorAll('[data-igpas-orig-style], [data-igpas-written-style]')) {
+                try { restoreRepairStyle(el); } catch { /* abaikan */ }
             }
-            if (kind === 'parts') {
-                if (status === 'now') return 'FIX parts ' + value + '%';
-                if (status === 'soon') return 'parts ' + value + '% (siap)';
-                return 'parts ' + value + '% (ok)';
-            }
-            if (status === 'now') return 'REPLACE engine ' + value + '%';
-            if (status === 'soon') return 'engine ' + value + '% (siap)';
-            return 'engine ' + value + '% (tunda)';
         }
         function repairVerdictText(part, kind) {
             const status = part ? part.status : 'unknown';
@@ -1941,11 +1947,28 @@
             return (kind === 'parts' ? 'Parts ' : 'Engine ') + part.value + '% — ' + bits.join(' · ') +
                 ' — estimasi, bukan rumus game.';
         }
+        function paintRepairButton(el, part, kind, restockRaces) {
+            if (!el || !part || part.value == null || part.status === 'unknown') return;
+            const color = REPAIR_BUTTON_COLORS[part.status];
+            if (!color) return;
+            if (!el.hasAttribute('data-igpas-orig-style')) {
+                el.setAttribute('data-igpas-orig-style', el.getAttribute('style') || '');
+            }
+            el.style.setProperty('background-color', color.bg, 'important');
+            el.style.setProperty('background-image', 'none', 'important');
+            el.style.setProperty('border-color', color.bg, 'important');
+            el.style.setProperty('color', color.fg, 'important');
+            el.setAttribute('data-igpas-written-style', el.getAttribute('style') || '');
+            saveTitle(el);
+            const tip = repairTitle(part, kind, restockRaces);
+            el.setAttribute('title', tip);
+            el.setAttribute('data-igpas-written-title', tip);
+        }
         function mountRepair() {
             if (pageId() !== 'cars') { restoreRepair(); return; }
             const repair = document.getElementById('repair');
             if (!repair) { restoreRepair(); return; }
-            restoreRepair(); // teks asli kembali dulu agar captures baca data murni
+            restoreRepair(); // teks/style asli kembali dulu agar captures baca data murni
             const notice = repair.querySelector('.notice');
             const numOf = el => (el ? Utils.numOrNull(el.textContent) : null);
             const partsStock = numOf(repair.querySelector('.notice .totalParts'));
@@ -1954,44 +1977,29 @@
                 .match(/Race\(s\) to next engine restock:\s*(\d+)/i) : null;
             const restockRaces = restockM ? Number(restockM[1]) : null;
             for (const card of repair.querySelectorAll('.c-wrap')) {
-                const head = card.querySelector('.c-head');
                 const condEl = card.querySelector('.ratingCircle[id$="Condition"]');
                 const engEl = card.querySelector('.ratingCircle[id$="Engine"]');
-                if (!head || (!condEl && !engEl)) continue;
+                if (!condEl && !engEl) continue;
+                const fixBtn = card.querySelector('a[id$="PartSwap"]');
+                const engBtn = card.querySelector('a[id$="EngSwap"]');
                 const valueOf = el => (el ? Utils.numOrNull(el.getAttribute('data-value')) : null);
                 const costOf = (el, label) => {
                     if (!el) return null;
                     const m = Utils.clean(el.textContent).match(new RegExp(label + '\\s*(\\d+)', 'i'));
                     return m ? Number(m[1]) : null;
                 };
-                const partCost = costOf(card.querySelector('a[id$="PartSwap"]'), 'Fix');
-                const engineCost = costOf(card.querySelector('a[id$="EngSwap"]'), 'Replace');
                 const res = IGPCore.repairAdvice({
                     condition: valueOf(condEl),
                     engine: valueOf(engEl),
-                    partCost: partCost,
-                    engineCost: engineCost,
+                    partCost: costOf(fixBtn, 'Fix'),
+                    engineCost: costOf(engBtn, 'Replace'),
                     partsStock: partsStock,
                     engineStock: engineStock,
                     restockRaces: restockRaces,
                 });
                 if (!res.ok) continue;
-                const parts = res.values.parts;
-                const engine = res.values.engine;
-                const warn = part => (part && part.enough === false ? ' ⚠' : '');
-                const orig = Utils.clean(head.textContent);
-                const newHead = orig + ' | ' + repairStatusText(parts, 'parts') + warn(parts) +
-                    ' · ' + repairStatusText(engine, 'engine') + warn(engine);
-                writeSelfText(head, newHead);
-                saveTitle(head);
-                const headTip = 'Saran repair: ' + repairStatusText(parts, 'parts') + ' · ' +
-                    repairStatusText(engine, 'engine') + '. Stok parts ' +
-                    (partsStock == null ? '—' : partsStock) + ' · engine ' +
-                    (engineStock == null ? '—' : engineStock) +
-                    (restockRaces != null ? ' · restock engine ' + restockRaces + ' race' : '') +
-                    '. Ambang studi 50%/60% — estimasi, bukan rumus game.';
-                head.setAttribute('title', headTip);
-                head.setAttribute('data-igpas-written-title', headTip);
+                paintRepairButton(fixBtn, res.values.parts, 'parts', restockRaces);
+                paintRepairButton(engBtn, res.values.engine, 'engine', restockRaces);
                 const annotateCircle = (el, part, kind) => {
                     if (!el) return;
                     saveTitle(el);
@@ -1999,8 +2007,8 @@
                     el.setAttribute('title', tip);
                     el.setAttribute('data-igpas-written-title', tip);
                 };
-                annotateCircle(condEl, parts, 'parts');
-                annotateCircle(engEl, engine, 'engine');
+                annotateCircle(condEl, res.values.parts, 'parts');
+                annotateCircle(engEl, res.values.engine, 'engine');
             }
         }
 
