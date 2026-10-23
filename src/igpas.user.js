@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.9.1
+// @version      0.9.2
 // @description  Read-only in-page study advisor for iGP Manager: design-point priorities, supplier/manufacturer rankings, staff/transfer notes, and pre-race setup/fuel/tyre/stint estimates written only as text/title on original page elements (never the live Race tab). Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
 // @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design point, peringkat supplier/manufacturer, catatan staff/transfers, dan estimasi setup/fuel/ban/stint pra-balapan — hanya teks/title pada elemen asli (bukan tab Race live). Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
 // @license      GPL-3.0-or-later
@@ -18,7 +18,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.9.1';
+    const VERSION = '0.9.2';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -1883,6 +1883,7 @@
             const rank = IGPCore.rankSuppliers({ items: s.alternatives });
             // Gagal jujur: tanpa angka, tanpa modifikasi apa pun (tanpa panel).
             if (!rank.ok) return;
+            const n = rank.values.ranked.length;
             const cmp = IGPCore.compareSuppliers({ current: s.current, alternatives: s.alternatives });
             // Efisiensi supplier aktif (Σ bonus per 1M biaya) memakai metrik yang
             // sama dengan rankSuppliers. Ganti supplier HANYA dianjurkan bila
@@ -1900,14 +1901,33 @@
                 (curValuePerCost <= 0
                     ? bestAlt.valuePerCost > 0
                     : bestAlt.valuePerCost > curValuePerCost * SWITCH_MARGIN));
-            // Tanpa rekomendasi ganti: kartu menampilkan nilai/1M, bukan #1 —
-            // peringkat pada daftar alternatif tidak boleh mendorong churn.
-            const showRanks = switchRec;
-            const bestId = switchRec ? bestAlt.id : null;
-            const bestRank = switchRec ? rank.values.ranked.findIndex(r => r.eId === bestAlt.eId) + 1 : null;
             const gainPct = (switchRec && curValuePerCost > 0 && bestAlt.valuePerCost != null)
                 ? Math.round((bestAlt.valuePerCost / curValuePerCost - 1) * 100)
                 : null;
+            // Peringkat gabungan: aktif ikut dihitung supaya user langsung tahu
+            // mana yang terbaik. Seri dimenangkan supplier aktif — tidak ada
+            // alasan ganti bila nilainya sama.
+            const pool = curValuePerCost != null
+                ? [{ id: s.current.supplierId, eId: null, value: curBonus, cost: curCost,
+                     valuePerCost: curValuePerCost, active: true }].concat(rank.values.ranked)
+                : rank.values.ranked.slice();
+            if (curValuePerCost != null) {
+                const vp = r => (r.valuePerCost == null ? -Infinity : r.valuePerCost);
+                const vv = r => (r.value == null ? -Infinity : r.value);
+                pool.sort((a, b) => (vp(b) - vp(a)) || (vv(b) - vv(a)) ||
+                    ((a.active ? 0 : 1) - (b.active ? 0 : 1)) ||
+                    String(a.id).localeCompare(String(b.id)));
+            }
+            const ranks = new Map();
+            let activeRank = null;
+            pool.forEach((r, i) => {
+                if (r.active) activeRank = i + 1;
+                else if (r.eId != null) ranks.set(String(r.eId), i + 1);
+            });
+            const totalOps = n + (curValuePerCost != null ? 1 : 0);
+            const bestAltRank = bestAlt ? pool.findIndex(r => r === bestAlt) + 1 : null;
+            const showRanks = curValuePerCost != null;
+            const bestId = switchRec ? bestAlt.id : null;
             const cheapId = rank.values.cheapestId;
             // Peta kartu per eId — parsing identik adapter (anti substring eId=1 vs eId=10).
             const cards = new Map();
@@ -1917,7 +1937,6 @@
                 if (!eId || cards.has(eId)) continue;
                 cards.set(eId, { link: btn, card: btn.closest('.inline-block') || btn.parentElement });
             }
-            const n = rank.values.ranked.length;
             rank.values.ranked.forEach((r, i) => {
                 if (r.eId == null) return;
                 const hit = cards.get(String(r.eId));
@@ -1931,13 +1950,14 @@
                 } catch { costNode = null; }
                 if (!costNode) return;
                 const orig = costNode.textContent;
+                const rankNo = ranks.get(String(r.eId)) || (i + 1);
                 const isBest = bestId != null && r.id === bestId;
-                const isCheap = showRanks && !isBest && cheapId != null && r.id === cheapId;
+                const isCheap = cheapId != null && r.id === cheapId;
                 link.setAttribute('data-igpas-orig', orig);
                 link.setAttribute('data-igpas-origmode', 'node');
                 const newCost = showRanks
-                    ? '#' + (i + 1) + ' · ' + orig.trim() +
-                      (isBest ? ' ★' : '') + (isCheap ? ' · termurah' : '')
+                    ? '#' + rankNo + ' · ' + (r.valuePerCost == null ? '—' : r.valuePerCost) +
+                      '/1M · ' + orig.trim() + (isBest ? ' ★' : '')
                     : 'nilai ' + (r.valuePerCost == null ? '—' : r.valuePerCost) + '/1M · ' + orig.trim();
                 costNode.textContent = newCost;
                 link.setAttribute('data-igpas-written', newCost);
@@ -1946,15 +1966,15 @@
                     // restore presisi tanpa menyapu title milik game.
                     card.setAttribute('data-igpas-title',
                         card.hasAttribute('title') ? card.getAttribute('title') : '');
-                    const advisorTitle = (showRanks ? '#' + (i + 1) + ' dari ' + n : 'Alternatif') +
+                    const advisorTitle = (showRanks ? '#' + rankNo + ' dari ' + totalOps : 'Alternatif') +
                         (isBest ? ' · rekomendasi ganti' : '') +
                         (isCheap ? ' · termurah' : '') +
                         ' — Σ bonus ' + (r.value == null ? '—' : (r.value > 0 ? '+' : '') + r.value) +
                         ' · ' + fmtMoney(r.cost) + '/race · nilai/1M ' +
                         (r.valuePerCost == null ? '—' : r.valuePerCost) +
                         (curValuePerCost != null
-                            ? ' · aktif ' + curValuePerCost + '/1M' +
-                              (switchRec ? '' : ' lebih efisien — tetap')
+                            ? ' · aktif #' + activeRank + ' (' + curValuePerCost + '/1M)' +
+                              (switchRec ? '' : ' — tetap')
                             : ' · aktif tak terbaca') +
                         ' — estimasi, bukan rumus game.';
                     card.setAttribute('title', advisorTitle);
@@ -1965,47 +1985,46 @@
             if (cmp.ok) {
                 const h2 = dlg.querySelector('.dialog-subhead-content h2');
                 if (h2) {
-                    const kata = v => (v === 'better' ? 'unggul' : v === 'worse' ? 'kalah' : v === 'equal' ? 'setara' : null);
-                    const parts = [];
-                    const kb = kata(cmp.values.bonus.verdict);
-                    const kc = kata(cmp.values.cost.verdict);
-                    if (kb) parts.push('bonus ' + kb);
-                    if (kc) parts.push('biaya ' + kc);
-                    let verdictTxt = parts.length ? parts.join(', ') + ' vs alternatif' : '';
-                    if (curValuePerCost != null) {
-                        verdictTxt += (verdictTxt ? ' · ' : '') + (switchRec
-                            ? 'pertimbangkan ganti (#' + bestRank +
-                              (gainPct == null ? '' : ', +' + gainPct + '% nilai/1M') + ')'
-                            : 'tetap (aktif ' + curValuePerCost + '/1M)');
+                    let verdictTxt;
+                    if (curValuePerCost != null && activeRank != null) {
+                        if (activeRank === 1) {
+                            verdictTxt = 'TERBAIK: AKTIF (' + curValuePerCost + '/1M) · tetap';
+                        } else if (bestAlt && bestAlt.valuePerCost != null) {
+                            verdictTxt = 'TERBAIK: ALTERNATIF #' + bestAltRank +
+                                ' (' + bestAlt.valuePerCost + '/1M' +
+                                (gainPct == null ? '' : ', +' + gainPct + '%') + ') · ' +
+                                (switchRec ? 'ganti dianjurkan' : 'tetap (untung tipis)');
+                        } else {
+                            verdictTxt = 'AKTIF #' + activeRank + ' (' + curValuePerCost + '/1M) · tetap';
+                        }
                     } else {
-                        verdictTxt += (verdictTxt ? ' · ' : '') + 'aktif tak terbaca';
+                        verdictTxt = 'AKTIF TAK TERBACA · bandingkan nilai/1M';
                     }
-                    if (verdictTxt) {
-                        const origH2 = h2.textContent;
-                        const v = cmp.values;
-                        h2.setAttribute('data-igpas-orig', origH2);
-                        h2.setAttribute('data-igpas-origmode', 'self');
-                        h2.setAttribute('data-igpas-title',
-                            h2.hasAttribute('title') ? h2.getAttribute('title') : '');
-                        const newH2 = origH2 + ' · ' + verdictTxt;
-                        h2.textContent = newH2;
-                        h2.setAttribute('data-igpas-written', newH2);
-                        const advisorTitle = 'Supplier aktif #' +
-                            (s.current.supplierId != null ? s.current.supplierId : '?') +
-                            ': Σ bonus ' + (v.current.bonus == null ? '—' : (v.current.bonus > 0 ? '+' : '') + v.current.bonus) +
-                            ' · ' + fmtMoney(v.current.cost) + '/race. Alternatif ' + n +
-                            ': bonus tertinggi Σ' + (v.bestBonus ? (v.bestBonus.value > 0 ? '+' : '') + v.bestBonus.value + ' (#' + v.bestBonus.id + ')' : '—') +
-                            ', termurah ' + (v.cheapest ? fmtMoney(v.cheapest.value) + ' (#' + v.cheapest.id + ')' : '—') +
-                            (curValuePerCost != null ? ' · nilai/1M aktif ' + curValuePerCost : '') +
-                            '. Kesimpulan: ' + (switchRec
-                                ? 'ganti dianjurkan' + (gainPct == null ? '' : ' (+' + gainPct + '% nilai/1M)')
-                                : (curValuePerCost != null
-                                    ? 'tetap — alternatif tidak ≥5% lebih efisien'
-                                    : 'aktif tak terbaca — bandingkan manual')) +
-                            ' — estimasi, bukan rumus game.';
-                        h2.setAttribute('title', advisorTitle);
-                        h2.setAttribute('data-igpas-written-title', advisorTitle);
-                    }
+                    const origH2 = h2.textContent;
+                    h2.setAttribute('data-igpas-orig', origH2);
+                    h2.setAttribute('data-igpas-origmode', 'self');
+                    h2.setAttribute('data-igpas-title',
+                        h2.hasAttribute('title') ? h2.getAttribute('title') : '');
+                    const newH2 = origH2 + ' · ' + verdictTxt;
+                    h2.textContent = newH2;
+                    h2.setAttribute('data-igpas-written', newH2);
+                    const advisorTitle = 'Supplier aktif #' +
+                        (s.current.supplierId != null ? s.current.supplierId : '?') +
+                        ': Σ bonus ' + (curBonus == null ? '—' : (curBonus > 0 ? '+' : '') + curBonus) +
+                        ' · ' + fmtMoney(curCost) + '/race · nilai/1M ' +
+                        (curValuePerCost == null ? '—' : curValuePerCost) +
+                        (activeRank != null ? ' (#' + activeRank + ' dari ' + totalOps + ')' : '') + '. ' +
+                        'Alternatif terbaik: ' + (bestAlt
+                            ? '#' + bestAltRank + ' · nilai/1M ' + bestAlt.valuePerCost +
+                              ' · ' + fmtMoney(bestAlt.cost) + '/race'
+                            : '—') + '. ' +
+                        'Aturan: ganti hanya bila alternatif ≥5% lebih efisien. ' +
+                        'Kesimpulan: ' + (switchRec
+                            ? 'ganti dianjurkan'
+                            : (curValuePerCost != null ? 'tetap' : 'aktif tak terbaca — bandingkan manual')) +
+                        ' — estimasi, bukan rumus game.';
+                    h2.setAttribute('title', advisorTitle);
+                    h2.setAttribute('data-igpas-written-title', advisorTitle);
                 }
             }
         }

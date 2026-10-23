@@ -3,14 +3,14 @@
 Penasihat studi **read-only** untuk iGP Manager dalam satu file userscript,
 tanpa build step, tanpa web GUI, tanpa jaringan, dan tanpa penyimpanan.
 
-Versi saat ini 0.9.1.
+Versi saat ini 0.9.2.
 
 ## 1. Ruang lingkup
 
 - ✅ Rekomendasi in-page pada halaman **studi** iGP (Cars, Manufacturers,
   Supply, Drivers & Staff, Transfers) dan tab **Setup/Strategy pra-balapan**.
 - ✅ Menu capture DOM dengan redaksi PII untuk pemetaan fixture.
-- ✅ Supply **switch-aware**: efisiensi = Σ bonus per 1jt biaya; rekomendasi ganti hanya bila alternatif ≥5% lebih efisien. Bila supplier aktif menang, kartu alternatif menampilkan nilai/1jt tanpa `#1`/`★` dan judul menegaskan `· tetap` — mencegah loop ganti supplier.
+- ✅ Supply **switch-aware**: efisiensi = Σ bonus per 1jt biaya. Peringkat menggabungkan supplier aktif + alternatif (seri dimenangkan aktif), judul menulis `TERBAIK: AKTIF` atau `TERBAIK: ALTERNATIF #1`; `★`/`ganti dianjurkan` hanya bila alternatif ≥5% lebih efisien — mencegah loop ganti supplier.
 - ❌ Tidak ada Command Center / web GUI / GitHub Pages.
 - ❌ Tidak ada mailbox antar-tab, GM storage, profil, atau snapshot.
 - ❌ Tidak scrape/automasi saat balapan live; `#race` tidak pernah ditulis.

@@ -112,18 +112,18 @@ t("Supply advisor: peringkat ditulis ke kartu asli dialog (engine), tanpa elemen
     return "";
   });
   assert(
-    texts.every(x => /^#\d+ /.test(x)),
-    "semua biaya harus diawali peringkat (dapat: " + texts.join(" | ") + ")"
+    texts.every(x => /^#\d+ · .+\/1M · /.test(x)),
+    "semua biaya harus diawali peringkat + nilai/1M (dapat: " + texts.join(" | ") + ")"
   );
   assert(texts.filter(x => /^#1 /.test(x)).length === 1, "harus tepat satu peringkat #1");
-  // Σ6/400k = nilai/1M tertinggi → #1 + ★; termurah 350k → #2 + penanda.
+  // Aktif 8/1M vs alternatif terbaik Σ6/400k = 15/1M → #1 + ★.
   assert(
-    texts.some(x => /^#1 · 400k ★$/.test(x)),
-    "peringkat #1 harus supplier #6 400k ★ (dapat: " + texts.join(" | ") + ")"
+    texts.some(x => /^#1 · 15\/1M · 400k ★$/.test(x)),
+    "peringkat #1 harus supplier #6 15/1M ★ (dapat: " + texts.join(" | ") + ")"
   );
   assert(
-    texts.some(x => /^#2 · 350k · termurah$/.test(x)),
-    "termurah harus #2 350k (dapat: " + texts.join(" | ") + ")"
+    texts.some(x => /^#2 · 14\.29\/1M · 350k$/.test(x)),
+    "peringkat #2 harus 350k (dapat: " + texts.join(" | ") + ")"
   );
   // Teks asli tersimpan; ikon & data-tip game tidak disentuh.
   const first = links[0];
@@ -141,8 +141,7 @@ t("Supply advisor: peringkat ditulis ke kartu asli dialog (engine), tanpa elemen
   // Verdict aktif ditulis ke judul dialog asli.
   const h2 = s.doc.querySelector(".dialog-subhead-content h2");
   assert(
-    h2.textContent ===
-      "Engine supply · bonus kalah, biaya kalah vs alternatif · pertimbangkan ganti (#1, +88% nilai/1M)",
+    h2.textContent === "Engine supply · TERBAIK: ALTERNATIF #1 (15/1M, +88%) · ganti dianjurkan",
     "judul verdict salah: " + h2.textContent
   );
   assert(
@@ -150,8 +149,12 @@ t("Supply advisor: peringkat ditulis ke kartu asli dialog (engine), tanpa elemen
     "title judul tanpa supplier aktif"
   );
   assert(
-    /350 rb.*#1/.test(h2.getAttribute("title") || ""),
-    "title judul tanpa pembanding termurah"
+    /Alternatif terbaik: #1/.test(h2.getAttribute("title") || ""),
+    "title judul tanpa alternatif terbaik"
+  );
+  assert(
+    /Aturan: ganti hanya bila alternatif ≥5% lebih efisien/.test(h2.getAttribute("title") || ""),
+    "title judul tanpa aturan ambang ganti"
   );
   assert(/estimasi/i.test(h2.getAttribute("title") || ""), "title judul tanpa label estimasi");
   s.close();
@@ -171,29 +174,29 @@ t("Supply advisor: supplier aktif lebih efisien → alternatif tanpa #1/★", ()
   });
   assert(texts.length === 5, "kartu alternatif harus 5, dapat " + texts.length);
   assert(
-    texts.every(x => !/^#/.test(x)),
-    "alternatif masih diberi peringkat saat aktif lebih efisien: " + texts.join(" | ")
+    texts.every(x => !/^#1 /.test(x)),
+    "alternatif masih dinobatkan #1 saat aktif lebih efisien: " + texts.join(" | ")
+  );
+  assert(
+    texts.every(x => /^#[2-9] · .+\/1M · /.test(x)),
+    "peringkat gabungan tidak ditulis: " + texts.join(" | ")
   );
   assert(
     texts.every(x => !/★/.test(x)),
     "alternatif masih diberi ★ saat aktif lebih efisien: " + texts.join(" | ")
   );
-  assert(
-    texts.every(x => /^nilai .+\/1M · /.test(x)),
-    "label nilai/1M tidak ditulis: " + texts.join(" | ")
-  );
   const h2 = s.doc.querySelector(".dialog-subhead-content h2");
   assert(
-    / · tetap \(aktif 16\/1M\)$/.test(h2.textContent),
-    "judul harus menegaskan tetap: " + h2.textContent
+    / · TERBAIK: AKTIF \(16\/1M\) · tetap$/.test(h2.textContent),
+    "judul harus menyebut aktif terbaik: " + h2.textContent
   );
   assert(
-    /nilai\/1M aktif 16/.test(h2.getAttribute("title") || ""),
-    "title judul tanpa nilai/1M aktif: " + h2.getAttribute("title")
+    /nilai\/1M 16 \(#1 dari 6\)/.test(h2.getAttribute("title") || ""),
+    "title judul tanpa peringkat aktif: " + h2.getAttribute("title")
   );
   const card = links[0].closest(".inline-block");
   assert(
-    /aktif 16\/1M lebih efisien — tetap/.test(card.getAttribute("title") || ""),
+    /aktif #1 \(16\/1M\) — tetap/.test(card.getAttribute("title") || ""),
     "title kartu tidak menegaskan tetap: " + card.getAttribute("title")
   );
   s.close();
@@ -216,10 +219,14 @@ t("Supply advisor: dialog Fuel — peringkat in-place + tipe fuel", () => {
     texts.every(x => /^#\d+ /.test(x)),
     "label tanpa peringkat: " + texts.join(" | ")
   );
-  // Semua Σ2 → urut biaya: 30k #1 ★, 35k #2, 40k #3, 60k #4.
+  // Aktif 40/1M. Semua alternatif Σ2 → 30k #1 ★, 35k #2, 40k #3, 60k #5.
   assert(
-    texts.some(x => /^#1 · 30k ★$/.test(x)),
+    texts.some(x => /^#1 · 66\.67\/1M · 30k ★$/.test(x)),
     "peringkat #1 fuel salah: " + texts.join(" | ")
+  );
+  assert(
+    texts.some(x => /^#5 · 33\.33\/1M · 60k$/.test(x)),
+    "peringkat gabungan fuel salah: " + texts.join(" | ")
   );
   const h2 = s.doc.querySelector(".dialog-subhead-content h2");
   assert(
@@ -246,14 +253,14 @@ t("Supply advisor: dialog Tyre — peringkat in-place + tipe tyre", () => {
     texts.every(x => /^#\d+ /.test(x)),
     "label tanpa peringkat: " + texts.join(" | ")
   );
-  // Σ4/60k → #1 ★; termurah 50k → #2 + penanda.
+  // Aktif 20/1M (seri dengan 100k, aktif menang). 60k → #1 ★; 50k → #2.
   assert(
-    texts.some(x => /^#1 · 60k ★$/.test(x)),
+    texts.some(x => /^#1 · 66\.67\/1M · 60k ★$/.test(x)),
     "peringkat #1 tyre salah: " + texts.join(" | ")
   );
   assert(
-    texts.some(x => /^#2 · 50k · termurah$/.test(x)),
-    "termurah tyre salah: " + texts.join(" | ")
+    texts.some(x => /^#2 · 60\/1M · 50k$/.test(x)),
+    "peringkat #2 tyre salah: " + texts.join(" | ")
   );
   const h2 = s.doc.querySelector(".dialog-subhead-content h2");
   assert(
@@ -864,7 +871,7 @@ ta("Restore: game update judul Supply → verdict dihitung ulang tanpa duplikasi
     "verdict tidak mengikuti judul baru: " + h2.textContent
   );
   assert(
-    (h2.textContent.match(/ · bonus /g) || []).length === 1,
+    (h2.textContent.match(/Fuel supply/g) || []).length === 1,
     "verdict menumpuk: " + h2.textContent
   );
   assert(
