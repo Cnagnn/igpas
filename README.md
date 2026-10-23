@@ -4,7 +4,7 @@ Penasihat studi **read-only** untuk [iGP Manager](https://igpmanager.com), berup
 **satu userscript tanpa build step**. Tidak ada web GUI, tidak ada server, tidak
 ada jaringan, dan tidak ada data yang disimpan.
 
-> **Versi saat ini: <b>v0.9.2</b>.** ⚠️ **Alat studi — bukan alat balapan.**
+> **Versi saat ini: <b>v0.9.3</b>.** ⚠️ **Alat studi — bukan alat balapan.**
 > Tidak ada otomasi, tidak ada aksi ke situs, tidak membantu kendali saat
 > balapan live. Risiko banned/pelanggaran ToS iGP Manager **ditanggung penuh
 > oleh user**.
@@ -22,7 +22,7 @@ disimpan dan **di-restore otomatis** setiap re-render dan saat pindah halaman.
 | **Cars**                                      | Prioritas design point: label baris jadi `#1 Fuel economy · 26 DP` (gap vs max rival liga); val/max/gap di `title`                                                                                                                                                                         |
 | **Manufacturers**                             | Peringkat nama baris engine/chassis (`#n Nama`, `★` terbaik); rating/biaya/rating-per-1jt di `title`                                                                                                                                                                                       |
 | **Supply** (dialog Engine/Fuel/Tyres terbuka) | Peringkat gabungan aktif + alternatif di kartu asli (`#n · nilai/1jt · biaya`); judul menjawab langsung `TERBAIK: AKTIF` atau `TERBAIK: ALTERNATIF #1`, plus `tetap`/`ganti dianjurkan`. `★` hanya bila alternatif ≥5% lebih efisien; detail Σ bonus, biaya/race, aturan ambang di `title` |
-| **Drivers & Staff**                           | Saran kesehatan/pemulihan pada span nama driver; gaji & kontrak staff di `title` kartu                                                                                                                                                                                                     |
+| **Drivers & Staff**                           | Label nama driver jadi `Nama \| Full Recover 13j 55m` (countdown dari health + laju pulih, dibulatkan ke atas); health/laju/estimasi di `title`; gaji & kontrak staff di `title` kartu                                                                                                     |
 | **Transfers**                                 | Peringkat pada text node nama baris (`#n Nama ★ rekomendasi`); overall/fee di `title` — link kontrak & flag tetap hidup                                                                                                                                                                    |
 | **Setup** (pra-balapan)                       | Ringkasan practice pada span nama driver + `title` agregasi; hint trek; arah slider game                                                                                                                                                                                                   |
 | **Strategy** (pra-balapan)                    | Estimasi fuel pada label asli **Fuel (litres)**; ringkasan stint/ban di `title`; komentar pembalap tidak ditulis                                                                                                                                                                           |

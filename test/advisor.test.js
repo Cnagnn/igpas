@@ -502,10 +502,17 @@ t("Staff advisor in-place", () => {
   // Struktur game utuh: br + span tetap ada, tanpa elemen advisor baru.
   assert(d.querySelector("br") && d.querySelector("span"), "struktur .driverName rusak");
   assert(!d.querySelector("[class*=igpas]"), "elemen advisor bocor di .driverName");
+  // Label bersih: nama | Full Recover <countdown>, bukan jargon "health rendah".
+  const span = d.querySelector("span");
   assert(
-    /health rendah|pulih/.test(d.getAttribute("title") || ""),
-    "rekomendasi driver tidak masuk title"
+    / \| Full Recover 14j 49m$/.test(span.textContent),
+    "label Full Recover salah: " + span.textContent
   );
+  const tip = d.getAttribute("title") || "";
+  assert(/Health 2%/.test(tip), "health tidak masuk title: " + tip);
+  assert(/pulih 6\.615\/jam/.test(tip), "laju pulih tidak masuk title: " + tip);
+  assert(/Full Recover ±14j 49m/.test(tip), "ETA tidak masuk title: " + tip);
+  assert(/estimasi/i.test(tip), "title tanpa label estimasi: " + tip);
   const h = s.doc.querySelector("#staff .c-wrap .c-head");
   assert(h && /Chief Designer/i.test(h.textContent), "header staff hilang");
   assert(

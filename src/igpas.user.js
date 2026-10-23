@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.9.2
+// @version      0.9.3
 // @description  Read-only in-page study advisor for iGP Manager: design-point priorities, supplier/manufacturer rankings, staff/transfer notes, and pre-race setup/fuel/tyre/stint estimates written only as text/title on original page elements (never the live Race tab). Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
 // @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design point, peringkat supplier/manufacturer, catatan staff/transfers, dan estimasi setup/fuel/ban/stint pra-balapan — hanya teks/title pada elemen asli (bukan tab Race live). Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
 // @license      GPL-3.0-or-later
@@ -18,7 +18,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.9.2';
+    const VERSION = '0.9.3';
 
     /* =====================================================================
      * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
@@ -2143,6 +2143,24 @@
             }
         }
 
+        /**
+         * ETA pulih penuh dari health (%) dan laju pulih (%/jam). Dibulatkan
+         * ke atas supaya advisor tidak menjanjikan pulih lebih cepat.
+         * @returns {string|null} mis. "13j 55m", "2d 3j", atau null
+         */
+        function formatRecoverEta(health, ratePerHour) {
+            if (health == null || ratePerHour == null || !(ratePerHour > 0)) return null;
+            const remain = 100 - health;
+            if (remain <= 0) return null;
+            const mins = Math.ceil((remain / ratePerHour) * 60);
+            const days = Math.floor(mins / 1440);
+            const hours = Math.floor((mins % 1440) / 60);
+            const minutes = mins % 60;
+            if (days > 0) return days + 'd ' + hours + 'j';
+            if (hours > 0) return hours + 'j ' + minutes + 'm';
+            return minutes + 'm';
+        }
+
         /* Halaman Drivers & Staff: kondisi tim aktif (read-only, jujur). */
         function mountTeam() {
             const id = PREFIX + '-team';
@@ -2154,18 +2172,29 @@
             for (const [i, d] of (s.drivers || []).entries()) {
                 const name = document.querySelector('#d' + (i + 1) + 'Pic .driverName');
                 if (!name || !d.name) continue;
+                // Label bersih: "<Nama> | Full Recover 13j 55m" — tanpa jargon
+                // "health rendah". Angka mentah + laju pulih tetap di title.
+                const eta = (d.health != null && d.health < 100)
+                    ? formatRecoverEta(d.health, d.recoveryPerHour)
+                    : null;
                 const advice = [];
-                if (d.health != null && d.health < 30) advice.push('health rendah');
-                if (d.recoveryPerHour != null) advice.push('pulih +' + d.recoveryPerHour + '/jam');
+                if (eta) advice.push('Full Recover ' + eta);
+                else if (d.health != null && d.health < 100) advice.push('Health ' + d.health + '%');
                 // Struktur game (.driverName > br + span) dipertahankan: saran hanya
                 // menempel pada span nama yang sudah ada; hover container = detail.
                 const span = name.querySelector('span:last-child');
                 saveTitle(name);
-                const tip = advice.length ? 'Driver: ' + advice.join('; ') + ' — keputusan tetap milik Anda.' : '';
+                const tipParts = [];
+                if (d.health != null) tipParts.push('Health ' + d.health + '%');
+                if (d.recoveryPerHour != null) tipParts.push('pulih ' + d.recoveryPerHour + '/jam');
+                if (eta) tipParts.push('Full Recover ±' + eta);
+                const tip = tipParts.length
+                    ? 'Driver: ' + tipParts.join(' · ') + ' · estimasi, bukan rumus game — keputusan tetap milik Anda.'
+                    : '';
                 if (tip) { name.setAttribute('title', tip); name.setAttribute('data-igpas-written-title', tip); }
                 if (span) {
                     const orig = span.getAttribute('data-igpas-orig') || span.textContent;
-                    writeSelfText(span, orig + (advice.length ? ' · ' + advice.join(' · ') : ''));
+                    writeSelfText(span, orig + (advice.length ? ' | ' + advice.join(' · ') : ''));
                 }
             }
             for (const card of document.querySelectorAll('#staff .c-wrap')) {

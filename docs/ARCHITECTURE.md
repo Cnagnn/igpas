@@ -3,7 +3,7 @@
 Penasihat studi **read-only** untuk iGP Manager dalam satu file userscript,
 tanpa build step, tanpa web GUI, tanpa jaringan, dan tanpa penyimpanan.
 
-Versi saat ini 0.9.2.
+Versi saat ini 0.9.3.
 
 ## 1. Ruang lingkup
 
