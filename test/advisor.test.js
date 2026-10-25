@@ -15,7 +15,7 @@ function bootOn(html, url, snapshotIds) {
   const writes = []; // spy: the userscript MUST NOT write storage
   const dom = new JSDOM(html, { url, runScripts: "outside-only", pretendToBeVisual: true });
   const win = dom.window;
-  win.GM_setValue = (k, v) => {
+  win.GM_setValue = (k, _v) => {
     writes.push(k);
   };
   win.GM_setClipboard = () => {}; // stub; tests override it for capture
