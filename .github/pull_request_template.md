@@ -1,26 +1,26 @@
 # Pull Request
 
-## Ringkasan
+## Summary
 
-<!-- Apa yang diubah & kenapa — satu paragraf cukup -->
+<!-- What was changed & why — one paragraph is enough -->
 
-## Jenis perubahan
+## Type of change
 
 - [ ] fix (bug)
-- [ ] feat (fitur baru — userscript / adapter / advisor)
+- [ ] feat (new feature — userscript / adapter / advisor)
 - [ ] docs
 - [ ] chore / ci / refactor
 
 ## Checklist
 
-- [ ] `npm run verify` hijau lokal (`syntax` + `lint` + `format:check` + `versions:check` + `npm test`)
-- [ ] Versi sinkron: `@version` + `const VERSION` + `package.json` + badge README
-- [ ] Tidak menambah `fetch`/`XHR`/`GM_xmlhttpRequest`/`eval`/`unsafeWindow` di `src/` (guard CI)
-- [ ] Jika menyentuh adapter/DOM: fixture `test/fixtures/*.html` + test jsdom diperbarui
-- [ ] Tidak menambah kembali web GUI/Pages, mailbox, atau GM storage
-- [ ] Jika menyentuh halaman race: tab `#race` (live) tetap **zero-UI** & tidak dibaca/diubah
-- [ ] Jika menyentuh DOM game: risiko ToS dipahami ditanggung user (lihat docs/PRIVACY.md)
+- [ ] `npm run verify` green locally (`syntax` + `lint` + `format:check` + `versions:check` + `npm test`)
+- [ ] Versions in sync: `@version` + `const VERSION` + `package.json` + README badge
+- [ ] No `fetch`/`XHR`/`GM_xmlhttpRequest`/`eval`/`unsafeWindow` added in `src/` (CI guard)
+- [ ] If adapter/DOM touched: `test/fixtures/*.html` fixture + jsdom tests updated
+- [ ] No web GUI/Pages, mailbox, or GM storage reintroduced
+- [ ] If race page touched: `#race` (live) tab stays **zero-UI** & is not read/changed
+- [ ] If game DOM touched: ToS risk understood and borne by the user (see docs/PRIVACY.md)
 
-## Catatan
+## Notes
 
-<!-- Hal yang butuh perhatian reviewer / follow-up -->
+<!-- Items needing reviewer attention / follow-up -->

@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Privacy, risiko & ToS
+  - name: Privacy, risk & ToS
     url: https://github.com/Cnagnn/igpas/blob/main/docs/PRIVACY.md
-    about: Baca apa yang disimpan, redaksi capture, dan risiko ToS sebelum lapor
+    about: Read what is stored, how captures are redacted, and the ToS risk before reporting

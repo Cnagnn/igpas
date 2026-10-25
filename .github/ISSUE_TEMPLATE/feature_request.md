@@ -1,20 +1,20 @@
 ---
 name: Feature request
-about: Usulan fitur / adapter halaman baru
+about: Feature proposal / new page adapter
 labels: [enhancement]
 ---
 
-## Ringkasan
+## Summary
 
-<!-- Fitur apa & kenapa dibutuhkan -->
+<!-- What feature & why it is needed -->
 
-## Scope & batasan
+## Scope & constraints
 
-<!-- Contoh: hanya halaman studi, read-only, tanpa live-race -->
+<!-- Example: study pages only, read-only, no live-race -->
 
-## Checklist kepatuhan
+## Compliance checklist
 
-- [ ] Tidak butuh `fetch`/`XHR`/`GM_xmlhttpRequest` ke server game
-- [ ] Tidak klik/submit elemen game — hanya baca DOM yang tampak
-- [ ] Tab `#race` (live) tetap zero-UI
-- [ ] Siap kirim capture DOM tersanitasi bila butuh mapping selector (via menu userscript — PII teredaksi)
+- [ ] Does not need `fetch`/`XHR`/`GM_xmlhttpRequest` to a game server
+- [ ] No clicking/submitting game elements — only reads the visible DOM
+- [ ] `#race` (live) tab stays zero-UI
+- [ ] Ready to send sanitised DOM captures when selector mapping is needed (via userscript menu — PII redacted)

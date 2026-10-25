@@ -2,33 +2,32 @@
 
 ## Supported versions
 
-| Version           | Supported |
-| ----------------- | --------- |
-| `main` (latest)   | ✅        |
-| tag `v*` terakhir | ✅        |
+| Version         | Supported |
+| --------------- | --------- |
+| `main` (latest) | ✅        |
+| last `v*` tag   | ✅        |
 
-Userscript tidak punya backend — update = install ulang `src/igpas.user.js`
-dari `main` / release tag terbaru.
+The userscript has no backend — update = reinstall `src/igpas.user.js` from `main` / the latest
+release tag.
 
 ## Reporting a vulnerability
 
-Jangan buka issue publik untuk laporan sensitif.
+Do not open a public issue for sensitive reports.
 
-- Email / DM maintainer (lihat profil GitHub `Cnagnn`) dengan detail +
-  langkah reproduksi + dampak.
-- Atau buka [Security advisory](https://github.com/Cnagnn/igpas/security/advisories/new)
-  (private).
+- Email / DM the maintainer (see the GitHub profile `Cnagnn`) with details + reproduction steps +
+  impact.
+- Or open a [Security advisory](https://github.com/Cnagnn/igpas/security/advisories/new) (private).
 
-Kami akan konfirmasi dalam **48 jam** dan rilis fix + advisory setelah patch siap.
+We will confirm within **48 hours** and release a fix + advisory once the patch is ready.
 
-## Scope & guard
+## Scope & guards
 
-- `src/igpas.user.js` **tidak boleh** mengandung `fetch`/`XHR`/`GM_xmlhttpRequest`/`eval`/`unsafeWindow`
-  — di-guard oleh `ci.yml`. Jika Anda menemukan pelanggaran, laporkan segera.
-- Userscript membaca DOM yang tampil dan hanya menulis teks/`title`/warna sementara pada
-  elemen asli — tanpa klik/submit, tanpa storage lokal (`GM_*`), tanpa exfiltrasi.
+- `src/igpas.user.js` **must not** contain `fetch`/`XHR`/`GM_xmlhttpRequest`/`eval`/`unsafeWindow`
+  — guarded by `ci.yml`. If you find a violation, report it immediately.
+- The userscript reads the displayed DOM and only writes temporary text/`title`/colour on original
+  elements — no clicks/submits, no local storage (`GM_*`), no exfiltration.
 
-## Hardening untuk kontributor
+## Hardening for contributors
 
-- Jangan commit secret / token / PII ke fixture (`test/fixtures/*.html` sudah disanitasi).
-- Dependabot aktif (npm + GitHub Actions) — review PR `deps` via `npm run verify`.
+- Do not commit secrets / tokens / PII to fixtures (`test/fixtures/*.html` is already sanitised).
+- Dependabot is active (npm + GitHub Actions) — review `deps` PRs via `npm run verify`.

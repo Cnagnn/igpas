@@ -1,9 +1,8 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.11.0
-// @description  Read-only in-page study advisor for iGP Manager: #1..#n sorted design-point priorities, color-coded supply and parts/engine repair buttons, supplier/manufacturer rankings, staff/transfer notes, and sponsor-offer value rankings written only as text/title/style on original page elements. Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
-// @description:id Penasihat studi read-only in-page untuk iGP Manager: prioritas design terurut #1..#n, warna tombol Supply dan ganti parts/engine, peringkat supplier/manufacturer, catatan staff/transfers, dan peringkat nilai penawaran sponsor — hanya teks/title/style pada elemen asli. Termasuk menu salin capture DOM dengan redaksi PII. Alat studi, tanpa otomasi, tanpa jaringan.
+// @version      0.12.0
+// @description  Read-only in-page study advisor for iGP Manager: #1..#n sorted design-point priorities, colour-coded supply and parts/engine repair buttons, supplier/manufacturer rankings, staff/transfer notes, and sponsor-offer value rankings written only as text/title/style on original page elements. Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
 // @supportURL   https://github.com/Cnagnn/igpas/issues
@@ -15,22 +14,42 @@
 // @run-at       document-idle
 // ==/UserScript==
 
+// I.G.P.A.S — iGP Analytics & Study System
+// A single-file, read-only study advisor for iGP Manager. It reads numbers the
+// game already renders, applies explicit heuristics, and writes the result back
+// onto the original DOM nodes as text, `title` attributes or temporary colour.
+//
+// Invariants — never break these:
+//   1. Read-only. No clicks, no submits, no synthesized game actions.
+//   2. No network. No fetch/XHR, no sockets, no remote code.
+//   3. In-place. No new page elements; every write is reversible.
+//   4. Honest. Missing data stays missing; nothing is invented.
+//
+// Layout:
+//   1) CORE              pure functions, no DOM   →  test/core.test.js
+//   2) ADAPTERS          read-only DOM readers    →  test/advisor.test.js
+//   3) IN-PAGE ADVISOR   render and restore
+//   4) PAGE CAPTURE      manual DOM snapshot for fixture mapping
+//   5) BOOT              browser and Node wiring
+
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.11.0';
+    const VERSION = '0.12.0';
 
-    /* =====================================================================
-     * 1) CORE — fungsi murni, tanpa DOM. Teruji di Node (test/core.test.js).
-     *    Semua perhitungan hanya aritmetika atas input pengguna.
-     * ===================================================================== */
+    // =====================================================================
+    // 1) CORE — pure functions, no DOM. Tested in Node (test/core.test.js).
+    //    All maths is plain arithmetic over user input; no game formulas.
+    // =====================================================================
 
     const r1 = v => Math.round(v * 10) / 10;
+    // Grammatical units: "1 lap" / "8 laps" and "1 race" / "5 races".
+    const lapUnit = n => (Math.abs(Number(n)) === 1 ? ' lap' : ' laps');
+    const raceUnit = n => (Math.abs(Number(n)) === 1 ? ' race' : ' races');
 
-    /* -- utils bersama (dedup helper) -- */
     const Utils = Object.freeze({
       numOrNull(v) {
-        // Trim dulu: field DOM yang hanya berisi spasi ("   ") bukan angka 0.
+        // Trim first: a DOM field holding only spaces ("   ") is not the number 0.
         const s = (v == null) ? '' : String(v).trim();
         return s !== '' && Number.isFinite(Number(s)) ? Number(s) : null;
       },
@@ -46,9 +65,9 @@
       fmtMoney(n) {
         const v = Number(n);
         if (n == null || !Number.isFinite(v)) return '—';
-        if (v >= 1e9) return (Math.round(v / 1e8) / 10) + ' M';
-        if (v >= 1e6) return (Math.round(v / 1e5) / 10) + ' jt';
-        if (v >= 1e3) return (Math.round(v / 1e2) / 10) + ' rb';
+        if (v >= 1e9) return (Math.round(v / 1e8) / 10) + ' B';
+        if (v >= 1e6) return (Math.round(v / 1e5) / 10) + ' M';
+        if (v >= 1e3) return (Math.round(v / 1e2) / 10) + ' K';
         return String(v);
       },
       pitWindowCore(fuelLaps, reserveLaps, tyreLaps, marginLaps) {
@@ -60,15 +79,13 @@
       isSafeKind(k) {
         return typeof k === 'string' && k.length > 0 && k.length < 80 && !/(__proto__|constructor|prototype)/i.test(k);
       },
-      /**
-       * Indeks 12-stat dari CSV `data-driver`/`data-staff` halaman iGP
-       * (v0.8.0). Rata-rata 12 angka pertama CSV — dipakai IDENTIK di sisi
-       * roster maupun pasar, jadi keduanya bisa dibandingkan. Ini BUKAN
-       * overall game: game menghitung dari angka internal yang tidak
-       * dipublikasikan (CSV dibulatkan per stat), jadi angkanya berbeda
-       * tipis dari kolom "Overall/Fee" — selalu dilabeli heuristik.
-       * 12 angka tidak lengkap → null (tidak dikarang).
-       */
+      // 12-stat index derived from the page's `data-driver` / `data-staff` CSV
+      // (v0.8.0). It is the mean of the first 12 CSV numbers and is computed the
+      // same way for roster and market, so the two sides are comparable.
+      // This is not the game's overall rating: that comes from unpublished internal
+      // numbers, while the CSV is rounded per stat. Values therefore differ slightly
+      // from the "Overall/Fee" column, and the result is always labelled a heuristic.
+      // Fewer than 12 numbers yields null — never an invented value.
       statIndex(csv) {
         const parts = String(csv == null ? '' : csv).split(',');
         const vals = [];
@@ -80,11 +97,9 @@
         const mean = vals.reduce((s, v) => s + v, 0) / 12;
         return Math.round(mean * 100) / 100;
       },
-      /**
-       * Normalisasi label peran staff ke kode (CD/TD/DR) agar roster & pasar
-       * sebanding. Penanda non-staff (mis. 'DRV' untuk driver) diteruskan apa
-       * adanya — huruf besar dipertahankan supaya label UI tetap rapi.
-       */
+      // Normalize a staff role label to its code (CD/TD/DR) so roster and market
+      // entries can be compared. Markers for other roles (e.g. 'DRV' for a driver)
+      // pass through unchanged; the uppercase form is kept so labels stay tidy.
       roleCode(s) {
         const raw = Utils.clean(s);
         if (!raw) return null;
@@ -100,11 +115,10 @@
 
     const IGPCore = Object.freeze({
 
-        /**
-         * Perencanaan fuel.
-         * @param {object} p { lapsRemaining, fuelPerLap, currentFuel, reserveLaps, tankCapacity }
-         * @returns {object} { ok, rows:[ {key,label,text} ], values:{...} }
-         */
+        // Fuel plan for the remaining laps of a stint.
+        // Inputs: lapsRemaining, fuelPerLap, currentFuel,
+        //   reserveLaps, tankCapacity.
+        // Returns { ok, values, rows } — rows are [label, text] pairs.
         calcFuel(p) {
             const numOrNull = Utils.numOrNull;
             const src = p || {};
@@ -115,16 +129,16 @@
             const tank = (src.tankCapacity == null || String(src.tankCapacity).trim() === '')
                 ? Infinity : numOrNull(src.tankCapacity);
 
-            // null = field belum diisi/tak terbaca. JANGAN dianggap 0
-            // (Number(null) === 0 pernah menghasilkan "butuh 0 L" yang percaya diri).
-            if (lapsRemaining == null) return { ok: false, error: 'Laps remaining wajib diisi' };
-            if (fuelPerLap == null) return { ok: false, error: 'Fuel/lap wajib diisi' };
-            if (currentFuel == null) return { ok: false, error: 'Fuel kini wajib diisi' };
-            if (!(lapsRemaining >= 0)) return { ok: false, error: 'Laps remaining harus >= 0' };
-            if (!(fuelPerLap > 0)) return { ok: false, error: 'Fuel/lap harus > 0' };
-            if (!(currentFuel >= 0)) return { ok: false, error: 'Fuel kini harus >= 0' };
-            if (reserveLaps != null && reserveLaps < 0) return { ok: false, error: 'Reserve harus >= 0' };
-            if (tank !== Infinity && !(tank > 0)) return { ok: false, error: 'Kapasitas tangki harus > 0' };
+            // null means empty or unreadable — never coerce it to 0.
+            // (Number(null) === 0 once produced a confident "needs 0 L".)
+            if (lapsRemaining == null) return { ok: false, error: 'Laps remaining is required' };
+            if (fuelPerLap == null) return { ok: false, error: 'Fuel/lap is required' };
+            if (currentFuel == null) return { ok: false, error: 'Current fuel is required' };
+            if (!(lapsRemaining >= 0)) return { ok: false, error: 'Laps remaining must be >= 0' };
+            if (!(fuelPerLap > 0)) return { ok: false, error: 'Fuel/lap must be > 0' };
+            if (!(currentFuel >= 0)) return { ok: false, error: 'Current fuel must be >= 0' };
+            if (reserveLaps != null && reserveLaps < 0) return { ok: false, error: 'Reserve must be >= 0' };
+            if (tank !== Infinity && !(tank > 0)) return { ok: false, error: 'Tank capacity must be > 0' };
 
             const reserve = reserveLaps != null ? reserveLaps : 0;
             const fuelNeeded = lapsRemaining * fuelPerLap;
@@ -139,19 +153,16 @@
                 ok: true,
                 values: { fuelNeeded: r1(fuelNeeded), fuelToAdd: r1(fuelToAdd), lapsLeftOnFuel: r1(lapsLeftOnFuel), overCapacity },
                 rows: [
-                    ['Total kebutuhan ('+lapsRemaining+' lap)', r1(fuelNeeded) + ' L'],
-                    ['+ Reserve ('+reserve+' lap)', r1(reserve * fuelPerLap) + ' L'],
-                    ['Fuel ditambahkan', r1(fuelToAdd) + ' L'],
-                    ['Jarak fuel sekarang', r1(lapsLeftOnFuel) + ' lap'],
-                    ...(overCapacity > 0 ? [['⚠ Melebihi tangki', overCapacity + ' L']] : []),
+                    ['Total needed (' + lapsRemaining + lapUnit(lapsRemaining) + ')', r1(fuelNeeded) + ' L'],
+                    ['+ Reserve (' + reserve + lapUnit(reserve) + ')', r1(reserve * fuelPerLap) + ' L'],
+                    ['Fuel to add', r1(fuelToAdd) + ' L'],
+                    ['Current fuel range', r1(lapsLeftOnFuel) + lapUnit(lapsLeftOnFuel)],
+                    ...(overCapacity > 0 ? [['⚠ Exceeds tank', overCapacity + ' L']] : []),
                 ],
             };
         },
 
-        /**
-         * Proyeksi keausan ban per lap.
-         * @param {object} p { currentWearPct, wearPerLapPct, lapsCount }
-         */
+        // Project tyre wear forward, one row per lap.
         projectTireWear(p) {
             const numOrNull = Utils.numOrNull;
             const src = p || {};
@@ -159,12 +170,12 @@
             const wpl = numOrNull(src.wearPerLapPct);
             const laps = numOrNull(src.lapsCount);
 
-            if (cur == null) return { ok: false, error: 'Wear kini wajib diisi' };
-            if (wpl == null) return { ok: false, error: 'Wear/lap wajib diisi' };
-            if (laps == null) return { ok: false, error: 'Horizon wajib diisi' };
-            if (!(cur >= 0 && cur <= 100)) return { ok: false, error: 'Wear kini harus 0–100' };
-            if (!(wpl >= 0)) return { ok: false, error: 'Wear/lap harus >= 0' };
-            if (!(laps >= 1 && laps <= 200)) return { ok: false, error: 'Horizon 1–200 lap' };
+            if (cur == null) return { ok: false, error: 'Current wear is required' };
+            if (wpl == null) return { ok: false, error: 'Wear/lap is required' };
+            if (laps == null) return { ok: false, error: 'Horizon is required' };
+            if (!(cur >= 0 && cur <= 100)) return { ok: false, error: 'Current wear must be 0–100' };
+            if (!(wpl >= 0)) return { ok: false, error: 'Wear/lap must be >= 0' };
+            if (!(laps >= 1 && laps <= 200)) return { ok: false, error: 'Horizon 1–200 laps' };
 
             const rows = [];
             for (let n = 0; n <= laps; n++) {
@@ -178,10 +189,7 @@
             };
         },
 
-        /**
-         * Lap sampai wear mencapai threshold.
-         * @param {object} p { currentWearPct, wearPerLapPct, thresholdPct }
-         */
+        // Laps remaining until wear reaches the threshold.
         lapsToThreshold(p) {
             const numOrNull = Utils.numOrNull;
             const src = p || {};
@@ -189,27 +197,26 @@
             const wpl = numOrNull(src.wearPerLapPct);
             const thr = numOrNull(src.thresholdPct);
 
-            if (cur == null) return { ok: false, error: 'Wear kini wajib diisi' };
-            if (wpl == null) return { ok: false, error: 'Wear/lap wajib diisi' };
-            if (thr == null) return { ok: false, error: 'Threshold wajib diisi' };
-            if (!(cur >= 0 && cur <= 100)) return { ok: false, error: 'Wear kini harus 0–100' };
-            if (!(wpl >= 0)) return { ok: false, error: 'Wear/lap harus >= 0' };
-            if (!(thr > cur)) return { ok: false, error: 'Threshold harus > wear kini' };
+            if (cur == null) return { ok: false, error: 'Current wear is required' };
+            if (wpl == null) return { ok: false, error: 'Wear/lap is required' };
+            if (thr == null) return { ok: false, error: 'Threshold is required' };
+            if (!(cur >= 0 && cur <= 100)) return { ok: false, error: 'Current wear must be 0–100' };
+            if (!(wpl >= 0)) return { ok: false, error: 'Wear/lap must be >= 0' };
+            if (!(thr > cur)) return { ok: false, error: 'Threshold must be > current wear' };
 
             const laps = wpl > 0 ? Math.floor((thr - cur) / wpl) : Infinity;
             return {
                 ok: true,
                 values: { laps },
                 rows: [
-                    ['Lap sampai ' + thr + '%', (laps === Infinity ? '∞ (tidak terbatas)' : laps + ' lap')],
+                    ['Laps to ' + thr + '%', (laps === Infinity ? '∞ (unlimited)' : laps + lapUnit(laps))],
                 ],
             };
         },
 
-        /**
-         * Jendela pit: berapa lap lagi maksimal sebelum wajib pit.
-         * @param {object} p { lapsLeftOnFuel, reserveLaps, tireLaps, marginLaps }
-         */
+        // Pit window — the latest lap on which a stop is still safe, given the fuel
+        // reserve, tyre life and safety margin.
+        // Inputs: lapsLeftOnFuel, reserveLaps, tireLaps, marginLaps.
         pitWindow(p) {
             const numOrNull = Utils.numOrNull;
             const src = p || {};
@@ -219,13 +226,13 @@
                 ? Infinity : numOrNull(src.tireLaps);
             const margin = numOrNull(src.marginLaps);
 
-            if (fuelLaps == null) return { ok: false, error: 'Laps left on fuel wajib diisi' };
+            if (fuelLaps == null) return { ok: false, error: 'Laps left on fuel is required' };
             if (!(fuelLaps >= 0)) return { ok: false, error: 'Laps left on fuel >= 0' };
-            // Nilai negatif tidak boleh "diam-diam jadi 0": reserve/margin negatif
-            // membalik arah rekomendasi (pit lebih lambat dari batas aman).
-            if (reserveLaps != null && reserveLaps < 0) return { ok: false, error: 'Reserve harus >= 0' };
-            if (margin != null && margin < 0) return { ok: false, error: 'Margin harus >= 0' };
-            if (tireLaps !== Infinity && !(tireLaps > 0)) return { ok: false, error: 'Tire laps harus > 0' };
+            // A negative value must not silently become 0: a negative reserve/margin
+            // flips the recommendation direction (pitting later than the safe limit).
+            if (reserveLaps != null && reserveLaps < 0) return { ok: false, error: 'Reserve must be >= 0' };
+            if (margin != null && margin < 0) return { ok: false, error: 'Margin must be >= 0' };
+            if (tireLaps !== Infinity && !(tireLaps > 0)) return { ok: false, error: 'Tyre laps must be > 0' };
 
             const core = Utils.pitWindowCore(fuelLaps, reserveLaps != null ? reserveLaps : 0,
                 tireLaps, margin != null ? margin : 0);
@@ -235,19 +242,16 @@
                 ok: true,
                 values: { fuelLatest: core.fuelLatest, tireLatest: (tireLaps === Infinity ? Infinity : tireLaps), latest: core.latest, recommended: core.recommended },
                 rows: [
-                    ['Batas oleh fuel', core.fuelLatest + ' lap'],
-                    ['Batas oleh ban', (tireLaps === Infinity ? '∞' : tireLaps + ' lap')],
-                    ['Latest pit setelah', core.latest + ' lap'],
-                    ['Rekomendasi (−margin)', core.recommended + ' lap'],
-                    ...(needPitNow ? [['⚠', 'Pit sekarang — tidak bisa menunggu 1 lap penuh']] : []),
+                    ['Fuel limit', core.fuelLatest + lapUnit(core.fuelLatest)],
+                    ['Tyre limit', (tireLaps === Infinity ? '∞' : tireLaps + lapUnit(tireLaps))],
+                    ['Latest pit after', core.latest + lapUnit(core.latest)],
+                    ['Recommended (−margin)', core.recommended + lapUnit(core.recommended)],
+                    ...(needPitNow ? [['⚠', 'Pit now — cannot wait a full lap']] : []),
                 ],
             };
         },
 
-        /**
-         * Pembagian stint merata.
-         * @param {object} p { totalLaps, tireLifeLaps, pitLossLaps }
-         */
+        // Split a race into the fewest even stints that tyre life allows.
         stintSplit(p) {
             const numOrNull = Utils.numOrNull;
             const src = p || {};
@@ -255,14 +259,14 @@
             const life = numOrNull(src.tireLifeLaps);
             const pitLoss = numOrNull(src.pitLossLaps);
 
-            if (total == null) return { ok: false, error: 'Total lap wajib diisi' };
-            if (life == null) return { ok: false, error: 'Umur ban wajib diisi' };
-            if (!(total >= 1)) return { ok: false, error: 'Total lap >= 1' };
-            if (!(life > 0)) return { ok: false, error: 'Umur ban harus > 0' };
-            // Umur < 1 lap = data rusak; tanpa batas ini Array.from membuat
-            // puluhan ribu stint dan membekukan render.
-            if (life < 1) return { ok: false, error: 'Umur ban minimal 1 lap' };
-            if (pitLoss != null && !(pitLoss >= 0)) return { ok: false, error: 'Pit loss harus >= 0' };
+            if (total == null) return { ok: false, error: 'Total laps is required' };
+            if (life == null) return { ok: false, error: 'Tyre life is required' };
+            if (!(total >= 1)) return { ok: false, error: 'Total laps must be >= 1' };
+            if (!(life > 0)) return { ok: false, error: 'Tyre life must be > 0' };
+            // Life < 1 lap = corrupt data; without this guard Array.from builds
+            // tens of thousands of stints and freezes rendering.
+            if (life < 1) return { ok: false, error: 'Tyre life must be at least 1 lap' };
+            if (pitLoss != null && !(pitLoss >= 0)) return { ok: false, error: 'Pit loss must be >= 0' };
             const loss = pitLoss != null ? pitLoss : 0;
 
             const segments = Math.ceil(total / life);
@@ -276,17 +280,16 @@
                 ok: true,
                 values: { stops, segments, stints, timeCostLaps },
                 rows: [
-                    ['Stop minimum', stops + '×'],
-                    ['Distribusi stint', stints.join(' / ') + ' lap'],
-                    ['Total cost pit', timeCostLaps + ' lap-equivalent'],
+                    ['Minimum stops', stops + '×'],
+                    ['Stint split', stints.join(' / ') + lapUnit(total)],
+                    ['Total pit cost', timeCostLaps + ' lap-equivalent'],
                 ],
             };
         },
 
-        /**
-         * Rekomendasi keputusan pit — deterministik dan transparan.
-         * @param {object} p { lapsLeftOnFuel, tyreLapsLeft, reserveLaps, pitLossLaps, marginLaps }
-         */
+        // Pit decision — 'plan', 'pit-soon' or 'pit-now', with the numbers behind it.
+        // Inputs: lapsLeftOnFuel, tyreLapsLeft, reserveLaps,
+        //   pitLossLaps, marginLaps.
         strategyRecommendation(p) {
             const numOrNull = Utils.numOrNull;
             const src = p || {};
@@ -297,9 +300,9 @@
             const pitLoss = numOrNull(src.pitLossLaps);
             const margin = numOrNull(src.marginLaps);
 
-            if (fuelLaps == null) return { ok: false, error: 'Laps left on fuel wajib diisi' };
+            if (fuelLaps == null) return { ok: false, error: 'Laps left on fuel is required' };
             if (!(fuelLaps >= 0)) return { ok: false, error: 'Laps left on fuel >= 0' };
-            if (tyreRaw !== Infinity && !(tyreRaw > 0)) return { ok: false, error: 'Tyre laps harus > 0' };
+            if (tyreRaw !== Infinity && !(tyreRaw > 0)) return { ok: false, error: 'Tyre laps must be > 0' };
             if ((reserve != null && !(reserve >= 0)) || (pitLoss != null && !(pitLoss >= 0)) ||
                 (margin != null && !(margin >= 0))) {
                 return { ok: false, error: 'Reserve/pit-loss/margin >= 0' };
@@ -316,29 +319,27 @@
                 ok: true,
                 values: { decision, latest: core.latest, recommended: core.recommended, limiting, pitLoss: loss },
                 rows: [
-                    ['Keputusan', decision],
-                    ['Faktor pembatas', limiting],
-                    ['Latest pit setelah', core.latest + ' lap'],
-                    ['Rekomendasi (−margin)', core.recommended + ' lap'],
-                    ['Biaya pit', loss + ' lap-equivalent'],
-                    ...(core.latest < 1 ? [['⚠', 'Tidak bisa menunggu 1 lap penuh']] : []),
+                    ['Decision', decision],
+                    ['Limiting factor', limiting],
+                    ['Latest pit after', core.latest + lapUnit(core.latest)],
+                    ['Recommended (−margin)', core.recommended + lapUnit(core.recommended)],
+                    ['Pit cost', loss + ' lap-equivalent'],
+                    ...(core.latest < 1 ? [['⚠', 'Cannot wait a full lap']] : []),
                 ],
             };
         },
 
-        /**
-         * Peringkat opsi (manufaktur / mobil / bagian) dengan bobot kriteria.
-         * Asumsi eksplisit: rating 0–10 dari pengguna; skor = Σ(rating·bobot)/Σbobot.
-         * @param {object} p { items:[{name, ratings:{k:v}}], weights:{k:w} }
-         */
+        // Rank options (manufacturers, cars or parts) by weighted criteria.
+        // Explicit assumption: the ratings are 0–10 and come from the user;
+        // score = Σ(rating × weight) / Σweight.
         rankOptions(p) {
             const items = (p && Array.isArray(p.items)) ? p.items : null;
             const weights = (p && p.weights && typeof p.weights === 'object') ? p.weights : {};
-            if (!items || items.length < 1) return { ok: false, error: 'Minimal 1 item' };
-            if (items.length > 50) return { ok: false, error: 'Maksimal 50 item' };
+            if (!items || items.length < 1) return { ok: false, error: 'At least 1 item' };
+            if (items.length > 50) return { ok: false, error: 'At most 50 items' };
             for (const it of items) {
                 if (!it || typeof it.name !== 'string' || !it.name.trim()) {
-                    return { ok: false, error: 'Setiap item butuh "name"' };
+                    return { ok: false, error: 'Every item needs a "name"' };
                 }
             }
 
@@ -347,7 +348,7 @@
                 for (const k of Object.keys((it && it.ratings) || {})) keys.add(k);
             }
             const criteria = Array.from(keys);
-            if (criteria.length === 0) return { ok: false, error: 'ratings kosong' };
+            if (criteria.length === 0) return { ok: false, error: 'ratings is empty' };
 
             const w = {};
             let totalW = 0;
@@ -356,7 +357,7 @@
                 w[k] = (Number.isFinite(ww) && ww > 0) ? ww : 0;
                 totalW += w[k];
             }
-            if (totalW <= 0) return { ok: false, error: 'Total bobot harus > 0' };
+            if (totalW <= 0) return { ok: false, error: 'Total weight must be > 0' };
 
             const scored = [];
             for (const it of items) {
@@ -364,11 +365,11 @@
                 let incomplete = false;
                 for (const k of criteria) {
                     if (!(k in (it.ratings || {}))) { incomplete = true; continue; }
-                    // null / '' / boolean = BELUM dinilai, bukan 0 (terburuk) atau 1.
+                    // null, '' and booleans mean "not rated yet" — not 0 (worst) or 1.
                     const v = Utils.numOrNull(it.ratings[k]);
                     if (v == null) { incomplete = true; continue; }
                     if (v < 0 || v > 10) {
-                        return { ok: false, error: 'Rating harus angka 0–10 (' + it.name + '.' + k + ')' };
+                        return { ok: false, error: 'Rating must be a number 0–10 (' + it.name + '.' + k + ')' };
                     }
                     s += v * w[k];
                 }
@@ -392,17 +393,14 @@
             };
         },
 
-        /**
-         * Prioritas alokasi design points (v0.7.0 Advisor).
-         * Eksplisit: heuristik selisih (gap) antara nilai atribut mobil dan max
-         * atribut rival liga (#leagueDesignData). BUKAN rumus game — porsi DP
-         * yang diusulkan = share gap terbesar, dan tetap harus diuji user.
-         * @param {object} p { attrs:{key:{label,val}}, best:{key:{max}}, designPoints }
-         */
+        // Design-point allocation priority (v0.7.0).
+        // Heuristic: compare each car attribute with the best value in the league
+        // (#leagueDesignData) and propose a DP share proportional to the largest gap.
+        // This is not the game formula; the user still has to test the result.
         designPriority(p) {
             const attrs = (p && p.attrs && typeof p.attrs === 'object') ? p.attrs : null;
             if (!attrs || !Object.keys(attrs).length) {
-                return { ok: false, error: 'Atribut mobil belum terbaca di halaman ini' };
+                return { ok: false, error: 'Car attributes not found on this page' };
             }
             const best = (p && p.best && typeof p.best === 'object') ? p.best : {};
             const numOrNull = Utils.numOrNull;
@@ -419,9 +417,9 @@
                 if (gap != null) totalGap += gap;
                 rows.push({ key: key, label: a.label || key, val: val, max: effMax, gap: gap });
             }
-            if (!rows.length) return { ok: false, error: 'Tidak ada atribut yang terbaca' };
+            if (!rows.length) return { ok: false, error: 'No attributes were read' };
             if (totalGap <= 0) {
-                return { ok: false, error: 'Tidak ada gap terhadap max liga (sudah ≥ max, atau benchmark liga tidak tersedia)' };
+                return { ok: false, error: 'No gap to league max (already ≥ max, or league benchmark unavailable)' };
             }
             const ranked = rows.filter(r => r.gap != null)
                 .sort((a, b) => (b.gap - a.gap) || String(a.key).localeCompare(String(b.key)));
@@ -439,31 +437,27 @@
             };
         },
 
-        /**
-         * Saran ganti parts/engine dari kondisi mobil (v0.9.4 Advisor).
-         * Membaca kondisi yang MEMANG tampil di halaman + biaya tombol
-         * Fix/Replace + stok gudang. Ambang eksplisit (bukan rumus game):
-         *   ≤50% = ganti sekarang, 50–60% = siap-siap, >60% = tunda.
-         * "enough" hanya dihitung bila biaya DAN stok terbaca; null = tidak
-         * diketahui (jangan dikarang menjadi cukup/kurang).
-         * @param {object} p {
-         *   condition, engine, partCost, engineCost,
-         *   partsStock, engineStock, restockRaces
-         * }
-         */
+        // Parts and engine replacement advice based on car condition (v0.9.4).
+        // Reads the condition shown on the page, the Fix/Replace button cost and the
+        // warehouse stock. Thresholds are explicit, not the game formula:
+        // ≤50% replace now, 50–60% prepare, >60% defer.
+        // `enough` stays null unless both cost and stock are readable; unknown is
+        // never rounded into "enough" or "short".
+        // Inputs: condition, engine, partCost, engineCost,
+        //   partsStock, engineStock, restockRaces.
         repairAdvice(p) {
             const numOrNull = Utils.numOrNull;
             const src = p || {};
             const condition = numOrNull(src.condition);
             const engine = numOrNull(src.engine);
             if (condition == null && engine == null) {
-                return { ok: false, error: 'Kondisi parts/engine belum terbaca' };
+                return { ok: false, error: 'Parts/engine condition not read' };
             }
             if (condition != null && (condition < 0 || condition > 100)) {
-                return { ok: false, error: 'Kondisi parts harus 0–100' };
+                return { ok: false, error: 'Parts condition must be 0–100' };
             }
             if (engine != null && (engine < 0 || engine > 100)) {
-                return { ok: false, error: 'Kondisi engine harus 0–100' };
+                return { ok: false, error: 'Engine condition must be 0–100' };
             }
             const partsStock = numOrNull(src.partsStock);
             const engineStock = numOrNull(src.engineStock);
@@ -491,16 +485,15 @@
             };
         },
 
-        /**
-         * Urutkan supplier dari dialog Supply (v0.7.0 Advisor).
-         * Heuristik transparan: Σ bonus stat vs biaya per balapan; "nilai/biaya"
-         * = bonus per 1M. Stat berbeda tidak disetarakan rumus game — hasil tetap
-         * berupa perbandingan, bukan kepastian performa.
-         * @param {object} p { items:[{supplierId,eId,costPerRace,bonuses:[{stat,value}]}] }
-         */
+        // Rank suppliers from the Supply dialog (v0.7.0).
+        // Transparent heuristic: Σ stat bonus against cost per race, with value per
+        // 1M as the efficiency metric. Different stats are not equated by any game
+        // formula, so this is a comparison, not a performance guarantee.
+        // Inputs: items, each with supplierId, eId, costPerRace and
+        //   bonuses.
         rankSuppliers(p) {
             const items = (p && Array.isArray(p.items)) ? p.items : null;
-            if (!items || !items.length) return { ok: false, error: 'Tidak ada supplier yang terbaca dari dialog' };
+            if (!items || !items.length) return { ok: false, error: 'No suppliers found in the dialog' };
             const rows = items.map(it => {
                 const costRaw = it ? it.costPerRace : null;
                 const cost = (costRaw != null && Number.isFinite(Number(costRaw))) ? Number(costRaw) : null;
@@ -533,14 +526,12 @@
             };
         },
 
-        /**
-         * Urutkan baris manufacturer (engine/chassis) berdasarkan rating (v0.7.0).
-         * Engine punya biaya: efisiensi = rating per 1M biaya. Chassis: rating saja.
-         * @param {object} p { items:[{id,name,ratingPct,costPerRace,customers}], withCost }
-         */
+        // Rank manufacturer rows (engine or chassis) by rating (v0.7.0).
+        // Engines carry a cost, so efficiency is rating per 1M; chassis are ranked on
+        // rating alone.
         rankManufacturerItems(p) {
             const items = (p && Array.isArray(p.items)) ? p.items : null;
-            if (!items || !items.length) return { ok: false, error: 'Tidak ada baris manufacturer yang terbaca' };
+            if (!items || !items.length) return { ok: false, error: 'No manufacturer rows found' };
             const withCost = !!p.withCost;
             const rows = items.map(it => {
                 const ratingRaw = it ? it.ratingPct : null;
@@ -561,7 +552,7 @@
                 (b.rating - a.rating) ||
                 (((b.ratingPerCost == null) ? -Infinity : b.ratingPerCost) - ((a.ratingPerCost == null) ? -Infinity : a.ratingPerCost)) ||
                 String(a.name).localeCompare(String(b.name)));
-            if (!ranked.length) return { ok: false, error: 'Rating manufacturer tidak terbaca' };
+            if (!ranked.length) return { ok: false, error: 'Manufacturer rating not read' };
             const byEff = withCost ? rows.filter(r => r.ratingPerCost != null)
                 .sort((x, y) => y.ratingPerCost - x.ratingPerCost) : [];
             return {
@@ -575,32 +566,25 @@
             };
         },
 
-        /**
-         * Peringkat penawaran sponsor (v0.11.0) — dialog Sign Primary & Secondary.
-         * Model eksplisit (bonus dibayar PER RACE saat objektif tercapai):
-         *  - Secondary (income CASH): income dijamin tiap league race; bonus
-         *    hanya bila objektif race itu tercapai. Peringkat = income
-         *    (jaminan) tertinggi; bonus tunai tertinggi jadi alternatif amber
-         *    (trade-off) + break-even peluang objektif. Tidak ada bonus yang
-         *    dianggap sekali per kontrak.
-         *  - Primary (income TOKEN): token dan cash BEDA SATUAN — tidak pernah
-         *    dijumlahkan/dikonversi. Peringkat = token/race tertinggi (nilai
-         *    utama), tie-break bonus tunai; bonus tunai terbaik jadi alternatif.
-         *  - Total kontrak hanya ditampilkan bila term terbaca (income × term
-         *    dan potensi maks (income + bonus) × term); term tak terbaca →
-         *    total = null. Term dibaca dari kartu Primary sponsor di halaman.
-         * @param {object} p { offers:[{eId,income,tokens,bonus}],
-         *   termRaces:Number|null, incomeKind:'cash'|'token' }
-         * @returns {{ok:Boolean, values?:{ranked:Array,incomeKind:String,
-         *   bestEId:String|null,bestGuaranteeEId:String|null,
-         *   bestBonusEId:String|null,bestPotentialEId:String|null,
-         *   alternativeEId:String|null,breakEvenP:Number|null,
-         *   termRaces:Number|null,unreadable:Number}, error?:String}}
-         */
+        // Sponsor offer ranking (v0.11.0) — Sign dialog, Primary and Secondary.
+        // Model: the bonus is paid per race, and only when that race's objective is
+        // met; no bonus is treated as a one-off for the whole contract.
+        // - Secondary (cash income): income is guaranteed every league race. Ranking
+        //   is by highest income (the guarantee); the highest cash bonus becomes an
+        //   amber alternative, together with an objective-probability break-even.
+        // - Primary (token income): tokens and cash are different units and are never
+        //   summed or converted. Ranking is by highest tokens per race, with the cash
+        //   bonus as tie-break; the best cash bonus becomes the alternative.
+        // - Contract total is shown only when the term is readable: income × term, and
+        //   max potential (income + bonus) × term. An unreadable term yields null.
+        //   The term comes from the Primary sponsor card on the page behind the dialog.
+        // Inputs: offers, termRaces, incomeKind.
+        // Returns { ok, values, error? } — values carry the ranked offers,
+        //   the selected eIds and the break-even probability.
         rankSponsors(p) {
             const offers = (p && Array.isArray(p.offers)) ? p.offers : null;
             if (!offers || !offers.length) {
-                return { ok: false, error: 'Penawaran sponsor tidak terbaca dari dialog' };
+                return { ok: false, error: 'Sponsor offers not found in the dialog' };
             }
             const termRaw = p && p.termRaces;
             const term = (termRaw != null && Number.isFinite(Number(termRaw)) && Number(termRaw) > 0)
@@ -615,7 +599,7 @@
                 const eId = o.eId != null ? String(o.eId) : null;
                 if (tokenMode) {
                     const tokens = Utils.numOrNull(o.tokens);
-                    // 0/tak terbaca = penawaran tak bisa dinilai.
+                    // 0 or unreadable means the offer cannot be scored.
                     if (tokens == null || tokens <= 0) continue;
                     rows.push({
                         eId: eId,
@@ -625,7 +609,7 @@
                         guaranteePerRace: null,
                         potentialPerRace: null,
                         guaranteeTotal: null,
-                        potentialTotal: null, // token & cash tidak dicampur
+                        potentialTotal: null, // tokens & cash are never mixed
                     });
                     continue;
                 }
@@ -646,7 +630,7 @@
             if (!rows.length) {
                 return {
                     ok: false,
-                    error: tokenMode ? 'Income token sponsor tidak terbaca' : 'Income sponsor tidak terbaca',
+                    error: tokenMode ? 'Sponsor token income not read' : 'Sponsor income not read',
                 };
             }
             const byEId = (a, b) => String(a.eId).localeCompare(String(b.eId));
@@ -654,7 +638,7 @@
                 rows.sort((a, b) =>
                     (b.tokens - a.tokens) || (bonusVal(b) - bonusVal(a)) || byEId(a, b));
             } else {
-                // Income = jaminan; potentialPerRace = bonus dianggap tercapai.
+                // Income is the guarantee; potentialPerRace assumes the bonus is achieved.
                 rows.sort((a, b) =>
                     (b.income - a.income) ||
                     (b.potentialPerRace - a.potentialPerRace) ||
@@ -678,8 +662,8 @@
             if (!tokenMode && alternative) {
                 const best = ranked[0];
                 const alt = ranked.find(r => r.eId === alternative);
-                // Alt (income lebih rendah, bonus lebih tinggi) unggul bila
-                // peluang objektif > (income_best - income_alt)/(bonus_alt - bonus_best).
+                // The alternative (lower income, higher bonus) wins when the objective
+                // probability > (income_best − income_alt) / (bonus_alt − bonus_best).
                 const dIncome = best.income - alt.income;
                 const dBonus = bonusVal(alt) - bonusVal(best);
                 if (dIncome > 0 && dBonus > 0) {
@@ -703,25 +687,21 @@
             };
         },
 
-        /* ------------------------------------------------------------------
-         * PERBANDINGAN KEPUTUSAN (v0.8.0) — "lebih bagus / lebih buruk /
-         * sama" antara roster Anda dan pilihan di luar (bursa transfer,
-         * supplier alternatif, max liga). Aturan disiplin:
-         *  - verdict SELALU pada sumbu eksplisit (nilai atau biaya), dengan
-         *    toleransi "≈ sama" yang dinyatakan;
-         *  - sisi yang tidak punya angka → 'unknown'; tidak pernah mengarang
-         *    nilai agar verdict bisa keluar;
-         *  - pemanggil (Advisor/GUI) wajib memberi label
-         *    "estimasi — bukan rumus game".
-         * ------------------------------------------------------------------ */
+        // ------------------------------------------------------------------
+        // DECISION COMPARISON (v0.8.0) — "better / worse / equal" verdicts
+        // against outside options (transfer market, alternative suppliers,
+        // league max). Rules:
+        //  - every verdict sits on an explicit axis (value or cost) with a stated
+        //    "≈ equal" tolerance;
+        //  - a side without numbers yields 'unknown'; values are never invented
+        //    just to produce a verdict;
+        //  - callers must label the result "estimate — not the game formula".
+        // ------------------------------------------------------------------
 
-        /**
-         * Verdict satu angka (sisi Anda) vs satu angka pembanding pada satu sumbu.
-         * @param {*} now nilai sisi Anda
-         * @param {*} ref nilai sisi pembanding
-         * @param {object} [opts] { lowerIsBetter:Boolean, tolerance:Number(rasio) }
-         * @returns {{verdict:'better'|'worse'|'equal'|'unknown', delta:Number|null, pct:Number|null}}
-         */
+        // Compare one number against a reference on a single axis.
+        // now / ref — the two values; opts — { lowerIsBetter, tolerance (ratio) }.
+        // Returns { verdict, delta, pct }; verdict is 'better', 'worse', 'equal'
+        // or 'unknown'.
         numberVerdict(now, ref, opts) {
             const a = Utils.numOrNull(now);
             const b = Utils.numOrNull(ref);
@@ -738,31 +718,25 @@
             return { verdict: better ? 'better' : 'worse', delta: delta, pct: pct };
         },
 
-        /**
-         * Bandingkan roster aktif vs daftar dari luar pada role yang sama.
-         * Dua sumbu, selalu dilaporkan terpisah apa adanya:
-         *  - rating (naik = lebih bagus) → pembanding = rating TERTINGGI di daftar luar;
-         *  - biaya/balapan (turun = lebih bagus) → pembanding = biaya TERENDAH di daftar luar.
-         * Verdict akhir memakai sumbu rating bila KEDUA sisi punya rating; selainnya
-         * sumbu biaya; selainnya 'unknown'. Karena itu keterisian rating ikut
-         * dilaporkan (ratingKnown/ratingUnknown) supaya UI bisa jujur soal sebabnya.
-         * @param {object} p {
-         *   current:[{key,name,role,rating,costPerRace}],
-         *   market :[{key,name,role,rating,costPerRace}],
-         *   ratingLabel, costLabel, tolerance
-         * }
-         */
+        // Compare the active roster with an outside list for the same role.
+        // Two axes, always reported separately and unchanged:
+        // - rating (higher is better) — reference is the highest rating outside;
+        // - cost per race (lower is better) — reference is the lowest cost outside.
+        // The verdict uses the rating axis when both sides have a rating, otherwise
+        // the cost axis, otherwise 'unknown'. Rating coverage is reported as well so
+        // the UI can explain why a verdict is missing.
+        // Inputs: current, market, ratingLabel, costLabel, tolerance.
         compareRoster(p) {
             const cur = (p && Array.isArray(p.current)) ? p.current : null;
             const mkt = (p && Array.isArray(p.market)) ? p.market : null;
             if (!cur || !cur.length) {
-                return { ok: false, error: 'Roster aktif belum terbaca (butuh halaman Drivers & Staff)' };
+                return { ok: false, error: 'Active roster not read (needs the Drivers & Staff page)' };
             }
             if (!mkt || !mkt.length) {
-                return { ok: false, error: 'Daftar pasar belum terbaca (butuh halaman Transfers)' };
+                return { ok: false, error: 'Market list not read (needs the Transfers page)' };
             }
             const ratingLabel = (p && p.ratingLabel) || 'rating';
-            const costLabel = (p && p.costLabel) || 'biaya/balapan';
+            const costLabel = (p && p.costLabel) || 'cost/race';
             const tol = p && p.tolerance;
             const rows = [];
             const counts = { better: 0, worse: 0, equal: 0, unknown: 0 };
@@ -770,11 +744,11 @@
             let ratingUnknown = 0;
             for (const c of cur) {
                 if (!c) continue;
-                // Peran dinormalisasi (label "Chief Designer" vs kode "CD") agar
-                // roster halaman Teams bisa dibandingkan dengan pasar Transfers.
+                // Normalize roles ("Chief Designer" vs "CD") so the
+                // Teams roster can be compared with the Transfers market.
                 const role = Utils.roleCode(c.role);
-                // Peran tak terbaca tidak boleh dibandingkan lintas peran
-                // (mekanik vs driver menghasilkan verdict palsu).
+                // Never compare unreadable roles across roles:
+                // mechanic vs driver would produce a false verdict.
                 const peers = (role == null) ? []
                     : mkt.filter(m => m && Utils.roleCode(m.role) === role);
                 const byRating = peers.filter(m => Utils.numOrNull(m.rating) != null)
@@ -790,9 +764,9 @@
                 const vCost = IGPCore.numberVerdict(c.costPerRace, refCost ? refCost.costPerRace : null, { lowerIsBetter: true, tolerance: tol });
                 if (vRating.verdict === 'unknown') ratingUnknown += 1; else ratingKnown += 1;
                 const basis = (vRating.verdict !== 'unknown') ? 'rating'
-                    : (vCost.verdict !== 'unknown') ? 'biaya' : 'tidak ada';
+                    : (vCost.verdict !== 'unknown') ? 'cost' : 'none';
                 const verdict = (basis === 'rating') ? vRating.verdict
-                    : (basis === 'biaya') ? vCost.verdict : 'unknown';
+                    : (basis === 'cost') ? vCost.verdict : 'unknown';
                 counts[verdict] += 1;
                 rows.push({
                     key: (c.key != null) ? c.key : (c.name != null ? c.name : null),
@@ -804,14 +778,14 @@
                     verdict: verdict,
                     refRating: refRating ? { name: refRating.name, value: Utils.numOrNull(refRating.rating) } : null,
                     refCost: refCost ? { name: refCost.name, value: Utils.numOrNull(refCost.costPerRace) } : null,
-                    // Info saja (tanpa verdict): fee tanda tangan termurah di pasar —
-                    // biaya sekali bayar, tidak sebanding dengan gaji per balapan.
+                    // Informational only, no verdict: the cheapest signing fee on the market is a
+                    // one-off cost and does not compare with a per-race wage.
                     refFee: refFee ? { name: refFee.name, value: Utils.numOrNull(refFee.fee) } : null,
                     refName: (basis === 'rating' && refRating) ? refRating.name
-                        : (basis === 'biaya' && refCost) ? refCost.name : null,
+                        : (basis === 'cost' && refCost) ? refCost.name : null,
                 });
             }
-            if (!rows.length) return { ok: false, error: 'Roster aktif kosong' };
+            if (!rows.length) return { ok: false, error: 'Active roster is empty' };
             return {
                 ok: true,
                 values: {
@@ -827,19 +801,16 @@
             };
         },
 
-        /**
-         * Bandingkan supplier AKTIF dengan alternatif di dialog Supply yang sama
-         * (satu halaman, satu snapshot) — bukan pasar luar. Dua sumbu: Σ bonus
-         * (naik = lebih bagus) dan biaya/balapan (turun = lebih bagus). Konvensi
-         * Σ bonus sama dengan rankSuppliers: stat berbeda TIDAK disetarakan
-         * rumus game — ini perbandingan, bukan kepastian performa.
-         * @param {object} p { current:{id,costPerRace,bonuses}, alternatives:[...], tolerance }
-         */
+        // Compare the active supplier with alternatives in the same Supply dialog
+        // (one page, one snapshot), not the outside market.
+        // Two axes: Σ bonus (higher is better) and cost per race (lower is better).
+        // The Σ bonus convention matches rankSuppliers — different stats are not
+        // equated by the game formula. This is a comparison, not a guarantee.
         compareSuppliers(p) {
             const cur = (p && p.current) ? p.current : null;
             const alts = (p && Array.isArray(p.alternatives)) ? p.alternatives : null;
-            if (!cur) return { ok: false, error: 'Supplier aktif tidak terbaca dari dialog' };
-            if (!alts || !alts.length) return { ok: false, error: 'Alternatif supplier tidak tampil di dialog ini' };
+            if (!cur) return { ok: false, error: 'Active supplier not read from the dialog' };
+            if (!alts || !alts.length) return { ok: false, error: 'Alternative suppliers are not shown in this dialog' };
             const bonusSum = x => {
                 if (!x || !Array.isArray(x.bonuses) || x.bonuses.length === 0) return null;
                 return x.bonuses.reduce((s, b) => s + (b && Number.isFinite(Number(b.value)) ? Number(b.value) : 0), 0);
@@ -861,9 +832,9 @@
             const vBonus = IGPCore.numberVerdict(curBonus, refBonus ? refBonus.value : null, { tolerance: p && p.tolerance });
             const vCost = IGPCore.numberVerdict(curCost, refCost ? refCost.value : null, { lowerIsBetter: true, tolerance: p && p.tolerance });
             const basis = (vBonus.verdict !== 'unknown') ? 'bonus'
-                : (vCost.verdict !== 'unknown') ? 'biaya' : 'tidak ada';
+                : (vCost.verdict !== 'unknown') ? 'cost' : 'none';
             const verdict = (basis === 'bonus') ? vBonus.verdict
-                : (basis === 'biaya') ? vCost.verdict : 'unknown';
+                : (basis === 'cost') ? vCost.verdict : 'unknown';
             return {
                 ok: true,
                 values: {
@@ -878,14 +849,12 @@
             };
         },
 
-        /**
-         * Baca trait dari teks `data-append` (v0.7.2, halaman Transfers).
-         * Robust: coba DOM parse dulu (kutip tunggal/ganda), fallback regex.
-         * Output: { boost, weaken, special } — label murni; 'None' dibuang.
-         *  - block-green  = spesialisasi penguat atribut (tooltip game)
-         *  - block-red    = kelemahan terkait (tooltip game)
-         *  - specialA*    = special ability driver
-         */
+        // Parse traits from `data-append` text (v0.7.2, Transfers page).
+        // Tries a DOM parse first (single or double quotes) and falls back to a regex.
+        // Returns { boost, weaken, special } with labels only; 'None' is dropped.
+        // - block-green — attribute-boosting specialization.
+        // - block-red — related weakness.
+        // - specialA* — driver special ability.
         parseTraits(html) {
             const s = String(html == null ? '' : html);
             if (typeof DOMParser !== 'undefined' || (typeof document !== 'undefined' && document.createElement)) {
@@ -894,8 +863,8 @@
                         ? document.createElement('div') : null;
                     if (holder) {
                         holder.innerHTML = s;
-                        // Ikon game ditulis sebagai <icon>igp-tyre</icon> lalu labelnya —
-                        // ikon dibuang agar yang tersisa hanya label statistik.
+                        // Icons are rendered as <icon>igp-tyre</icon> followed by the
+                        // label; the icons are dropped so only the statistic remains.
                         const textOf = el => {
                             const c = el.cloneNode(true);
                             for (const ic of c.querySelectorAll('icon')) ic.remove();
@@ -911,7 +880,7 @@
                             return { boost: byClass('block-green'), weaken: byClass('block-red'), special: specials };
                         }
                     }
-                } catch { /* fallback regex */ }
+                } catch {}
             }
             const grab = pattern => {
                 const out = [];
@@ -932,14 +901,18 @@
         },
     });
 
-    // helper kecil (di luar freeze agar statis):
+    // =====================================================================
+    // 2) ADAPTERS — read-only DOM readers, one per page or dialog.
+    //    Each mirrors a saved fixture under test/fixtures/.
+    // =====================================================================
+
 
     const IgpCarsAdapter = {
         id: 'car-data',
-        desc: 'atribut mobil + supplier + DP + bonus (halaman Cars)',
+        desc: 'car attributes + suppliers + DP + bonus (Cars page)',
         captures(doc) {
             const pid = doc.getElementById('pageId');
-            if (!pid || pid.value !== 'cars') return null; // gate: halaman Cars saja
+            if (!pid || pid.value !== 'cars') return null; // gate: Cars page only
             const txt = (root, sel) => {
                 const el = root.querySelector(sel);
                 return el ? el.textContent.trim() : null;
@@ -947,14 +920,13 @@
             const attrs = {};
             for (const row of doc.querySelectorAll('#carAttributesDisplay .attribute-row')) {
                 const key = (row.id || '').replace(/^wrap-/, '');
-                if (!key) continue; // baris form edit tidak punya id wrap-*
-                // Label tulisan advisor (data-igpas-orig) dikembalikan ke aslinya:
-                // snapshot menyimpan data game murni, bukan hasil tampilan.
+                if (!key) continue; // form edit rows have no wrap-* id
+                // Restore advisor-written labels (data-igpas-orig); the snapshot is game data.
                 const saved = row.getAttribute('data-igpas-orig');
                 attrs[key] = {
                     label: (saved != null ? saved : txt(row, '.attribute-rating-header span:not(.ratingVal)')),
-                    // Tanpa .ratingVal (render parsial / pra-musim) = null,
-                    // BUKAN 0: 0 akan jadi "gap terbesar" dan prioritas DP #1.
+                    // Without .ratingVal (partial render or pre-season) it is null,
+                    // not 0: 0 would become the "largest gap" and DP priority #1.
                     val: Utils.numOrNull(txt(row, '.ratingVal')),
                 };
             }
@@ -984,23 +956,21 @@
         },
     };
 
-    /**
-     * Adapter dialog Supply (engine/fuel/tyre) — read-only, dipetakan dari capture
-     * live DOM (fixture test/fixtures/supply-*.html). Dialog dibuka OLEH USER di
-     * halaman Cars (klik tile Engines/Fuel/Tyres); adapter tidak pernah membuka
-     * dialog, tidak mengklik, tidak submit — hanya membaca DOM yang tampak.
-     * Gate: `.supplyDialog` harus ada (dialog terbuka) + judul h2 menentukan tipe —
-     * berbasis DOM, BUKAN URL (halaman/varian URL apa pun asal dialog terbuka).
-     */
+    // Supply dialog adapter (engine / fuel / tyre) — read-only.
+    // Mapped from live DOM captures (test/fixtures/supply-*.html). The dialog is
+    // opened by the user on the Cars page; this adapter never opens it, never
+    // clicks and never submits, it only reads what is visible.
+    // Gate: `.supplyDialog` exists (dialog open) and the h2 title selects the type.
+    // Detection is DOM-based, not URL-based, so any URL variant works.
     const IgpSupplyAdapter = {
         id: 'supply-data',
-        desc: 'supplier engine/fuel/tyre (dialog Supply di halaman Cars)',
+        desc: 'engine/fuel/tyre suppliers (Supply dialog on the Cars page)',
         captures(doc) {
             const root = doc.querySelector('.supplyDialog');
-            if (!root) return null; // gate: hanya saat dialog Supply terbuka
+            if (!root) return null; // gate: only while the Supply dialog is open
             const h2 = root.querySelector('.dialog-subhead-content h2');
-            // Judul asli disimpan advisor di data-igpas-orig; gate harus membaca
-            // teks game, bukan teks anotasi ("Engine supply · bonus kalah, …").
+            // The advisor saves the original title in data-igpas-orig, so the gate reads
+            // the game text, never the annotated title.
             const h2txt = h2 ? (h2.getAttribute('data-igpas-orig') || h2.textContent) : '';
             const tm = h2txt.match(/^\s*(engine|fuel|tyre)s?\s+supply\s*$/i);
             if (!tm) return null;
@@ -1017,8 +987,8 @@
                     const v = (s.textContent || '').match(/[+-]?\d+/);
                     if (v) out.push({ stat: s.getAttribute('data-tip'), value: parseInt(v[0], 10) });
                 }
-                // [] = bonus BELUM dirender (supplier belum di-scout / lazy),
-                // bukan "total bonus 0" — 0 akan memenangkan verdict "lebih baik".
+                // An empty array means bonuses are not rendered yet (supplier not scouted
+                // or lazy), not "total bonus 0", which would win the "better" verdict.
                 return out.length ? out : null;
             };
 
@@ -1032,8 +1002,7 @@
                 const supType = (tip.match(/supplyType=([a-z]+)/i) || [])[1];
                 if (!eId || (supType && supType.toLowerCase() !== type)) continue;
                 const card = btn.closest('.inline-block') || btn.parentElement;
-                // Teks biaya tulisan advisor (data-igpas-orig) dikembalikan ke aslinya:
-                // snapshot menyimpan data game murni, bukan hasil tampilan.
+                // Restore advisor-written cost text (data-igpas-orig); the snapshot is game data.
                 const savedCost = btn.getAttribute('data-igpas-orig');
                 alternatives.push({
                     eId: parseInt(eId, 10),
@@ -1048,38 +1017,35 @@
                 current: {
                     supplierId: sid(sub ? sub.querySelector('img[src*="/supply/"]') : null),
                     costPerRace: costMatch ? money(costMatch[1]) : null,
-                    bonuses: sub ? bonusesIn(sub) : null, // null = tidak terbaca, bukan 0
+                    bonuses: sub ? bonusesIn(sub) : null, // null = unreadable, not 0
                 },
                 alternatives,
             };
         },
     };
 
-    /**
-     * Adapter halaman Manufacturers — read-only. Dipetakan dari capture live DOM
-     * kedua tab (fixture test/fixtures/manufacturers-engines.html &
-     * manufacturers-chassis.html). Fakta halaman: KEDUA tabel (engine + chassis)
-     * selalu ada di DOM; tab aktif hanya soal display — jadi satu capture membaca
-     * keduanya. Gate: #pageId = 'manufacturers' — berbasis DOM, BUKAN URL:
-     * varian /app/p=manufacturers, …&tab=engines, dan …&tab=chassis sama-sama lolos.
-     * Hanya membaca; tidak pernah klik (termasuk kontrol “Show hidden stats”),
-     * tidak submit, tidak membuka dialog.
-     */
+    // Manufacturers page adapter — read-only.
+    // Mapped from live DOM captures of both tabs (test/fixtures/
+    // manufacturers-engines.html and manufacturers-chassis.html). Both tables are
+    // always in the DOM and the active tab only controls display, so one capture
+    // reads both. Gate: #pageId === 'manufacturers' — DOM-based, not URL-based,
+    // so the tab=engines and tab=chassis variants both pass.
+    // Never clicks (including "Show hidden stats"), submits or opens a dialog.
     const IgpManufacturersAdapter = {
         id: 'manufacturer-data',
-        desc: 'daftar manufacturer engine + chassis (halaman Manufacturers)',
+        desc: 'engine + chassis manufacturer list (Manufacturers page)',
         captures(doc) {
             const pid = doc.getElementById('pageId');
-            if (!pid || pid.value !== 'manufacturers') return null; // gate: halaman Manufacturers saja
+            if (!pid || pid.value !== 'manufacturers') return null; // gate: Manufacturers page only
             const engineTable = doc.getElementById('engine-table');
             const chassisTable = doc.getElementById('chassis-table');
             if (!engineTable && !chassisTable) return null;
 
             const money = Utils.parseMoney;
-            const clean = s => String(s || '').replace(/\s+/g, ' ').trim(); // nama punya spasi nyasar di DOM
-            // Nama manufacturer bisa terpecah antar-node (teks + <span> di dalam
-            // <a>): textContent mentah menempelkan "Aero"+"Dynamics" jadi
-            // "AeroDynamics". Gabungkan dengan spasi di batas elemen.
+            const clean = s => String(s || '').replace(/\s+/g, ' ').trim(); // names carry stray spaces in the DOM
+            // A manufacturer name can be split across nodes (text plus a <span> inside
+            // the <a>). Raw textContent would glue "Aero" and "Dynamics" into
+            // "AeroDynamics", so join with a space at element boundaries.
             const textOf = el => {
                 if (!el) return '';
                 const walk = node => {
@@ -1095,7 +1061,7 @@
                 const n = parseInt(String(t || '').replace(/[^\d]/g, ''), 10);
                 return Number.isFinite(n) ? n : null;
             };
-            /** Stats terlihat? ikon #ios-eye = ya; #ios-eye-off (red) = disembunyikan. */
+            // Stats are visible when #ios-eye is present; #ios-eye-off (red) means hidden.
             const statsVisible = td => {
                 const use = td ? td.querySelector('svg use') : null;
                 if (!use) return null;
@@ -1110,7 +1076,8 @@
                 return last ? num(last.getAttribute('rel')) : null;
             };
 
-            /** Baris tabel: engine = 5 kolom (name/rating/cost/stats/customers), chassis = 3. */
+            // Table rows: engines have 5 columns (name, rating, cost, stats, customers);
+            // chassis have 3.
             const parseRows = (table, withCost) => {
                 const out = [];
                 if (!table) return out;
@@ -1121,12 +1088,11 @@
                     const idm = a ? (a.getAttribute('href') || '').match(/id=(\d+)/) : null;
                     const tip = tds[1] ? tds[1].querySelector('.tooltip[data-tip]') : null;
                     const rm = tip ? (tip.getAttribute('data-tip') || '').match(/^Rating:\s*(\d+)\s*%\s*$/i) : null;
-                    // Nama tulisan advisor (data-igpas-orig) dikembalikan ke aslinya:
-                    // snapshot menyimpan data game murni, bukan hasil tampilan.
+                    // Restore advisor-written names (data-igpas-orig); the snapshot is game data.
                     const savedName = tr.getAttribute('data-igpas-orig');
                     const row = {
                         id: idm ? parseInt(idm[1], 10) : null,
-                        name: (savedName != null ? savedName : textOf(tds[0])), // teks saja — <a> kosong + <img> flag tidak menghasilkan teks
+                        name: (savedName != null ? savedName : textOf(tds[0])), // text only — an empty <a> + <img> flag yields no text
                         nationality: tr.getAttribute('data-nationality') || null,
                         ratingPct: rm ? parseInt(rm[1], 10) : null,
                     };
@@ -1149,18 +1115,16 @@
         },
     };
 
-    /**
-     * Adapter halaman Drivers & Staff (v0.7.2) — read-only. Dipetakan dari
-     * capture live DOM (fixture test/fixtures/staff.html). Gate: #pageId =
-     * 'staff'. Membaca: driver aktif (nama, ability/mental %, health bar +
-     * estimasi pemulihan, kontrak, gaji), kartu staff aktif (peran, gaji,
-     * kontrak), status pit crew (terkunci bila ada tooltip), jumlah reserve.
-     * KARTU staff aktif TIDAK memuat angka rating (bintang saja, relatif
-     * level) — adapter tidak pernah mengarang angka itu.
-     */
+    // Drivers & Staff page adapter (v0.7.2) — read-only.
+    // Mapped from test/fixtures/staff.html. Gate: #pageId === 'staff'.
+    // Reads active drivers (name, ability/mental %, health bar with recovery
+    // estimate, contract, wage), active staff cards (role, wage, contract), pit
+    // crew status (locked when a tooltip is present) and the reserve count.
+    // Active staff cards carry stars, not rating numbers, so the adapter never
+    // invents them.
     const IgpStaffAdapter = {
         id: 'staff-data',
-        desc: 'halaman Drivers & Staff: driver aktif + staff + pit crew',
+        desc: 'Drivers & Staff page: active drivers + staff + pit crew',
         captures(doc) {
             const pid = doc.getElementById('pageId');
             if (!pid || pid.value !== 'staff') return null;
@@ -1174,8 +1138,8 @@
                 return Number.isFinite(n) ? n : null;
             };
             const salaryOf = card => {
-                // Gaji = angka tepat setelah ikon cash; card.textContent bisa
-                // menangkap digit dari nama/role lebih dulu.
+                // Wage is the exact number right after the cash icon; card.textContent may
+                // capture digits from the name/role first.
                 const cash = card.querySelector('img[src*="cash"]');
                 if (cash) {
                     let nd = cash.nextSibling;
@@ -1187,7 +1151,7 @@
             };
             const nameOf = el => {
                 if (!el) return null;
-                // Nama asli dari advisor (data-igpas-orig) — snapshot = data game.
+                // Original name from the advisor (data-igpas-orig) — the snapshot is game data.
                 const direct = el.getAttribute('data-igpas-orig');
                 if (direct != null) return clean(direct);
                 const c = el.cloneNode(true);
@@ -1199,7 +1163,7 @@
                 return clean(c.textContent);
             };
 
-            const cols = [null, null]; // kolom driver 1 & 2 pada tabel statistik
+            const cols = [null, null]; // driver columns 1 & 2 in the stats table
             const cell = i => (cols[i] = cols[i] || {});
             const tbl = doc.getElementById('driverStatsTable');
             if (tbl) {
@@ -1214,7 +1178,7 @@
                     } else if (label === 'Salary') {
                         for (let i = 0; i < tds.length && i < 2; i++) cell(i).salaryPerRace = money(tds[i].textContent);
                     }
-                    // baris health: tanpa label — kenali dari training preview
+                    // Health row: no label — identify it from the training preview.
                     const vals = tr.querySelectorAll('.trainingPreviewValue');
                     if (vals.length) {
                         vals.forEach((v, i) => {
@@ -1222,9 +1186,9 @@
                                 cell(i).health = intOf(v.getAttribute('data-val'));
                                 const rec = tds[i] ? tds[i].querySelector('.staffHealthRecovery') : null;
                                 const rate = tds[i] ? tds[i].querySelector('.trainingPreviewRate') : null;
-                                // `data-recovery-rate` = angka game penuh (6.615);
-                                // teks "+6" hanya fallback dan TIDAK boleh lewat intOf
-                                // (intOf membuang titik → 6.6 jadi 66).
+                                // `data-recovery-rate` is the full game number (6.615);
+                                // the "+6" text is only a fallback and must not go through intOf
+                                // (intOf strips the dot → 6.6 becomes 66).
                                 const rv = rec ? Utils.numOrNull(rec.getAttribute('data-recovery-rate')) : null;
                                 if (rv != null) cell(i).recoveryPerHour = rv;
                                 else if (rate) cell(i).recoveryPerHour = Utils.numOrNull(rate.textContent);
@@ -1236,8 +1200,8 @@
                         if (i < 2) {
                             const csv = sp.getAttribute('data-driver');
                             cell(i).raw = csv;
-                            // Indeks 12-stat dari CSV — dipakai perbandingan vs pasar
-                            // (satu bentuk angka yang sama di kedua sisi).
+                            // 12-stat index from the CSV, used to compare with the market
+                            // (the same number shape on both sides).
                             cell(i).statIndex = Utils.statIndex(csv);
                         }
                     });
@@ -1284,18 +1248,15 @@
         },
     };
 
-    /**
-     * Adapter pasar Transfers (v0.7.2) — read-only. Dipetakan dari capture
-     * live DOM (fixture test/fixtures/transfers.html). Gate: #pageId =
-     * 'transfers'. KEDUA tabel (driver + staff) selalu ada di DOM; tab aktif
-     * hanya display. Angka keseluruhan diambil dari atribut data-* yang
-     * memang ada di halaman (data-overall, data-sort fee/wage/age/role, CSV
-     * data-driver / data-staff, trait pada data-append) — tanpa angka fiktif.
-     * Daftar pasar bisa berubah sendiri (refresh lelang) — panel diberi catatan.
-     */
+    // Transfers market adapter (v0.7.2) — read-only.
+    // Mapped from test/fixtures/transfers.html. Gate: #pageId === 'transfers'.
+    // Both tables (drivers and staff) are always in the DOM; the active tab is
+    // display only. Overall numbers come from attributes that actually exist on the
+    // page (data-overall, data-sort, the CSV blobs, trait in data-append); nothing
+    // is fabricated. The market can refresh on its own, which the panel notes.
     const IgpTransfersAdapter = {
         id: 'transfers-data',
-        desc: 'pasar Transfers: driver & staff (rating/fee/wage/trait)',
+        desc: 'Transfers market: drivers & staff (rating/fee/wage/trait)',
         captures(doc) {
             const pid = doc.getElementById('pageId');
             if (!pid || pid.value !== 'transfers') return null;
@@ -1341,20 +1302,18 @@
         },
     };
 
-    /**
-     * Adapter dialog sponsor (Primary/Secondary) — read-only, dipetakan dari
-     * capture live DOM. Gate: #sponsorSignTable ada (dialog Sign terbuka);
-     * tidak pernah membuka dialog, klik, atau submit. Term kontrak per
-     * penawaran TIDAK ditampilkan game (baris "Contract term" dikomentari),
-     * jadi term dibaca dari kartu Primary sponsor di halaman di belakang
-     * dialog — asumsi eksplisit, bukan rumus game.
-     */
+    // Sponsor dialog adapter (Primary / Secondary) — read-only.
+    // Gate: #sponsorSignTable exists (the Sign dialog is open). Never opens the
+    // dialog, clicks or submits.
+    // The game does not display the contract term (that row is commented out), so
+    // the term is read from the Primary sponsor card on the page behind the modal.
+    // That is an explicit assumption, not the game formula.
     const IgpSponsorAdapter = {
         id: 'sponsor-data',
-        desc: 'dialog sponsor: income per league race + bonus objektif',
+        desc: 'sponsor dialog: income per league race + objective bonus',
         captures(doc) {
             const table = doc.getElementById('sponsorSignTable');
-            if (!table) return null; // gate: hanya saat dialog sponsor terbuka
+            if (!table) return null; // gate: only while the sponsor dialog is open
             const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
             const rows = Array.from(table.querySelectorAll('tr'));
             const rowOf = label => rows.find(tr => {
@@ -1367,8 +1326,8 @@
             if (!incomeRow || !bonusRow || !signRow) return null;
             const incomeCells = Array.from(incomeRow.querySelectorAll('td'));
             const bonusCells = Array.from(bonusRow.querySelectorAll('td'));
-            // Satuan income: token (Primary sponsor) vs cash (Secondary).
-            // Token dan cash tidak boleh dicampur; kind dideteksi dari ikon.
+            // Income unit: token (Primary sponsor) vs cash (Secondary).
+            // Tokens and cash must never be mixed; the kind is detected from the icon.
             const isTokenCell = c => !!(c && c.querySelector('img[src*="token"], .token-icon, .token-cost'));
             const incomeKind = incomeCells.some(isTokenCell) ? 'token' : 'cash';
             const amountOf = cell => {
@@ -1391,7 +1350,7 @@
                 });
             });
             if (!offers.length) return null;
-            // Term kontrak: kartu Primary sponsor di #page-content (di belakang modal).
+            // Contract term: Primary sponsor card in #page-content (behind the modal).
             let termRaces = null;
             for (const card of doc.querySelectorAll('#page-content .c-wrap')) {
                 const head = card.querySelector('.font-heading');
@@ -1404,28 +1363,25 @@
         },
     };
 
-    /**
-     * Registry adapter data. Status dipublikasikan apa adanya: ':ready' = adapter
-     * read-only terpasang; ':menunggu-map' = pemetaan DOM halaman belum dilakukan.
-     */
-    /* =====================================================================
-     * 3b) ADVISOR IN-PAGE (v0.7.0) — rekomendasi read-only di halaman STUDI iGP.
-     *  - IN-PLACE: tidak menambah elemen apa pun. Tulisan hanya teks pada node
-     *    game yang sudah ada, atribut title elemen yang sama, dan style
-     *    sementara (warna tombol). Tidak mengklik, tidak submit, tidak
-     *    fetch/XHR, tidak mengirim packet mailbox apa pun.
-     *  - Aktif di #pageId 'cars' (termasuk dialog Supply terbuka),
-     *    'manufacturers', 'staff', 'transfers', dan dialog sponsor
-     *    (#sponsorSignTable — biasanya di halaman Finances). Halaman 'race'
-     *    (Setup, Strategy, maupun Race live) TIDAK mendapat UI/tulisan apa
-     *    pun; tanpa klik/submit elemen game, di mana pun.
-     *  - Re-render dipicu aksi user (klik/navigasi) — BUKAN polling DOM.
-     *  - Semua angka = pembacaan DOM yang memang tampil + heuristik eksplisit
-     *    IGPCore, berlabel "estimasi — bukan rumus game".
-     * ===================================================================== */
+    // Adapter registry. Status is published as-is: ':ready' means a read-only
+    // adapter is installed; ':waiting-map' means the page DOM is not mapped yet.
+    // =====================================================================
+    // 3) IN-PAGE ADVISOR (v0.7.0) — read-only recommendations.
+    //  - In-place: no elements are added. Writes are text on existing game nodes,
+    //    the title attribute of those nodes, and temporary style (button colour).
+    //    No clicks, no submits, no fetch/XHR, no mailbox packets.
+    //  - Active on #pageId 'cars' (including an open Supply dialog),
+    //    'manufacturers', 'staff' and 'transfers', plus the sponsor dialog
+    //    (#sponsorSignTable, usually the Finances page). Race pages (Setup,
+    //    Strategy and the live Race) get no UI and no text.
+    //  - Re-render follows user actions and relevant DOM changes — never broad
+    //    polling.
+    //  - Every number is a displayed DOM reading plus an explicit IGPCore
+    //    heuristic, always labelled "estimate — not the game formula".
+    // =====================================================================
     const Advisor = (() => {
         const PREFIX = 'igpas-adv';
-        const fmtMoney = Utils.fmtMoney; // satu format uang untuk seluruh advisor
+        const fmtMoney = Utils.fmtMoney; // one money format for the whole advisor
         const pageId = () => {
             const el = document.getElementById('pageId');
             return el ? String(el.value || '').trim() : null;
@@ -1438,14 +1394,13 @@
             }
         }
 
-        /* Halaman Cars: prioritas alokasi design points vs benchmark liga.
-         * IN-PLACE PENUH (tanpa elemen baru): label ASLI tiap baris ditulis
-         * ulang jadi "#n Label · X DP" dan baris diurutkan #1, #2, ... dari
-         * atas ke bawah. Detail val/max/gap + label estimasi di atribut title
-         * baris yang sama. Angka & bar game tidak disentuh. Urutan/teks asli
-         * disimpan dan dikembalikan oleh restoreDesign(); captures selalu
-         * berjalan setelah restore sehingga adapter tidak pernah membaca hasil
-         * tulisan. */
+        // Cars page: design-point allocation priority against the league benchmark.
+        // Fully in-place (no new elements): each row's original label becomes
+        // "#n Label · X DP" and rows are sorted #1, #2, ... top to bottom. The
+        // val/max/gap details and the estimate label go in the title attribute of the
+        // same row; game numbers and bars are untouched. Original order and text are
+        // restored by restoreDesign(), and captures always run after restore so the
+        // adapter never reads the advisor's own output.
         function applyInlineStyle(el, props) {
             if (!el.hasAttribute('data-igpas-orig-style')) {
                 el.setAttribute('data-igpas-orig-style', el.getAttribute('style') || '');
@@ -1476,7 +1431,7 @@
                     if (orig != null) {
                         const label = row.querySelector('.attribute-rating-header span:not(.ratingVal)');
                         const written = row.getAttribute('data-igpas-written');
-                        // Jangan menimpa label yang sudah diganti game setelah tulisan advisor.
+                        // Never overwrite a label the game replaced after the advisor wrote it.
                         if (label && (written == null || label.textContent === written)) {
                             label.textContent = orig;
                         }
@@ -1492,14 +1447,13 @@
                     if (row.hasAttribute('data-igpas-orig-style') || row.hasAttribute('data-igpas-written-style')) {
                         restoreInlineStyle(row);
                     }
-                } catch { /* jangan pernah merusak halaman game */ }
+                } catch {}
                 row.removeAttribute('data-igpas-orig');
                 row.removeAttribute('data-igpas-written');
                 row.removeAttribute('data-igpas-title');
                 row.removeAttribute('data-igpas-written-title');
             }
-            // Kembalikan urutan baris ke urutan asli game.
-            if (display) {
+                    if (display) {
                 const marked = Array.from(display.children).filter(el =>
                     el && el.classList && el.classList.contains('attribute-row') &&
                     el.hasAttribute('data-igpas-orig-order'));
@@ -1512,22 +1466,21 @@
                     }
                 }
             }
-            // Sisa migrasi versi badge/panel: bersihkan tanpa menyentuh node game.
+            // Remove leftovers from the old badge/panel design without touching game nodes.
             for (const el of document.querySelectorAll('.igpas-adv-inline, .igpas-adv-inline-head')) el.remove();
             removeIfAny([PREFIX + '-design']);
         }
         function mountDesign() {
             const anchor = (pageId() === 'cars') ? document.getElementById('carAttributesDisplay') : null;
             if (!anchor) { restoreDesign(); return; }
-            restoreDesign(); // teks/urutan asli kembali dulu agar captures baca data murni
+            restoreDesign(); // restore original text/order first so captures read pure data
             const data = IgpCarsAdapter.captures(document);
             const res = IGPCore.designPriority({
                 attrs: data && data.attrs,
                 best: data && data.best,
                 designPoints: data && data.designPoints,
             });
-            // Gagal jujur: tanpa angka, tanpa modifikasi apa pun (tanpa panel).
-            if (!res.ok) return;
+                    if (!res.ok) return;
             const dpTotal = res.values.designPoints;
             const ranked = res.values.ranked;
             const rows = Array.from(anchor.children).filter(el =>
@@ -1540,7 +1493,7 @@
                 }
                 if (row.id && row.id.indexOf('wrap-') === 0) byKey.set(row.id.slice(5), row);
             });
-            // Urutkan #1..#n sesuai rank; baris tak terbaca tetap di belakang.
+            // Sort #1..#n by rank; unreadable rows stay at the end.
             const ordered = [];
             for (const r of ranked) {
                 const row = r && r.key != null ? byKey.get(String(r.key)) : null;
@@ -1564,23 +1517,22 @@
                 const newLabel = '#' + (i + 1) + ' ' + orig + (dpEst != null ? ' · ' + dpEst + ' DP' : '');
                 label.textContent = newLabel;
                 row.setAttribute('data-igpas-written', newLabel);
-                const advisorTitle = 'Prioritas #' + (i + 1) + ' — ' + (r.label || orig) + ': ' + r.val +
-                    ' → max liga ' + (r.max == null ? '—' : r.max) +
+                const advisorTitle = 'Priority #' + (i + 1) + ' — ' + (r.label || orig) + ': ' + r.val +
+                    ' → league max ' + (r.max == null ? '—' : r.max) +
                     ' (gap ' + (r.gap == null ? '—' : r.gap) + '). ' +
-                    'Usulan ' + (dpEst != null ? '±' + dpEst + ' DP dari ' + dpTotal + ' DP' : share + '% porsi gap') +
-                    ' — estimasi, bukan rumus game.';
+                    'Proposal ' + (dpEst != null ? '±' + dpEst + ' DP of ' + dpTotal + ' DP' : share + '% of the gap') +
+                    ' — estimate, not the game formula.';
                 row.setAttribute('title', advisorTitle);
                 row.setAttribute('data-igpas-written-title', advisorTitle);
             });
         }
 
-        /* Halaman Cars tab Repair: saran FIX parts / REPLACE engine.
-         * IN-PLACE PENUH (tanpa elemen baru): tombol game diwarnai sesuai
-         * kondisi — merah ≤50% (ganti sekarang), amber 50–60% (siap-siap),
-         * abu-abu >60% (tunda). Judul kartu TIDAK ditulisi; detail biaya/stok/
-         * ambang tetap di title tombol + lingkaran kondisi. Style/title asli
-         * disimpan dan dikembalikan oleh restoreRepair(); tombol tidak pernah
-         * diklik/di-submit. */
+        // Cars Repair tab: fix parts / replace engine advice.
+        // Fully in-place (no new elements): game buttons are coloured by condition —
+        // red ≤50% (replace now), amber 50–60% (prepare), grey >60% (defer). Card
+        // titles are not written; cost, stock and threshold details stay in the button
+        // title and condition circle. Original style and title are restored by
+        // restoreRepair(), and buttons are never clicked or submitted.
         const REPAIR_BUTTON_COLORS = {
             now: { bg: '#c0392b', fg: '#ffffff' },
             soon: { bg: '#d68910', fg: '#1b2631' },
@@ -1590,47 +1542,47 @@
             const repair = document.getElementById('repair');
             if (!repair) return;
             for (const el of repair.querySelectorAll('[data-igpas-orig]')) {
-                try { restoreMarkedText(el); } catch { /* jangan pernah merusak halaman game */ }
+                try { restoreMarkedText(el); } catch {}
                 el.removeAttribute('data-igpas-orig');
                 el.removeAttribute('data-igpas-origmode');
                 el.removeAttribute('data-igpas-written');
             }
             for (const el of repair.querySelectorAll('[data-igpas-title], [data-igpas-written-title]')) {
-                try { restoreTitle(el); } catch { /* abaikan */ }
+                try { restoreTitle(el); } catch {}
             }
             for (const el of repair.querySelectorAll('[data-igpas-orig-style], [data-igpas-written-style]')) {
-                try { restoreInlineStyle(el); } catch { /* abaikan */ }
+                try { restoreInlineStyle(el); } catch {}
             }
         }
         function repairVerdictText(part, kind) {
             const status = part ? part.status : 'unknown';
-            if (status === 'unknown') return 'kondisi tidak terbaca';
+            if (status === 'unknown') return 'condition not read';
             if (kind === 'parts') {
-                if (status === 'now') return 'fix sekarang';
-                if (status === 'soon') return 'siap-siap fix';
-                return 'masih layak — tunda fix';
+                if (status === 'now') return 'fix now';
+                if (status === 'soon') return 'prepare to fix';
+                return 'still usable — defer fix';
             }
-            if (status === 'now') return 'replace sekarang';
-            if (status === 'soon') return 'siap-siap replace';
-            return 'tunda replace';
+            if (status === 'now') return 'replace now';
+            if (status === 'soon') return 'prepare to replace';
+            return 'defer replace';
         }
         function repairTitle(part, kind, restockRaces) {
             if (!part || part.value == null) {
                 return (kind === 'parts' ? 'Parts' : 'Engine') +
-                    ' tidak terbaca — tidak ada saran yang dikarang.';
+                    ' not read — no advice invented.';
             }
             const unit = kind === 'parts' ? 'parts' : 'engine';
             const bits = [repairVerdictText(part, kind)];
             if (part.cost != null) {
-                bits.push(part.cost + ' ' + unit + (part.stock != null ? '; stok ' + part.stock : '; stok tidak terbaca'));
+                bits.push(part.cost + ' ' + unit + (part.stock != null ? '; stock ' + part.stock : '; stock not read'));
             } else {
-                bits.push('biaya tombol tidak terbaca');
+                bits.push('button cost not read');
             }
-            if (part.enough === false) bits.push('STOK KURANG');
-            if (kind === 'engine' && restockRaces != null) bits.push('restock ' + restockRaces + ' race');
-            bits.push('ambang studi ≤50% ganti, ≤60% siap-siap');
+            if (part.enough === false) bits.push('LOW STOCK');
+            if (kind === 'engine' && restockRaces != null) bits.push('restock ' + restockRaces + raceUnit(restockRaces));
+            bits.push('study threshold ≤50% replace, ≤60% prepare');
             return (kind === 'parts' ? 'Parts ' : 'Engine ') + part.value + '% — ' + bits.join(' · ') +
-                ' — estimasi, bukan rumus game.';
+                ' — estimate, not the game formula.';
         }
         function paintRepairButton(el, part, kind, restockRaces) {
             if (!el || !part || part.value == null || part.status === 'unknown') return;
@@ -1651,7 +1603,7 @@
             if (pageId() !== 'cars') { restoreRepair(); return; }
             const repair = document.getElementById('repair');
             if (!repair) { restoreRepair(); return; }
-            restoreRepair(); // teks/style asli kembali dulu agar captures baca data murni
+            restoreRepair(); // restore original text/style first so captures read pure data
             const notice = repair.querySelector('.notice');
             const numOf = el => (el ? Utils.numOrNull(el.textContent) : null);
             const partsStock = numOf(repair.querySelector('.notice .totalParts'));
@@ -1695,13 +1647,13 @@
             }
         }
 
-        /* Dialog Supply (engine/fuel/tyre): tombol alternatif diwarnai sesuai
-         * rekomendasi — merah = ganti ke supplier ini, amber = aktif/calon
-         * (tetap atau cek), abu-abu = bukan pilihan. Judul dialog tidak
-         * ditulisi; detail Σ bonus/nilai/1M + verdict tetap di title header dan
-         * title kartu. Teks biaya game TIDAK diubah. Style/title asli disimpan
-         * dan dikembalikan oleh restoreSupply(); captures selalu berjalan
-         * setelah restore sehingga adapter tidak pernah membaca hasil tulisan. */
+        // Supply dialog (engine / fuel / tyre): alternative buttons are coloured by
+        // the recommendation — red means switch to this supplier, amber means active or
+        // candidate (keep or check), grey means not an option. The dialog title is not
+        // written; Σ bonus, value per 1M and verdict details stay in the header title
+        // and card titles. Game cost text is unchanged. Original style and title are
+        // restored by restoreSupply(), and captures always run after restore so the
+        // adapter never reads the advisor's own output.
         const SUPPLY_BUTTON_COLORS = {
             now: { bg: '#c0392b', fg: '#ffffff' },
             soon: { bg: '#d68910', fg: '#1b2631' },
@@ -1713,16 +1665,16 @@
             hold: { bg: 'rgba(93, 109, 126, 0.14)', accent: '#5d6d7e' },
         };
         function restoreSupply() {
-            // Cakupan STRICT dialog: data-igpas-* milik Cars/Manufacturers
-            // tidak boleh tersentuh (renderAll me-mount berurutan).
-            // Tanpa dialog = tidak ada node tersisa untuk dibersihkan.
+            // Strict dialog scope: Cars and Manufacturers data-igpas-* attributes
+            // must stay untouched because renderAll mounts them in sequence.
+            // No dialog means there is nothing to clean up.
             const dlg = document.querySelector('.supplyDialog');
             if (!dlg) return;
             for (const link of dlg.querySelectorAll('a[data-igpas-orig]')) {
                 try {
-                    // Restore teks versi lama — kecuali game sudah menggantinya.
+                    // Restore legacy text unless the game already replaced it.
                     restoreMarkedText(link);
-                } catch { /* jangan pernah merusak halaman game */ }
+                } catch {}
                 link.removeAttribute('data-igpas-orig');
                 link.removeAttribute('data-igpas-origmode');
                 link.removeAttribute('data-igpas-written');
@@ -1730,7 +1682,7 @@
             const h2 = dlg.querySelector('.dialog-subhead-content h2[data-igpas-orig]');
             if (h2) {
                 try { restoreMarkedText(h2); }
-                catch { /* abaikan */ }
+                catch {}
                 h2.removeAttribute('data-igpas-orig');
                 h2.removeAttribute('data-igpas-origmode');
                 h2.removeAttribute('data-igpas-written');
@@ -1739,39 +1691,36 @@
                 try {
                     const saved = el.getAttribute('data-igpas-title');
                     const written = el.getAttribute('data-igpas-written-title');
-                    // Jangan menimpa title baru milik game jika game telah
-                    // memperbarui node yang sama setelah advisor menulisnya.
+                    // Never overwrite a new game title if the game has
+                    // updated the same node after the advisor wrote it.
                     if (written == null || el.getAttribute('title') === written) {
                         if (saved === '') el.removeAttribute('title');
                         else el.setAttribute('title', saved);
                     }
-                } catch { /* abaikan */ }
+                } catch {}
                 el.removeAttribute('data-igpas-title');
                 el.removeAttribute('data-igpas-written-title');
             }
             for (const el of dlg.querySelectorAll('[data-igpas-orig-style]')) {
-                try { restoreInlineStyle(el); } catch { /* abaikan */ }
+                try { restoreInlineStyle(el); } catch {}
             }
         }
         function mountSupply() {
-            // Sisa migrasi versi panel: bersihkan tanpa menyentuh node game.
-            removeIfAny([PREFIX + '-supply', PREFIX + '-supply-compare']);
+                    removeIfAny([PREFIX + '-supply', PREFIX + '-supply-compare']);
             const dlg = document.querySelector('.supplyDialog');
             if (!dlg) { restoreSupply(); return; }
-            restoreSupply(); // teks/style asli kembali dulu agar captures baca data murni
+            restoreSupply(); // restore original text/style first so captures read pure data
             const s = IgpSupplyAdapter.captures(document);
             if (!s || !s.current || !Array.isArray(s.alternatives) || !s.alternatives.length) return;
             const rank = IGPCore.rankSuppliers({ items: s.alternatives });
-            // Gagal jujur: tanpa angka, tanpa modifikasi apa pun (tanpa panel).
-            if (!rank.ok) return;
+                    if (!rank.ok) return;
             const n = rank.values.ranked.length;
             const cmp = IGPCore.compareSuppliers({ current: s.current, alternatives: s.alternatives });
-            // Efisiensi supplier aktif (Σ bonus per 1M biaya) memakai metrik yang
-            // sama dengan rankSuppliers. Ganti supplier HANYA dianjurkan bila
-            // alternatif jelas lebih efisien: tanpa ambang ini, alternatif selalu
-            // "menang" peringkat dan user berpindah supplier berulang-ulang
-            // (biaya sign-on berulang = loop mahal).
-            const SWITCH_MARGIN = 1.05; // minimal 5% lebih efisien
+            // Active-supplier efficiency (Σ bonus per 1M) uses the same metric as
+            // rankSuppliers. Switch only when an alternative is clearly more efficient:
+            // without that threshold the alternative always "wins" and the user switches
+            // suppliers repeatedly, paying the sign-on cost again and again.
+            const SWITCH_MARGIN = 1.05; // at least 5% more efficient
             const curBonus = cmp.ok ? cmp.values.current.bonus : null;
             const curCost = cmp.ok ? cmp.values.current.cost : null;
             const curValuePerCost = (curBonus != null && curCost != null && curCost > 0)
@@ -1785,9 +1734,9 @@
             const gainPct = (switchRec && curValuePerCost > 0 && bestAlt.valuePerCost != null)
                 ? Math.round((bestAlt.valuePerCost / curValuePerCost - 1) * 100)
                 : null;
-            // Peringkat gabungan: aktif ikut dihitung supaya user langsung tahu
-            // mana yang terbaik. Seri dimenangkan supplier aktif — tidak ada
-            // alasan ganti bila nilainya sama.
+            // Rank the active supplier with the alternatives so the user can see at a
+            // glance where they stand. Ties go to the active supplier: there is no reason
+            // to switch when the value is equal.
             const pool = curValuePerCost != null
                 ? [{ id: s.current.supplierId, eId: null, value: curBonus, cost: curCost,
                      valuePerCost: curValuePerCost, active: true }].concat(rank.values.ranked)
@@ -1809,7 +1758,8 @@
             const bestAltRank = bestAlt ? pool.findIndex(r => r === bestAlt) + 1 : null;
             const showRanks = curValuePerCost != null;
             const cheapId = rank.values.cheapestId;
-            // Peta kartu per eId — parsing identik adapter (anti substring eId=1 vs eId=10).
+            // Card map keyed by eId. Parsing mirrors the adapter so eId=1 never matches
+            // eId=10 as a substring.
             const cards = new Map();
             for (const btn of dlg.querySelectorAll('a[data-tip*="supplyType="]')) {
                 const tip = btn.getAttribute('data-tip') || '';
@@ -1838,27 +1788,27 @@
                     'color': bc.fg,
                 });
                 if (card) {
-                    // Penanda title selalu dipasang ('' = semula tanpa title) agar
-                    // restore presisi tanpa menyapu title milik game.
+                    // The title marker is always set ('' when the game had no title) so restore is
+                    // precise and never wipes a game-owned title.
                     card.setAttribute('data-igpas-title',
                         card.hasAttribute('title') ? card.getAttribute('title') : '');
-                    const advisorTitle = (showRanks ? '#' + rankNo + ' dari ' + totalOps : 'Alternatif') +
-                        (isBest ? ' · rekomendasi ganti' : '') +
-                        (isCheap ? ' · termurah' : '') +
+                    const advisorTitle = (showRanks ? '#' + rankNo + ' of ' + totalOps : 'Alternative') +
+                        (isBest ? ' · switch recommended' : '') +
+                        (isCheap ? ' · cheapest' : '') +
                         ' — Σ bonus ' + (r.value == null ? '—' : (r.value > 0 ? '+' : '') + r.value) +
-                        ' · ' + fmtMoney(r.cost) + '/race · nilai/1M ' +
+                        ' · ' + fmtMoney(r.cost) + '/race · value/1M ' +
                         (r.valuePerCost == null ? '—' : r.valuePerCost) +
                         (curValuePerCost != null
-                            ? ' · aktif #' + activeRank + ' (' + curValuePerCost + '/1M)' +
-                              (switchRec ? '' : ' — tetap')
-                            : ' · aktif tak terbaca') +
-                        ' — estimasi, bukan rumus game.';
+                            ? ' · active #' + activeRank + ' (' + curValuePerCost + '/1M)' +
+                              (switchRec ? '' : ' — keep')
+                            : ' · active not read') +
+                        ' — estimate, not the game formula.';
                     card.setAttribute('title', advisorTitle);
                     card.setAttribute('data-igpas-written-title', advisorTitle);
                 }
             });
-            // Header supplier aktif: amber bila aktif terbaca (tetap/cek), abu-abu
-            // bila aktif tak terbaca. Tombol merah = target ganti. Teks tidak diubah.
+            // Active supplier header: amber when the active supplier is readable (keep or
+            // check), grey when it is not. Red buttons are switch targets; text is unchanged.
             const activeStatus = curValuePerCost == null ? 'hold' : 'soon';
             const subhead = dlg.querySelector('.dialog-subhead');
             if (subhead) {
@@ -1869,42 +1819,41 @@
                     'box-shadow': 'inset 5px 0 0 ' + hc.accent,
                 });
             }
-            // Verdict supplier aktif hanya di title (tanpa teks tambahan).
+            // The active supplier verdict lives only in the title; no extra text is added.
             if (cmp.ok) {
                 const h2 = dlg.querySelector('.dialog-subhead-content h2');
                 if (h2) {
                     h2.setAttribute('data-igpas-title',
                         h2.hasAttribute('title') ? h2.getAttribute('title') : '');
-                    const advisorTitle = 'Supplier aktif #' +
+                    const advisorTitle = 'Active supplier #' +
                         (s.current.supplierId != null ? s.current.supplierId : '?') +
                         ': Σ bonus ' + (curBonus == null ? '—' : (curBonus > 0 ? '+' : '') + curBonus) +
-                        ' · ' + fmtMoney(curCost) + '/race · nilai/1M ' +
+                        ' · ' + fmtMoney(curCost) + '/race · value/1M ' +
                         (curValuePerCost == null ? '—' : curValuePerCost) +
-                        (activeRank != null ? ' (#' + activeRank + ' dari ' + totalOps + ')' : '') + '. ' +
-                        'Alternatif terbaik: ' + (bestAlt
-                            ? '#' + bestAltRank + ' · nilai/1M ' + bestAlt.valuePerCost +
+                        (activeRank != null ? ' (#' + activeRank + ' of ' + totalOps + ')' : '') + '. ' +
+                        'Best alternative: ' + (bestAlt
+                            ? '#' + bestAltRank + ' · value/1M ' + bestAlt.valuePerCost +
                               ' · ' + fmtMoney(bestAlt.cost) + '/race' +
                               (gainPct == null ? '' : ' (+' + gainPct + '%)')
                             : '—') + '. ' +
-                        'Aturan: ganti hanya bila alternatif ≥5% lebih efisien. ' +
-                        'Kesimpulan: ' + (switchRec
-                            ? 'ganti dianjurkan'
-                            : (curValuePerCost != null ? 'tetap' : 'aktif tak terbaca — bandingkan manual')) +
-                        ' — estimasi, bukan rumus game.';
+                        'Rule: switch only when an alternative is ≥5% more efficient. ' +
+                        'Verdict: ' + (switchRec
+                            ? 'switch advised'
+                            : (curValuePerCost != null ? 'keep' : 'active not read — compare manually')) +
+                        ' — estimate, not the game formula.';
                     h2.setAttribute('title', advisorTitle);
                     h2.setAttribute('data-igpas-written-title', advisorTitle);
                 }
             }
         }
 
-        /* Halaman Manufacturers: peringkat ditulis ke kolom nama tiap baris.
-         * IN-PLACE PENUH (tanpa elemen baru): teks nama asli tiap baris game
-         * ditulis ulang jadi "#n Nama" (+ ★ nilai terbaik engine); detail
-         * rating/biaya/rating-per-1M + label estimasi di atribut title baris
-         * yang sama. Link, flag, rating, dan kolom lain tidak disentuh.
-         * Teks asli disimpan di data-igpas-orig dan dikembalikan oleh
-         * restoreManufacturers() — captures selalu berjalan setelah restore
-         * sehingga adapter tidak pernah membaca hasil tulisan. */
+        // Manufacturers page: the ranking is written into each row's name column.
+        // Fully in-place (no new elements): each game row's original name becomes
+        // "#n Name" (+ ★ best-value engine). Rating, cost and rating-per-1M details
+        // plus the estimate label go in the same row's title attribute. Links, flags,
+        // ratings and other columns are untouched. Original text is stored in
+        // data-igpas-orig and restored by restoreManufacturers(); captures always run
+        // after restore so the adapter never reads the advisor's own output.
         function restoreManufacturers() {
             for (const tid of ['engine-table', 'chassis-table']) {
                 let table = null;
@@ -1931,7 +1880,7 @@
                         } else {
                             tr.removeAttribute('title');
                         }
-                    } catch { /* jangan pernah merusak halaman game */ }
+                    } catch {}
                     tr.removeAttribute('data-igpas-orig');
                     tr.removeAttribute('data-igpas-written');
                     tr.removeAttribute('data-igpas-title');
@@ -1941,7 +1890,7 @@
         }
         function writeMfgRanks(table, ranked, bestValueId, withCost) {
             if (!table || !ranked) return;
-            // Peta baris per id manufacturer (href d=brand&id=…) — anti duplikat.
+            // Row map by manufacturer id (href d=brand&id=...) — guards against duplicates.
             const byId = new Map();
             for (const tr of table.querySelectorAll('tbody tr')) {
                 const tds = tr.querySelectorAll('td');
@@ -1965,10 +1914,10 @@
                 } catch { nameNode = null; }
                 if (!nameNode) return;
                 const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
-                // Teks milik text-node ini saja — BUKAN seluruh sel. Bila nama
-                // dipecah ke anak elemen (mis. text node "Akina" + <span>SpeedStars</span>),
-                // memakai textContent sel membuat nama tergandakan dan restore
-                // menyuntik teks gabungan ke text node.
+                // Only the text that belongs to this text node, never the whole cell. When a
+                // name is split across children (text node "Akina" + <span>SpeedStars</span>),
+                // using the cell's textContent duplicates it, and restore then injects the
+                // combined text into the node.
                 const rawName = nameNode.textContent;
                 const orig = clean(rawName);
                 const fullName = clean(tds[0].textContent) || orig;
@@ -1981,29 +1930,28 @@
                 nameNode.textContent = '#' + (i + 1) + ' ' + orig + star;
                 tr.setAttribute('data-igpas-written', nameNode.textContent);
                 const advisorTitle = '#' + (i + 1) + ' · ' + fullName +
-                    (star ? ' · nilai terbaik' : '') + ': rating ' + r.rating + '%' +
+                    (star ? ' · best value' : '') + ': rating ' + r.rating + '%' +
                     (withCost ? ' · ' + fmtMoney(r.cost) + '/race · rating/1M ' +
                         (r.ratingPerCost == null ? '—' : r.ratingPerCost) : '') +
-                    ' — estimasi, bukan rumus game.';
+                    ' — estimate, not the game formula.';
                 tr.setAttribute('title', advisorTitle);
                 tr.setAttribute('data-igpas-written-title', advisorTitle);
                 written.add(tr);
             });
         }
         function mountManufacturers() {
-            // Sisa migrasi versi panel: bersihkan tanpa menyentuh node game.
-            removeIfAny([PREFIX + '-mfg-engine', PREFIX + '-mfg-chassis']);
+                    removeIfAny([PREFIX + '-mfg-engine', PREFIX + '-mfg-chassis']);
             if (pageId() !== 'manufacturers') { restoreManufacturers(); return; }
-            restoreManufacturers(); // teks asli kembali dulu agar captures baca data murni
+            restoreManufacturers(); // restore original text first so captures read pure data
             const m = IgpManufacturersAdapter.captures(document);
-            // Engines: rating + biaya/race → rating per 1M. Gagal jujur per tabel:
-            // tanpa angka, tabel itu tanpa modifikasi apa pun (tanpa panel).
+            // Engines: rating and cost per race, so efficiency is rating per 1M. Each table
+            // fails honestly: without numbers it gets no modification and no panel.
             const et = document.getElementById('engine-table');
             if (et) {
                 const res = IGPCore.rankManufacturerItems({ items: m ? m.engines : [], withCost: true });
                 if (res.ok) writeMfgRanks(et, res.values.ranked, res.values.bestValueId, true);
             }
-            // Chassis: rating saja — tanpa biaya.
+            // Chassis: rating only, no cost.
             const ct = document.getElementById('chassis-table');
             if (ct) {
                 const res = IGPCore.rankManufacturerItems({ items: m ? m.chassis : [], withCost: false });
@@ -2011,11 +1959,9 @@
             }
         }
 
-        /**
-         * ETA pulih penuh dari health (%) dan laju pulih (%/jam). Dibulatkan
-         * ke atas supaya advisor tidak menjanjikan pulih lebih cepat.
-         * @returns {string|null} mis. "13j 55m", "2d 3j", atau null
-         */
+        // Full recovery ETA from health (%) and recovery rate (%/hour). Rounded
+        // up so the advisor never promises a faster recovery than reality.
+        // Returns a string such as "13h 55m" or "2d 3h", or null.
         function formatRecoverEta(health, ratePerHour) {
             if (health == null || ratePerHour == null || !(ratePerHour > 0)) return null;
             const remain = 100 - health;
@@ -2024,12 +1970,11 @@
             const days = Math.floor(mins / 1440);
             const hours = Math.floor((mins % 1440) / 60);
             const minutes = mins % 60;
-            if (days > 0) return days + 'd ' + hours + 'j';
-            if (hours > 0) return hours + 'j ' + minutes + 'm';
+            if (days > 0) return days + 'd ' + hours + 'h';
+            if (hours > 0) return hours + 'h ' + minutes + 'm';
             return minutes + 'm';
         }
 
-        /* Halaman Drivers & Staff: kondisi tim aktif (read-only, jujur). */
         function mountTeam() {
             const id = PREFIX + '-team';
             const idCmp = PREFIX + '-team-compare';
@@ -2040,24 +1985,24 @@
             for (const [i, d] of (s.drivers || []).entries()) {
                 const name = document.querySelector('#d' + (i + 1) + 'Pic .driverName');
                 if (!name || !d.name) continue;
-                // Label bersih: "<Nama> | Full Recover 13j 55m" — tanpa jargon
-                // "health rendah". Angka mentah + laju pulih tetap di title.
+                // Clean label: "<Name> | Full Recover 13h 55m", without the "low health"
+                // jargon. Raw numbers and recovery rate stay in the title.
                 const eta = (d.health != null && d.health < 100)
                     ? formatRecoverEta(d.health, d.recoveryPerHour)
                     : null;
                 const advice = [];
                 if (eta) advice.push('Full Recover ' + eta);
                 else if (d.health != null && d.health < 100) advice.push('Health ' + d.health + '%');
-                // Struktur game (.driverName > br + span) dipertahankan: saran hanya
-                // menempel pada span nama yang sudah ada; hover container = detail.
+                // Preserve the game structure (.driverName > br + span): advice attaches to the
+                // existing name span, and hovering the container shows the details.
                 const span = name.querySelector('span:last-child');
                 saveTitle(name);
                 const tipParts = [];
                 if (d.health != null) tipParts.push('Health ' + d.health + '%');
-                if (d.recoveryPerHour != null) tipParts.push('pulih ' + d.recoveryPerHour + '/jam');
+                if (d.recoveryPerHour != null) tipParts.push('recovery ' + d.recoveryPerHour + '/hr');
                 if (eta) tipParts.push('Full Recover ±' + eta);
                 const tip = tipParts.length
-                    ? 'Driver: ' + tipParts.join(' · ') + ' · estimasi, bukan rumus game — keputusan tetap milik Anda.'
+                    ? 'Driver: ' + tipParts.join(' · ') + ' · estimate, not the game formula — the decision is still yours.'
                     : '';
                 if (tip) { name.setAttribute('title', tip); name.setAttribute('data-igpas-written-title', tip); }
                 if (span) {
@@ -2073,17 +2018,17 @@
                 if (head) {
                     writeSelfText(head, (head.getAttribute('data-igpas-orig') || head.textContent));
                     saveTitle(head);
-                    const tip = (c.salaryPerRace != null ? 'Gaji ' + fmtMoney(c.salaryPerRace) + '/race' : '') +
-                        (c.contract ? ' · kontrak ' + c.contract : '') + ' — rating kartu tidak terbaca.';
+                    const tip = (c.salaryPerRace != null ? 'Wage ' + fmtMoney(c.salaryPerRace) + '/race' : '') +
+                        (c.contract ? ' · contract ' + c.contract : '') + ' — card rating not read.';
                     head.setAttribute('title', tip);
                     head.setAttribute('data-igpas-written-title', tip);
                 }
             }
         }
 
-        // Kembalikan teks yang PERNAH kita tulis saja. Bila game sudah
-        // mengganti isi node itu (AJAX/re-render), data game yang lebih baru
-        // tidak boleh ditimpa teks lama.
+        // Restore only text this script wrote. If the game has already replaced the
+        // node's content (AJAX or re-render), the newer data must not be overwritten
+        // with stale text.
         function restoreMarkedText(el) {
             const orig = el.getAttribute('data-igpas-orig');
             if (orig == null) return;
@@ -2096,8 +2041,8 @@
             if (written != null && target.textContent !== written) return;
             target.textContent = orig;
         }
-        // Tulis teks milik sendiri pada elemen yang seluruh textContent-nya aman
-        // ditimpa (span nama, header kartu): anak elemen tidak ada yang dihancurkan.
+        // Write to elements whose entire textContent is safe to replace (name span,
+        // card header), so no child elements are destroyed.
         function writeSelfText(el, text) {
             if (!el) return;
             if (!el.hasAttribute('data-igpas-orig')) el.setAttribute('data-igpas-orig', el.textContent);
@@ -2105,8 +2050,8 @@
             el.textContent = text;
             el.setAttribute('data-igpas-written', text);
         }
-        // Tulis pada text-node pertama yang tak kosong di dalam container
-        // (sel game/transfers berisi <a>/<img>): link, flag & ikon tetap hidup.
+        // Write into the first non-empty text node inside the container (the game cell
+        // holds <a> and <img>), keeping links, flags and icons alive.
         function writeFirstTextNode(container, text) {
             if (!container) return;
             const nd = Array.from(container.childNodes).find(n => n.nodeType === 3 && n.textContent.trim() !== '');
@@ -2136,21 +2081,20 @@
                 try {
                     restoreMarkedText(el);
                     restoreTitle(el);
-                } catch { /* jangan pernah merusak halaman game */ }
+                } catch {}
                 el.removeAttribute('data-igpas-orig');
                 el.removeAttribute('data-igpas-origmode');
                 el.removeAttribute('data-igpas-written');
             }
-            // Pass kedua: anotasi yang HANYA menempelkan title (mis. portrait
-            // #dNPic .driverName) tidak punya data-igpas-orig. Tanpa pass ini
-            // tooltip advisor tertinggal setelah pindah halaman.
+            // Second pass for annotations that only carry a title (e.g. the portrait
+            // #dNPic .driverName) and therefore have no data-igpas-orig. Without it the
+            // tooltip would be left behind after navigation.
             for (const el of document.querySelectorAll('[data-igpas-title], [data-igpas-written-title]')) {
                 if (el.closest(SKIP)) continue;
-                try { restoreTitle(el); } catch { /* abaikan */ }
+                try { restoreTitle(el); } catch {}
             }
         }
 
-        /* Halaman Transfers: pasar driver & staff yang tampil di tabel. */
         function mountTransfers() {
             const idD = PREFIX + '-tx-driver';
             const idS = PREFIX + '-tx-staff';
@@ -2173,10 +2117,10 @@
                     const nd = Array.from(td.childNodes).find(n => n.nodeType === 3 && n.textContent.trim() !== '');
                     const original = td.getAttribute('data-igpas-orig') || (nd ? nd.textContent : td.textContent);
                     const rank = ranks.get(String(item.id));
-                    writeFirstTextNode(td, '#' + rank + ' ' + original.trim() + (rank === 1 ? ' ★ rekomendasi' : ''));
+                    writeFirstTextNode(td, '#' + rank + ' ' + original.trim() + (rank === 1 ? ' ★ recommended' : ''));
                     saveTitle(td);
                     const tip = label + ' #' + rank + ': overall ' + (item.overall == null ? '—' : item.overall) +
-                        ' · fee ' + fmtMoney(item.fee) + ' — estimasi, bukan rumus game.';
+                        ' · fee ' + fmtMoney(item.fee) + ' — estimate, not the game formula.';
                     td.setAttribute('title', tip);
                     td.setAttribute('data-igpas-written-title', tip);
                 }
@@ -2186,13 +2130,12 @@
             return;
         }
 
-        /* Dialog sponsor (Primary/Secondary): peringkat "paling worth" pada
-         * tombol Sign yang sudah ada. IN-PLACE PENUH (tanpa elemen baru):
-         * tombol total tertinggi diwarnai hijau + "Sign ★"; bila income
-         * tertinggi (jaminan terbaik) berbeda, tombol itu amber. Angka game
-         * tidak diubah; rincian income/term/bonus/jaminan di title tombol
-         * yang sama. Teks/style/title asli disimpan dan dikembalikan oleh
-         * restoreSponsor() — captures selalu berjalan setelah restore. */
+        // Sponsor dialog (Primary / Secondary): "best value" ranking on the existing
+        // Sign buttons. Fully in-place (no new elements): the best total is green with
+        // "Sign ★", and an offer with the highest income (best guarantee) turns amber.
+        // Game numbers are unchanged; income, term, bonus and guarantee details live in
+        // each button's title. Original text, style and title are restored by
+        // restoreSponsor(), and captures always run after restore.
         const SPONSOR_BUTTON_COLORS = {
             best: { bg: '#1e8449', fg: '#ffffff' },
             alternative: { bg: '#b9770e', fg: '#ffffff' },
@@ -2201,66 +2144,66 @@
             const table = document.getElementById('sponsorSignTable');
             if (!table) return;
             for (const el of table.querySelectorAll('[data-igpas-orig]')) {
-                try { restoreMarkedText(el); } catch { /* abaikan */ }
+                try { restoreMarkedText(el); } catch {}
                 el.removeAttribute('data-igpas-orig');
                 el.removeAttribute('data-igpas-origmode');
                 el.removeAttribute('data-igpas-written');
             }
             for (const el of table.querySelectorAll('[data-igpas-title], [data-igpas-written-title]')) {
-                try { restoreTitle(el); } catch { /* abaikan */ }
+                try { restoreTitle(el); } catch {}
             }
             for (const el of table.querySelectorAll('[data-igpas-orig-style]')) {
-                try { restoreInlineStyle(el); } catch { /* abaikan */ }
+                try { restoreInlineStyle(el); } catch {}
             }
         }
         function sponsorTitle(r, values) {
             const bits = [];
             if (values.incomeKind === 'token') {
-                // Token = satuan berbeda dari cash. Jangan pernah menjumlahkan.
-                bits.push('income ' + r.tokens + ' token/race (token tidak dikonversi ke cash)');
+                // Tokens are a different unit from cash; never sum them.
+                bits.push('income ' + r.tokens + ' token/race (tokens are not converted to cash)');
                 if (r.bonus != null) {
-                    bits.push('bonus tunai ' + fmtMoney(r.bonus) + '/race bila objektif tercapai');
+                    bits.push('cash bonus ' + fmtMoney(r.bonus) + '/race if the objective is met');
                 }
                 if (values.termRaces != null) {
-                    bits.push('≈ ' + (r.tokens * values.termRaces) + ' token selama ' +
-                        values.termRaces + ' race');
+                    bits.push('≈ ' + (r.tokens * values.termRaces) + ' tokens over ' +
+                        values.termRaces + raceUnit(values.termRaces));
                     if (r.bonus != null) {
-                        bits.push('bonus tunai maks ' + fmtMoney(r.bonus * values.termRaces) +
-                            ' bila objektif tiap race');
+                        bits.push('max cash bonus ' + fmtMoney(r.bonus * values.termRaces) +
+                            ' if the objective is met every race');
                     }
                 } else {
-                    bits.push('term kontrak tidak terbaca — total tidak dihitung');
+                    bits.push('contract term not read — total not calculated');
                 }
-                bits.push('token diutamakan; bonus tunai trade-off');
+                bits.push('token preferred; cash bonus is a trade-off');
             } else {
-                bits.push('income ' + fmtMoney(r.income) + '/race (dijamin tiap race)');
+                bits.push('income ' + fmtMoney(r.income) + '/race (guaranteed every race)');
                 if (r.bonus != null) {
-                    bits.push('bonus ' + fmtMoney(r.bonus) + '/race bila objektif tercapai');
+                    bits.push('cash bonus ' + fmtMoney(r.bonus) + '/race if the objective is met');
                 }
                 if (values.termRaces != null) {
-                    bits.push('jaminan ' + fmtMoney(r.guaranteeTotal) + ' (' + values.termRaces + ' race)');
-                    bits.push('potensi maks ' + fmtMoney(r.potentialTotal) + ' bila objektif tiap race');
+                    bits.push('guaranteed ' + fmtMoney(r.guaranteeTotal) + ' (' + values.termRaces + raceUnit(values.termRaces) + ')');
+                    bits.push('max potential ' + fmtMoney(r.potentialTotal) + ' if the objective is met every race');
                 } else {
-                    bits.push('term kontrak tidak terbaca — total tidak dihitung');
+                    bits.push('contract term not read — total not calculated');
                 }
                 if (String(r.eId) === String(values.alternativeEId)) {
-                    bits.push('bonus tunai tertinggi — trade-off income' +
+                    bits.push('highest cash bonus — trade-off against income' +
                         (values.breakEvenP != null
-                            ? '; unggul bila objektif tercapai >' + Math.round(values.breakEvenP * 100) + '% race'
+                            ? '; better when the objective is met in >' + Math.round(values.breakEvenP * 100) + '% of races'
                             : ''));
                 }
             }
             if (values.incomeKind === 'token' && String(r.eId) === String(values.alternativeEId)) {
-                bits.push('bonus tunai tertinggi — trade-off token');
+                bits.push('highest cash bonus — trade-off against tokens');
             }
-            bits.push('estimasi, bukan rumus game');
-            return 'Sponsor ' + (r.rank === 1 ? 'paling worth #1' : '#' + r.rank) +
-                ' dari ' + values.ranked.length + ': ' + bits.join(' · ') + '.';
+            bits.push('estimate, not the game formula');
+            return 'Sponsor ' + (r.rank === 1 ? 'best value #1' : '#' + r.rank) +
+                ' of ' + values.ranked.length + ': ' + bits.join(' · ') + '.';
         }
         function mountSponsor() {
             const table = document.getElementById('sponsorSignTable');
             if (!table) { restoreSponsor(); return; }
-            restoreSponsor(); // teks/style asli kembali dulu agar captures baca data murni
+            restoreSponsor(); // restore original text/style first so captures read pure data
             const s = IgpSponsorAdapter.captures(document);
             if (!s) return;
             const res = IGPCore.rankSponsors({
@@ -2305,14 +2248,13 @@
             }
         }
 
-        /* Render instan 0ms (v0.8.0): konten game datang async (AJAX) setelah DOM
-         * awal — menunggu klik user + debounce 250ms bikin rekomendasi telat.
-         * MutationObserver bereaksi di microtask yang sama saat game commit DOM
-         * (±0ms, sebelum paint berikutnya), tanpa debounce.
-         * Anti-loop: observer DIPUTUS selama renderAll (tulisan label/title +
-         * panel milik sendiri tidak direkam), disambung lagi setelahnya;
-         * mutasi yang lolos tetap disaring relevance (UI milik sendiri &
-         * atribut tulisan advisor diabaikan). */
+        // Instant render (v0.8.0): game content arrives asynchronously (AJAX) after the
+        // initial DOM, so waiting for a click plus a 250 ms debounce makes advice late.
+        // MutationObserver reacts in the same microtask in which the game commits DOM,
+        // before the next paint, with no debounce.
+        // Anti-loop: the observer is disconnected during renderAll so our own writes and
+        // panel are not recorded, then reconnected. Mutations that still slip through are
+        // filtered by relevance, ignoring our UI and advisor-written attributes.
         let renderObserver = null;
         let renderObserving = false;
         const WATCH_SEL = '#carAttributesDisplay, #carAttributes, #carsDesignPoints,' +
@@ -2321,7 +2263,7 @@
             ' #driver-table, #staff-table, #cdTransfersRefresh, #sponsorSignTable, #pageId';
         function observeOff() {
             if (renderObserver && renderObserving) {
-                try { renderObserver.disconnect(); } catch { /* abaikan */ }
+                try { renderObserver.disconnect(); } catch {}
                 renderObserving = false;
             }
         }
@@ -2331,17 +2273,18 @@
             } else {
                 try { renderObserver = new MutationObserver(onMutations); }
                 catch { renderObserver = null; }
-                if (!renderObserver) return; // fallback: debounce klik/user-aksi tetap jalan
+                if (!renderObserver) return; // fallback: debounce on click/user action still runs
             }
             if (renderObserving || typeof document === 'undefined' || !document.body) return;
+            // The observer is optional; the debounce fallback still runs.
             try {
                 renderObserver.observe(document.body,
                     { childList: true, subtree: true, characterData: true, attributes: true });
                 renderObserving = true;
-            } catch { /* observer opsional — fallback debounce tetap jalan */ }
+            } catch {}
         }
-        // Hitungan waktu game (countdown) berubah tiap detik dan TIDAK
-        // memengaruhi rekomendasi — jangan memicu DOM walk penuh tiap tick.
+        // Game countdown timers tick every second and do not
+        // affect recommendations, so they must not trigger a full DOM walk.
         const COUNTDOWN_SEL = '.countdown, [data-countdown], .raceCountdown, .timer';
         function mutationRelevant(m) {
             if (!m) return false;
@@ -2352,10 +2295,10 @@
                 if (own(t)) return false;
                 const an = m.attributeName;
                 if (an === 'data-igpas-orig' || an === 'data-igpas-title') return false;
-                // Title tulisan advisor di elemen game bertanda (baris Cars,
-                // baris Manufacturers, kartu/judul Supply) — bukan sinyal game.
+                // Advisor-written titles on marked game elements (Cars rows,
+                // Manufacturers rows, Supply cards and headers) are not a game signal.
                 if (an === 'title' && t.closest && t.closest('[data-igpas-orig], [data-igpas-title]')) return false;
-                if (t === document.body) return false; // class igpas-adv-hide milik sendiri
+                if (t === document.body) return false; // our own igpas-adv-hide class
             }
             if (m.type === 'characterData') {
                 const p = t && t.parentElement;
@@ -2366,7 +2309,7 @@
             }
             if (t && t.nodeType === 1 && !own(t)) {
                 try { if (t.closest && t.closest(WATCH_SEL)) return true; }
-                catch { /* abaikan */ }
+                catch {}
             }
             if (m.type === 'childList') {
                 const lists = [m.addedNodes, m.removedNodes];
@@ -2376,7 +2319,7 @@
                         try {
                             if (n.matches && n.matches(WATCH_SEL)) return true;
                             if (n.querySelector && n.querySelector(WATCH_SEL)) return true;
-                        } catch { /* abaikan */ }
+                        } catch {}
                     }
                 }
             }
@@ -2386,31 +2329,31 @@
             for (const m of (muts || [])) {
                 let hit = false;
                 try { hit = mutationRelevant(m); } catch { hit = false; }
-                if (hit) { renderAll(); return; } // sinkron, tanpa debounce
+                if (hit) { renderAll(); return; } // synchronous, no debounce
             }
         }
 
         function renderAll() {
             if (typeof document === 'undefined' || !document.body) return;
             const pid = pageId();
-            // Dialog sponsor bisa terbuka di halaman Finances (di luar daftar
-            // halaman studi) — gate berbasis DOM dialog, bukan pageId.
+            // The sponsor dialog can open from the Finances page, outside the study
+            // page list, so gate on the dialog DOM rather than on pageId.
             const sponsorOpen = !!document.getElementById('sponsorSignTable');
             if (!sponsorOpen && ['cars', 'manufacturers', 'staff', 'transfers'].indexOf(pid) === -1) {
-                // Halaman lain: tanpa jejak UI apa pun (disiplin study-only).
+                // Everywhere else: no UI trace at all — the study-only discipline.
                 removeIfAny([PREFIX + '-toggle', PREFIX + '-style', PREFIX + '-design',
                     PREFIX + '-supply', PREFIX + '-supply-compare', PREFIX + '-mfg-engine',
                     PREFIX + '-mfg-chassis', PREFIX + '-team', PREFIX + '-team-compare',
                     PREFIX + '-tx-driver', PREFIX + '-tx-staff', PREFIX + '-tx-compare']);
-                restoreDesign(); // kembalikan teks label asli (tanpa elemen baru)
-                restoreRepair(); // kembalikan judul kartu + title kondisi
-                restoreSupply(); // kembalikan teks biaya kartu + judul dialog
-                restoreManufacturers(); // kembalikan teks nama baris
-                restoreTeamInPlace(); // kembalikan nama staff/transfers + title
-                restoreSponsor(); // kembalikan tombol Sign + title/style
+                restoreDesign(); // restore original label text (no new elements)
+                restoreRepair(); // restore card titles + condition titles
+                restoreSupply(); // restore card cost text + dialog title
+                restoreManufacturers(); // restore original row name text
+                restoreTeamInPlace(); // restore staff/transfers names + titles
+                restoreSponsor(); // restore Sign buttons + title/style
                 return;
             }
-            observeOff(); // tulisan sendiri tidak memicu observer
+            observeOff(); // our own writes must not trigger the observer
             removeIfAny([PREFIX + '-style']);
             try {
                 restoreDesign();
@@ -2427,7 +2370,7 @@
                 mountTransfers();
                 mountSponsor();
             } catch (e) {
-                if (typeof console !== 'undefined') console.warn('IGPAS advisor', e); // jangan pernah merusak halaman game
+                if (typeof console !== 'undefined') console.warn('IGPAS advisor', e); // never break the game page
             }
             removeIfAny([PREFIX + '-toggle']);
             observeOn();
@@ -2435,25 +2378,25 @@
 
         function start() {
             if (typeof document === 'undefined' || !document.body) return;
-            if (start.started) return; // idempoten — aman dari double DOMContentLoaded
+            if (start.started) return; // idempotent — safe against double DOMContentLoaded
             start.started = true;
             renderAll();
-            observeOn(); // jaga observer tetap tersambung setelah render awal
-            // Re-render dipicu DUA jalur: (1) observer instan saat DOM game berubah
-            // (0ms, tanpa debounce); (2) fallback debounce 250ms untuk navigasi yang
-            // tidak menyentuh DOM terawasi (popstate/hashchange/klik antar-halaman).
+            observeOn(); // keep the observer attached after the initial render
+            // Re-render has two paths: (1) the instant observer when the game DOM changes
+            // (0 ms, no debounce); (2) a 250 ms debounce fallback for navigation that does
+            // not touch the watched DOM (popstate, hashchange, inter-page clicks).
             let pending = null;
             const schedule = (ev) => {
-                // Ketikan di field game (chat, pencarian, dsb.) bukan sinyal navigasi —
-                // lewati agar tiap keystroke tidak memicu DOM walk penuh (7× captures).
-                // Tombol Enter di atas link/button tetap menghasilkan 'click' → tetap ke-render.
+                // Typing in game fields (chat, search) is not a navigation signal and is skipped,
+                // so no keystroke triggers a full DOM walk (7× captures).
+                // Enter on a link or button still produces 'click' and still renders.
                 if (ev && ev.type === 'keydown') {
                     const ae = document.activeElement;
                     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' ||
                         ae.tagName === 'SELECT' || ae.isContentEditable)) return;
                 }
-                // Klik di dalam UI milik sendiri sudah ditangani langsung (toggle →
-                // applyHidden) — re-render penuh tidak menambah apa-apa.
+                // Clicks inside our own UI are handled directly (toggle → applyHidden),
+                // so a full re-render would add nothing.
                 if (ev && ev.type === 'click' && ev.target && typeof ev.target.closest === 'function') {
                     if (ev.target.closest('.igpas-adv-panel, #' + PREFIX + '-toggle')) return;
                 }
@@ -2469,35 +2412,33 @@
         return { start: start, renderAll: renderAll };
     })();
 
-    /* =====================================================================
-     * 3c) PAGE CAPTURE (v0.7.1) — satu-klik salin DOM utk pemetaan fixture.
-     *  - Tanpa UI di halaman: hanya entri menu Tampermonkey/Violentmonkey
-     *    (GM_registerMenuCommand). Tidak menambah elemen apa pun ke situs,
-     *    termasuk di halaman balapan.
-     *  - 100% dipicu user; hasil = salinan read-only DOM dengan redaksi PII
-     *    tetap (nama, saldo, token, rank), lewat GM_setClipboard. Tidak ada
-     *    jaringan, tidak ada mailbox, tidak ada penyimpanan otomatis.
-     *  - Tujuan: user bisa kirim capture halaman belum terpetakan (mis.
-     *    Develop/Design) agar advisor DP bisa dipasang di tempat yang tepat.
-     * ===================================================================== */
+    // =====================================================================
+    // 4) PAGE CAPTURE (v0.7.1) — one-click DOM copy for fixture mapping.
+    //  - No page UI: one Tampermonkey / Violentmonkey menu entry
+    //    (GM_registerMenuCommand). Nothing is added to the site, including on
+    //    race pages.
+    //  - 100% user-triggered. The result is a read-only DOM copy with PII redacted
+    //    (name, balance, tokens, rank), copied via GM_setClipboard. No network, no
+    //    mailbox, no automatic storage.
+    //  - Purpose: let the user send a capture of an unmapped page (e.g. Develop or
+    //    Design) so the DP advisor can later be mapped correctly.
+    // =====================================================================
     const PageCapture = (() => {
-        // Blok PII eksplisit yang tampil di UI iGP.
+        // PII tables: visible blocks, credential attributes, form identity, and
+        // the JSON keys fixture mapping never needs.
         const REDACT_SELECTORS = ['#myProfileName', '#balanceText', '#tokens-total', '#managerRankValue'];
-        // Nama atribut yang isinya kredensial/identitas — selalu dikosongkan.
         const SENSITIVE_ATTR = /^(data-)?(csrf|token|session|auth|nonce|password|secret|api[-_]?key|sharkid|visitor|tracker|analytics|fingerprint|device)$/i;
-        // Identitas form: field ini bisa berisi csrf/email/user id.
         const SENSITIVE_IDENT = /(csrf|token|session|auth|e-?mail|password|username|user(name)?|manager)/i;
-        // Kunci JSON yang tidak pernah dibutuhkan untuk pemetaan fixture.
         const SENSITIVE_KEY = /(csrf|token|session|auth|nonce|password|secret|api[-_]?key|e-?mail|manager|username)/i;
         const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
         const TOKEN_RE = /\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9_-]{40,})\b/g;
         const scrub = s => String(s)
             .replace(EMAIL_RE, '[REDACTED]')
             .replace(TOKEN_RE, '[REDACTED]');
-        // Nilai PII konkret dari dokumen hidup (nama manajer, saldo, token,
-        // rank) disapu dari SELURUH capture — termasuk aria-label/alt/src/
-        // style yang tidak bisa dikenali dari pola. Tanpa ini nama asli user
-        // tetap lolos di avatar/greeting walau #myProfileName sudah diblok.
+        // Sweep concrete PII values from the live document (manager name, balance,
+        // tokens, rank) across the whole capture, including aria-label, alt, src and
+        // style that pattern matching cannot recognise. Without this the real name
+        // still leaks in avatars and greetings even though #myProfileName is blocked.
         const scrubKnown = (s, pii) => {
             let out = scrub(s);
             for (const v of (pii || [])) {
@@ -2515,21 +2456,21 @@
                 const el = doc.querySelector(sel);
                 if (el) add(el.textContent);
             }
-            // Nickname/username yang tampil di form profil.
+            // Nickname or username shown in the profile form.
             for (const el of doc.querySelectorAll(
                 'input[name*="nick" i], input[id*="nick" i], input[name*="username" i]')) {
                 add(el.value);
             }
             return Array.from(out).sort((a, b) => b.length - a.length);
         };
-        // Elemen yang tidak dibutuhkan untuk memetakan fixture dan bisa memuat
-        // kredensial/identitas: meta (csrf-token), link/base, template (konten
-        // tidak terlihat querySelectorAll), iframe/object/embed (srcdoc).
+        // Elements that fixture mapping does not need but that can carry
+        // credentials or identity: meta (csrf-token), link/base, template (content
+        // invisible to querySelectorAll), iframe/object/embed (srcdoc).
         const DROP_SELECTOR = 'meta, link, base, template, iframe, object, embed';
-        // Atribut struktural yang nilainya aman & penting untuk fixture.
+        // Attribute classification: structural values are safe and important for
+        // fixtures; URLs keep their path but lose sensitive parameters, emails and
+        // long tokens.
         const KEEP_ATTR = /^(class|id|type|name|for|role|colspan|rowspan|width|height|viewbox|d|fill|stroke|points|transform)$/i;
-        // URL: parameter sensitif + email tetap dibuang, path dipertahankan
-        // kecuali berbentuk token panjang (mis. /reset/<64 hex>).
         const URL_ATTR = /^(href|src|action|formaction|poster|srcset)$/i;
 
         function scrubJson(v, depth) {
@@ -2549,30 +2490,30 @@
 
         function scrubUrl(value) {
             let v = String(value);
-            // Parameter kredensial/identitas. `(^|[?&])` juga menangani URL
-            // relatif yang dimulai langsung dengan "p=manager&id=..." (tanpa "?").
+            // Credential and identity parameters. The `(^|[?&])` prefix also catches
+            // relative URLs that start with "p=manager&id=..." and have no "?".
             v = v.replace(
                 /(^|[?&])((?:token|csrf|session|auth|key|api[-_]?key|manager|e-?mail|username|uid|userid|user_id|account|profile)=)[^&#]*/gi,
                 '$1$2[REDACTED]');
-            // Konteks profil manajer: semua `id=` adalah identitas akun/pemain.
+            // Manager profile context: every `id=` is an account or player identity.
             if (/(^|[?&])(?:p|page)=manager\b/i.test(v)) {
                 v = v.replace(/(^|[?&])id=[^&#]*/gi, '$1id=[REDACTED]');
             }
-            // Path avatar/akun: /img/user/<id>/... dan /av/<id>...
+            // Avatar and account paths: /img/user/<id>/... and /av/<id>...
             v = v.replace(/(\/img\/user\/)[^/?#]+/gi, '$1[REDACTED]')
                 .replace(/(\/av(?:atar)?\/)[^/?#]+/gi, '$1[REDACTED]');
-            // Email di mana pun dalam URL.
+            // Email anywhere in the URL.
             v = v.replace(EMAIL_RE, '[REDACTED]');
-            // Token panjang sebagai segmen path.
+            // Long token used as a path segment.
             v = v.replace(/([/])[A-Za-z0-9_-]{40,}(?=[/?#]|$)/g, '$1[REDACTED]');
             return v;
         }
 
         function redact(clone, pii) {
             if (!clone || !clone.querySelectorAll) return clone;
-            // 1) Elemen berisiko: script eksekutabel, meta/link/base, template,
-            //    iframe/object/embed (srcdoc). Script JSON tetap dipertahankan
-            //    (dibutuhkan fixture) tetapi isinya disaring pada langkah 5.
+            // 1) Risky elements: executable script, meta/link/base, template and
+            //    iframe/object/embed (srcdoc). JSON scripts are kept because fixtures need
+            //    them, but their content is filtered in step 5.
             for (const el of Array.from(clone.querySelectorAll('script, ' + DROP_SELECTOR))) {
                 if (String(el.tagName || '').toUpperCase() === 'SCRIPT') {
                     const type = String(el.getAttribute('type') || '').toLowerCase();
@@ -2581,22 +2522,22 @@
                     el.remove();
                 }
             }
-            // 2) Komentar bisa memuat data internal/identitas.
+            // 2) Comments can carry internal or identity data (128 = SHOW_COMMENT).
             if (typeof clone.ownerDocument !== 'undefined' && clone.ownerDocument.createTreeWalker) {
-                const walker = clone.ownerDocument.createTreeWalker(clone, 128 /* SHOW_COMMENT */);
+                const walker = clone.ownerDocument.createTreeWalker(clone, 128);
                 const comments = [];
                 while (walker.nextNode()) comments.push(walker.currentNode);
                 for (const c of comments) c.remove();
             }
-            // 3) Nilai PII yang tampil.
+            // 3) Visible PII values.
             for (const sel of REDACT_SELECTORS) {
                 const el = clone.querySelector(sel);
                 if (el) el.textContent = '[REDACTED]';
             }
-            // 4) Field form: hidden/password/email/tel dan field ber-identitas
-            //    sensitif (csrf/user/session) → nilainya dikosongkan. Nilai
-            //    angka permainan (mis. #d1AdvancedFuel) tetap utuh agar fixture
-            //    masih bisa dipetakan (dan tetap lewat scrub pola).
+            // 4) Form fields: hidden, password, email and tel fields, plus fields with
+            //    sensitive identity (csrf, user, session), have their values blanked. Game
+            //    numbers (e.g. #d1AdvancedFuel) stay intact so the fixture remains usable
+            //    and still passes through pattern scrubbing.
             for (const el of clone.querySelectorAll('input, textarea')) {
                 const tag = String(el.tagName || '').toUpperCase();
                 const type = String(el.getAttribute('type') || '').toLowerCase();
@@ -2610,15 +2551,15 @@
                     if (el.hasAttribute('data-initialvalue')) el.setAttribute('data-initialvalue', '[REDACTED]');
                 }
             }
-            // 5) Script JSON: redaksi per kunci (token/email/manager) tanpa
-            //    merusak angka permainan; JSON rusak → sapuan teks mentah.
+            // 5) JSON scripts: redact per key (token, email, manager) without breaking
+            //    game numbers. Broken JSON falls back to a raw text sweep.
             for (const s of clone.querySelectorAll('script')) {
                 const raw = String(s.textContent || '');
                 let out = raw;
                 try {
                     const parsed = JSON.parse(raw);
-                    // Script bootstrap identitas: kunci `id` di level atas adalah
-                    // user/manager id, bukan id permainan.
+                    // Identity bootstrap script: its top-level `id` is the user/manager id,
+                    // not a game id.
                     const ident = String(s.id || '') + ' ' + String(s.className || '');
                     if (/(user|manager|account|profile|bootstrap)/i.test(ident) &&
                         parsed && typeof parsed === 'object' && !Array.isArray(parsed) &&
@@ -2631,12 +2572,12 @@
                 }
                 if (out !== raw) s.textContent = out;
             }
-            // 6) Atribut: kredensial bernama, URL, lalu scrub pola pada sisanya.
+            // 6) Attributes: named credentials, then URLs, then pattern scrubbing.
             for (const el of clone.querySelectorAll('*')) {
                 for (const attr of Array.from(el.attributes || [])) {
                     const name = attr.name;
                     if (/^srcdoc$/i.test(name)) { el.removeAttribute(name); continue; }
-                    // Handler inline = vektor eksekusi + bisa memuat ID/URL internal.
+                    // Inline handlers are an execution vector and can carry internal ids or URLs.
                     if (/^on/i.test(name)) { el.removeAttribute(name); continue; }
                     if (SENSITIVE_ATTR.test(name)) { attr.value = '[REDACTED]'; continue; }
                     if (URL_ATTR.test(name)) {
@@ -2644,30 +2585,32 @@
                         if (v !== attr.value) attr.value = v;
                         continue;
                     }
-                    if (KEEP_ATTR.test(name)) continue; // nilai struktural, tanpa PII
-                    // Atribut berisi JSON (data-config dsb.): redaksi per kunci.
+                    if (KEEP_ATTR.test(name)) continue; // structural value, no PII
+                    // Attributes holding JSON (data-config and friends): redact per key.
                     const raw = String(attr.value || '');
                     if (/^[[{]/.test(raw.trim())) {
                         try {
                             const v = JSON.stringify(scrubJson(JSON.parse(raw)));
                             if (v !== raw) attr.value = v;
                             continue;
-                        } catch { /* bukan JSON valid → scrub pola di bawah */ }
+                        } catch {
+                            // Not valid JSON: fall through to the pattern scrub below.
+                        }
                     }
                     const v = scrubKnown(raw, pii);
                     if (v !== raw) attr.value = v;
                 }
             }
-            // 6b) Sapuan nilai PII konkret pada SEMUA atribut (termasuk src/
-            //     style/aria-*/alt yang dilewati aturan struktural).
+            // 6b) Sweep concrete PII values across all attributes, including src, style,
+            //     aria-* and alt, which the structural rules skip.
             for (const el of clone.querySelectorAll('*')) {
                 for (const attr of Array.from(el.attributes || [])) {
                     const v = scrubKnown(attr.value, pii);
                     if (v !== attr.value) attr.value = v;
                 }
             }
-            // 7) Sapuan pola terakhir: email & string token panjang di text node
-            //    (blok JSON dikecualikan agar data strategi tidak rusak).
+            // 7) Final pattern sweep: emails and long token strings in text nodes.
+            //    JSON blocks are excluded so strategy data is not corrupted.
             for (const el of clone.querySelectorAll('*')) {
                 if (String(el.tagName || '').toUpperCase() === 'SCRIPT') continue;
                 for (const nd of Array.from(el.childNodes || [])) {
@@ -2686,14 +2629,14 @@
         function install() {
             if (typeof document === 'undefined') return;
             if (typeof GM_registerMenuCommand !== 'function' || typeof GM_setClipboard !== 'function') return;
-            GM_registerMenuCommand('I.G.P.A.S: salin capture DOM halaman ini (fixture mapping)', () => {
+            GM_registerMenuCommand('I.G.P.A.S: copy this page\'s DOM capture (fixture mapping)', () => {
                 const html = buildCapture(document);
                 if (!html) return;
                 GM_setClipboard(html, 'text/html');
                 if (typeof GM_notification === 'function') {
                     GM_notification({
                         title: 'I.G.P.A.S v' + VERSION + ' — capture',
-                        text: 'DOM halaman (PII teredaksi) disalin ke clipboard. Tempel & kirim untuk pemetaan fixture.',
+                        text: 'Page DOM (PII redacted) copied to clipboard. Paste & send it for fixture mapping.',
                     });
                 }
             });
@@ -2701,9 +2644,9 @@
         return { buildCapture: buildCapture, install: install };
     })();
 
-    /* =====================================================================
-     * 4) BOOT — Advisor read-only di tab iGP + menu capture.
-     * ===================================================================== */
+    // =====================================================================
+    // 5) BOOT — read-only advisor on iGP tabs, plus the capture menu.
+    // =====================================================================
 
     function boot() {
         if (typeof document === 'undefined') return; // lingkungan non-browser (tes)
@@ -2716,10 +2659,10 @@
 
         const startUi = () => {
             if (!isIgpHost()) return;
-            // Advisor in-page read-only: hanya teks/title pada elemen asli.
-            // Tab Race live (#race) tidak pernah ditulis.
+            // In-page read-only advisor: text and titles on original elements only.
+            // The live Race tab (#race) is never written to.
             if (typeof Advisor !== 'undefined') Advisor.start();
-            // Menu Tampermonkey: salin capture DOM (redaksi PII) — tanpa UI halaman.
+            // Tampermonkey menu: copy a DOM capture with PII redacted. No page UI.
             if (typeof PageCapture !== 'undefined') PageCapture.install();
         };
 
@@ -2732,7 +2675,7 @@
 
     boot();
 
-    // Ekspor untuk pengujian Node — tanpa efek di browser (module tak terdefinisi).
+    // Exports for the Node tests. No effect in the browser, where module is undefined.
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = { IGPCore, Utils, Advisor, PageCapture, VERSION: VERSION };
     }

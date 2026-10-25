@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// check-versions.mjs — pastikan versi sinkron di seluruh repo userscript
-// Sumber kebenaran: package.json version
-// Diperiksa: src/igpas.user.js (@version + const VERSION), README, docs/ARCHITECTURE.md, docs/PRIVACY.md
+// check-versions.mjs — ensure versions stay in sync across the userscript repo
+// Source of truth: package.json version
+// Checked: src/igpas.user.js (@version + const VERSION), README, docs/ARCHITECTURE.md, docs/PRIVACY.md
 
 import fs from "node:fs";
 import path from "node:path";
@@ -23,7 +23,7 @@ function mustContain(file, pattern, label) {
   const txt = read(file);
   const m = txt.match(pattern);
   if (!m) {
-    errors.push(`${file}: tidak menemukan ${label}`);
+    errors.push(`${file}: could not find ${label}`);
     return null;
   }
   const found = m[1];
@@ -40,7 +40,7 @@ function shouldContain(file, pattern, label) {
     const txt = read(file);
     const m = txt.match(pattern);
     if (!m) {
-      warnings.push(`${file}: tidak menemukan ${label} (opsional)`);
+      warnings.push(`${file}: could not find ${label} (optional)`);
       return null;
     }
     const found = m[1];
@@ -51,20 +51,20 @@ function shouldContain(file, pattern, label) {
     }
     return found;
   } catch (e) {
-    if (e.code === "ENOENT") warnings.push(`${file}: file tidak ada — skip`);
+    if (e.code === "ENOENT") warnings.push(`${file}: file does not exist — skip`);
     else throw e;
   }
 }
 
-// Wajib: userscript header & konstanta
+// Required: userscript header & constants
 mustContain("src/igpas.user.js", /@version\s+([0-9]+\.[0-9]+\.[0-9]+)/, "@version");
 mustContain(
   "src/igpas.user.js",
   /const VERSION\s*=\s*['"]([0-9]+\.[0-9]+\.[0-9]+)['"]/,
   "const VERSION"
 );
-// Wajib: lockfile tidak boleh drift dari package.json (rilis 0.8.3 sempat
-// terkirim dengan docs/index.html v0.8.0 — halaman web itu sudah dihapus).
+// Required: the lockfile must not drift from package.json (release 0.8.3 was
+// briefly shipped with docs/index.html v0.8.0 — that web page has been removed).
 const lock = JSON.parse(read("package-lock.json"));
 if (lock.version !== expected) {
   errors.push(`package-lock.json: version = ${lock.version} (expected ${expected})`);
@@ -80,12 +80,12 @@ if (lockRoot && lockRoot.version !== expected) {
   console.log(`  ✔ package-lock.json — packages[""].version = ${lockRoot.version}`);
 }
 
-// Opsional tapi disarankan: docs & README menampilkan versi yang sama
+// Optional but recommended: docs & README show the same version
 shouldContain("README.md", /<b>v([0-9]+\.[0-9]+\.[0-9]+)<\/b>/, "README badge version");
-// ARCHITECTURE/PRIVACY sering menyebut versi — cek longgar
+// ARCHITECTURE/PRIVACY often mention the version — loose check
 shouldContain(
   "docs/ARCHITECTURE.md",
-  /Versi saat ini\s+([0-9]+\.[0-9]+\.[0-9]+)/,
+  /Current version\s+([0-9]+\.[0-9]+\.[0-9]+)/,
   "ARCHITECTURE version"
 );
 shouldContain("docs/PRIVACY.md", /v([0-9]+\.[0-9]+\.[0-9]+)/, "PRIVACY version mention");
@@ -98,7 +98,7 @@ if (warnings.length) {
 if (errors.length) {
   console.error("\nErrors:");
   for (const e of errors) console.error("  ✗ " + e);
-  console.error(`\nVersion check gagal: ${errors.length} error(s)`);
+  console.error(`\nVersion check failed: ${errors.length} error(s)`);
   process.exit(1);
 }
 

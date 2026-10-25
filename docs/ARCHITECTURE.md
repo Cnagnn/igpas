@@ -1,124 +1,125 @@
-# I.G.P.A.S — Arsitektur (userscript-only)
+# I.G.P.A.S — Architecture (userscript-only)
 
-Penasihat studi **read-only** untuk iGP Manager dalam satu file userscript,
-tanpa build step, tanpa web GUI, tanpa jaringan, dan tanpa penyimpanan.
+A **read-only** study advisor for iGP Manager in a single userscript file, no
+build step, no web GUI, no network, and no storage.
 
-Versi saat ini 0.11.0.
+Current version 0.12.0.
 
-## 1. Ruang lingkup
+## 1. Scope
 
-- ✅ Rekomendasi in-page pada halaman **studi** iGP (Cars, Manufacturers,
-  Supply, Drivers & Staff, Transfers) dan dialog **Sponsor** (Sign). Tab
-  **Setup/Strategy pra-balapan** tidak lagi diberi advisor (dihapus v0.10.0).
-- ✅ Menu capture DOM dengan redaksi PII untuk pemetaan fixture.
-- ✅ Supply **switch-aware**: efisiensi = Σ bonus per 1jt biaya. Peringkat menggabungkan supplier aktif + alternatif (seri dimenangkan aktif); tombol alternatif diwarnai merah bila rekomendasi ganti (≥5% lebih efisien), amber untuk aktif/calon, abu-abu untuk bukan pilihan. Teks biaya & judul tidak diubah; verdict + detail di `title` — mencegah loop ganti supplier.
-- ✅ Cars **Overview**: baris atribut diurutkan `#1..#n` dari atas ke bawah dan label asli ditulis `#n Atribut · X DP`; val/max/gap + estimasi DP di `title`; tanpa warna; angka & bar game tidak disentuh.
-- ✅ Cars **Repair**: tombol `Fix`/`Replace` diwarnai dari kondisi yang tampil + rekomendasi — merah ≤50% (ganti), amber 50–60% (siap-siap), abu-abu >60% (tunda). Judul kartu tidak diubah; biaya/stok/restock/ambang di `title`; tidak mengklik tombol.
-- ❌ Tidak ada Command Center / web GUI / GitHub Pages.
-- ❌ Tidak ada mailbox antar-tab, GM storage, profil, atau snapshot.
-- ✅ Sponsor **Primary & Secondary**: `Sign` hijau + `Sign ★` untuk pilihan aman — Secondary income/race tertinggi (dijamin), Primary token/race tertinggi. Tombol amber menandai alternatif trade-off: bonus tunai/race tertinggi (Secondary + break-even peluang objektif; Primary bonus tunai vs token). Model eksplisit: bonus dibayar **per race** saat objektif tercapai (bukan sekali per kontrak); token & cash beda satuan dan tidak pernah dijumlahkan/dikonversi. Total kontrak (`income × term`, potensi `(income+bonus) × term`) hanya bila term terbaca dari kartu Primary sponsor — tidak ada angka karangan.
-- ❌ Tidak scrape/automasi saat balapan live; `#race`, `#setup`, dan `#strategy` tidak pernah disentuh (tidak dibaca, tidak ditulis).
-- ❌ Tidak ada klik/submit/fetch/XHR.
+- ✅ In-page recommendations on iGP **study** pages (Cars, Manufacturers,
+  Supply, Drivers & Staff, Transfers) and the **Sponsor** dialog (Sign). The
+  **pre-race Setup/Strategy** tabs no longer get an advisor (removed in v0.10.0).
+- ✅ DOM capture menu with PII redaction for fixture mapping.
+- ✅ Supply **switch-aware**: efficiency = Σ bonus per 1M cost. Ranking combines the active supplier + alternatives (ties go to the active one); the alternative button is coloured red when the recommendation is to switch (≥5% more efficient), amber for active/candidate, grey for not an option. Cost text & titles are unchanged; verdict + details in `title` — preventing supplier switch loops.
+- ✅ Cars **Overview**: attribute rows sorted `#1..#n` from top to bottom and the original label written as `#n Attribute · X DP`; val/max/gap + DP estimate in `title`; no colour; game numbers & bars untouched.
+- ✅ Cars **Repair**: `Fix`/`Replace` button coloured from the displayed condition + recommendation — red ≤50% (replace), amber 50–60% (get ready), grey >60% (postpone). Card titles are unchanged; cost/stock/restock/thresholds in `title`; no button clicks.
+- ❌ No Command Center / web GUI / GitHub Pages.
+- ❌ No cross-tab mailbox, GM storage, profile, or snapshot.
+- ✅ Sponsor **Primary & Secondary**: green `Sign` + `Sign ★` for the safe choice — Secondary highest income/race (guaranteed), Primary highest token/race. The amber button marks the trade-off alternative: highest cash bonus/race (Secondary + break-even objective chance; Primary cash bonus vs token). Explicit model: bonuses are paid **per race** when the objective is met (not once per contract); tokens & cash are different units and are never summed/converted. Contract total (`income × term`, potential `(income+bonus) × term`) only if the term is readable from the Primary sponsor card — no invented numbers.
+- ❌ No scraping/automation during live races; `#race`, `#setup`, and `#strategy` are never touched (neither read nor written).
+- ❌ No clicks/submits/fetch/XHR.
 
-## 2. Komponen
+## 2. Components
 
-| Komponen | Peran |
+| Component | Role |
 | --- | --- |
-| `Utils` | Helper murni: parsing angka/uang, `numOrNull`, `statIndex`, `roleCode`, format |
-| `IGPCore` | Mesin heuristik murni & teruji: `designPriority`, `repairAdvice`, `rankSuppliers`, `compareSuppliers`, `rankManufacturerItems`, `rankSponsors`, `stintSplit`, dll. |
-| `IgpCarsAdapter` | Parser read-only halaman Cars → `{ attrs, best, designPoints, suppliers, … }`; tab Overview diurutkan/diberi label oleh `Advisor.mountDesign`, tab Repair oleh `Advisor.mountRepair` (kondisi, biaya tombol, stok) — keduanya in-place |
-| `IgpSupplyAdapter` | Parser read-only dialog Supply → `{ type, current, alternatives }` |
-| `IgpManufacturersAdapter` | Parser read-only tabel engine + chassis |
-| `IgpStaffAdapter` | Parser read-only Drivers & Staff (driver, staff, pit crew) |
-| `IgpTransfersAdapter` | Parser read-only pasar Transfers (driver + staff) |
-| `IgpSponsorAdapter` | Parser read-only dialog Sponsor (Primary/Secondary) → `{ termRaces, incomeKind, offers }` |
-| `Advisor` | Menulis rekomendasi ke teks/`title` elemen asli + restore otomatis |
-| `PageCapture` | Menu userscript: salin DOM teredaksi ke clipboard |
-| `boot()` | Gate host `igpmanager.com`, pasang Advisor + menu capture |
+| `Utils` | Pure helpers: number/money parsing, `numOrNull`, `statIndex`, `roleCode`, formatting |
+| `IGPCore` | Pure & tested heuristic engine: `designPriority`, `repairAdvice`, `rankSuppliers`, `compareSuppliers`, `rankManufacturerItems`, `rankSponsors`, `stintSplit`, etc. |
+| `IgpCarsAdapter` | Read-only parser for the Cars page → `{ attrs, best, designPoints, suppliers, … }`; Overview tab sorted/labelled by `Advisor.mountDesign`, Repair tab by `Advisor.mountRepair` (condition, button cost, stock) — both in-place |
+| `IgpSupplyAdapter` | Read-only parser for the Supply dialog → `{ type, current, alternatives }` |
+| `IgpManufacturersAdapter` | Read-only parser for the engine + chassis table |
+| `IgpStaffAdapter` | Read-only parser for Drivers & Staff (driver, staff, pit crew) |
+| `IgpTransfersAdapter` | Read-only parser for the Transfers market (driver + staff) |
+| `IgpSponsorAdapter` | Read-only parser for the Sponsor dialog (Primary/Secondary) → `{ termRaces, incomeKind, offers }` |
+| `Advisor` | Writes recommendations to original element text/`title` + automatic restore |
+| `PageCapture` | Userscript menu: copy redacted DOM to clipboard |
+| `boot()` | `igpmanager.com` host gate, installs Advisor + capture menu |
 
-Adapter adalah **parser murni atas `document`** (tidak menyimpan, tidak
-mengirim). Advisor memanggilnya secara langsung saat merender.
+Adapters are **pure parsers over `document`** (no storage, no sending). The
+Advisor calls them directly when rendering.
 
-## 3. Alur data
+## 3. Data flow
 
 ```
-DOM halaman iGP (read-only)
+iGP page DOM (read-only)
         │
-        ├─ Igp*Adapter.captures(document)  → data terstruktur
+        ├─ Igp*Adapter.captures(document)  → structured data
         │
-        ├─ IGPCore.* (heuristik murni)     → peringkat / estimasi / verdict
+        ├─ IGPCore.* (pure heuristics)     → ranking / estimate / verdict
         │
-        └─ Advisor: tulis teks + title pada node ASLI
+        └─ Advisor: write text + title on the ORIGINAL node
                       │
-                      └─ restore otomatis (data-igpas-orig / data-igpas-written)
+                      └─ automatic restore (data-igpas-orig / data-igpas-written)
 
-Menu capture → PageCapture.buildCapture(document) → redaksi → clipboard
+Capture menu → PageCapture.buildCapture(document) → redaction → clipboard
 ```
 
-Tidak ada langkah jaringan, storage, atau sinkronisasi antar-tab.
+There is no network, storage, or cross-tab sync step.
 
-## 4. Disiplin DOM
+## 4. DOM discipline
 
-1. **Gate `#pageId`** — setiap adapter hanya aktif di halaman yang cocok
-   (`cars`, `manufacturers`, `staff`, `transfers`; Supply via dialog
-   `.supplyDialog`; Sponsor via dialog `#sponsorSignTable`, biasanya di
-   halaman Finances).
-2. **`#race` live, `#setup`, dan `#strategy` tidak pernah disentuh** — tidak
-   ada advisor pra-balapan/live-race.
-3. **In-place** — tidak ada elemen baru; hanya text node, atribut `title`, dan
-   style sementara pada elemen milik game (warna tombol Supply/Repair).
-4. **Restore-pertama** — sebelum setiap pembacaan, tulisan advisor
-   dikembalikan agar adapter selalu membaca data game murni. Setiap tulisan
-   menyimpan `data-igpas-orig` + `data-igpas-written` (atau pasangan
-   `data-igpas-orig-style` + `data-igpas-written-style`); restore tidak menimpa
-   teks/style yang sudah diganti game.
-5. **Gagal jujur** — data tak terbaca → tidak ada tulisan/angka karangan,
-   bukan `0`.
-6. **Render instan** — MutationObserver bereaksi saat game commit DOM; tanpa
-   polling halaman game.
+1. **`#pageId` gate** — each adapter activates only on the matching page
+   (`cars`, `manufacturers`, `staff`, `transfers`; Supply via the
+   `.supplyDialog` dialog; Sponsor via the `#sponsorSignTable` dialog, usually
+   on the Finances page).
+2. **Live `#race`, `#setup`, and `#strategy` are never touched** — there is
+   no pre-race/live-race advisor.
+3. **In-place** — no new elements; only text nodes, `title` attributes, and
+   temporary styles on game-owned elements (Supply/Repair button colours).
+4. **Restore-first** — before every read, advisor writes are reverted so
+   adapters always read pure game data. Every write stores `data-igpas-orig` +
+   `data-igpas-written` (or the `data-igpas-orig-style` +
+   `data-igpas-written-style` pair); restore does not overwrite text/styles
+   already replaced by the game.
+5. **Fail honestly** — unreadable data → no invented writes/numbers, not `0`.
+6. **Instant render** — MutationObserver reacts when the game commits the DOM;
+   no polling of the game page.
 
-## 5. Boot & guard
+## 5. Boot & guards
 
-- `@match` hanya `https://igpmanager.com/*` dan
+- `@match` only `https://igpmanager.com/*` and
   `https://*.igpmanager.com/*`.
-- `boot()` memeriksa `location.hostname` sebelum memasang apa pun.
-- `@grant` hanya `GM_registerMenuCommand`, `GM_setClipboard`,
+- `boot()` checks `location.hostname` before installing anything.
+- `@grant` only `GM_registerMenuCommand`, `GM_setClipboard`,
   `GM_notification`.
-- `scripts/check-guards.mjs` menolak `@match` di luar allowlist, `@require`/
-  `@connect`/`@updateURL`, serta `fetch`/XHR/`sendBeacon`/socket/`import()`/
+- `scripts/check-guards.mjs` rejects `@match` outside the allowlist, `@require`/
+  `@connect`/`@updateURL`, as well as `fetch`/XHR/`sendBeacon`/socket/`import()`/
   `eval`/`unsafeWindow`/`document.write`.
 
 ## 6. Testing
 
-- `test/core.test.js` — 72 test murni untuk `IGPCore`/`Utils`.
-- `test/capture.test.js` — 8 test redaksi `PageCapture` (jsdom).
-- `test/advisor.test.js` — 30 test advisor vs fixture DOM nyata (jsdom):
-  in-place, restore, idempoten, `#race` zero-UI, menu capture.
-- `test/fixtures/*.html` — capture DOM tersanitasi (PII/script dibuang).
+- `test/core.test.js` — 72 pure tests for `IGPCore`/`Utils`.
+- `test/capture.test.js` — 8 `PageCapture` redaction tests (jsdom).
+- `test/advisor.test.js` — 30 advisor tests against real DOM fixtures (jsdom):
+  in-place, restore, idempotent, `#race` zero-UI, capture menu.
+- `test/fixtures/*.html` — sanitised DOM captures (PII/scripts stripped).
 
-Total **110 test**; dijalankan oleh `npm test` dan `npm run verify` (CI Node
-22/24).
+Total **110 tests**; run by `npm test` and `npm run verify` (CI Node 22/24).
 
-## 7. Sejarah singkat
+## 7. Brief history
 
-- Arsitektur awal terinspirasi [A.C.A.S](https://psyyke.github.io/A.C.A.S/)
-  (studi reverse-engineering, satu file userscript, adapter per page-type,
-  guard data basi, read-only). Kode A.C.A.S tidak disalin.
-- v0.2–v0.8.x memakai Command Center web (dual-tab + mailbox GM storage +
-  snapshot). **v0.9.0 menghapus seluruh jalur itu** — GUI web, GitHub Pages,
-  mailbox, adapter registry, dan GM storage — dan mempertahankan Advisor
-  in-page + capture. Implementasi lama tetap tersedia di riwayat git
+- Initial architecture inspired by [A.C.A.S](https://psyyke.github.io/A.C.A.S/)
+  (reverse-engineering study, single userscript file, adapter per page-type,
+  stale-data guards, read-only). A.C.A.S code was not copied.
+- v0.2–v0.8.x used the web Command Center (dual-tab + GM storage mailbox +
+  snapshot). **v0.9.0 removed that entire path** — web GUI, GitHub Pages,
+  mailbox, adapter registry, and GM storage — and kept the in-page Advisor +
+  capture. The old implementation remains available in git history
   (tag `v0.8.6`).
-- v0.10.0 menghapus advisor **Setup** dan **Strategy** pra-balapan beserta
-  adapter/helper-nya; fokus advisor kembali ke halaman studi.
-- v0.11.0 menambah advisor **Sponsor Primary & Secondary**: peringkat penawaran
-  pada dialog Sign (income/token per race, bonus per race, jaminan, break-even)
-  tanpa mengubah angka game.
-- Input manual/kalkulator mandiri tidak lagi disediakan sebagai UI.
+- v0.10.0 removed the pre-race **Setup** and **Strategy** advisors along with
+  their adapters/helpers; the advisor focus returned to study pages.
+- v0.11.0 added the **Sponsor Primary & Secondary** advisor: offer ranking in
+  the Sign dialog (income/token per race, bonus per race, guaranteed
+  income, break-even) without changing game numbers.
+- v0.12.0 translated the repository to English (userscript UI, comments, docs,
+  tests, scripts) and polished the userscript comments. No behaviour change
+  beyond the visible copy; `Tyre` spelling now matches the game.
+- Manual input/standalone calculator is no longer provided as a UI.
 
-## 8. Etika & batasan
+## 8. Ethics & limitations
 
-Userscript menulis ulang **teks pada elemen asli game** (tanpa elemen baru).
-Risiko interpretasi ToS sepenuhnya ditanggung user; rincian data dan redaksi
-ada di [PRIVACY.md](PRIVACY.md). Tab Race live tidak pernah ditulis dan tidak
-ada otomasi klik/submit.
+The userscript rewrites **text on the game's original elements** (no new
+elements). The ToS interpretation risk rests entirely with the user; data and
+redaction details are in [PRIVACY.md](PRIVACY.md). The live Race tab is never
+written and there is no click/submit automation.

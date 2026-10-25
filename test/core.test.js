@@ -14,7 +14,7 @@ console.log("IGPCore unit tests");
 
 /* ---------- calcFuel ---------- */
 
-t("calcFuel: kasus dasar", () => {
+t("calcFuel: basic case", () => {
   const r = IGPCore.calcFuel({
     lapsRemaining: 20,
     fuelPerLap: 1.2,
@@ -28,13 +28,13 @@ t("calcFuel: kasus dasar", () => {
   assert.strictEqual(r.values.lapsLeftOnFuel, 8.3); // 10 / 1.2 = 8.333 -> 8.3
 });
 
-t("calcFuel: tanpa reserve", () => {
+t("calcFuel: no reserve", () => {
   const r = IGPCore.calcFuel({ lapsRemaining: 10, fuelPerLap: 2, currentFuel: 20, reserveLaps: 0 });
-  assert.strictEqual(r.values.fuelToAdd, 0); // 20 dibutuhkan, 20 ada
+  assert.strictEqual(r.values.fuelToAdd, 0); // 20 needed, 20 available
   assert.strictEqual(r.values.lapsLeftOnFuel, 10);
 });
 
-t("calcFuel: reserve setengah lap", () => {
+t("calcFuel: half-lap reserve", () => {
   const r = IGPCore.calcFuel({
     lapsRemaining: 10,
     fuelPerLap: 2,
@@ -44,7 +44,7 @@ t("calcFuel: reserve setengah lap", () => {
   assert.strictEqual(r.values.fuelToAdd, 1); // 20 + 1 - 20
 });
 
-t("calcFuel: over-capacity deteksi", () => {
+t("calcFuel: over-capacity detection", () => {
   const r = IGPCore.calcFuel({
     lapsRemaining: 20,
     fuelPerLap: 1.2,
@@ -52,11 +52,11 @@ t("calcFuel: over-capacity deteksi", () => {
     reserveLaps: 1,
     tankCapacity: 20,
   });
-  assert.strictEqual(r.values.overCapacity, 5.2); // 25.2 total vs tangki 20
+  assert.strictEqual(r.values.overCapacity, 5.2); // 25.2 total vs tank 20
   assert.ok(r.rows.some(row => String(row[0]).includes("⚠")));
 });
 
-t("calcFuel: input tak valid → ok:false", () => {
+t("calcFuel: invalid input → ok:false", () => {
   assert.strictEqual(
     IGPCore.calcFuel({ lapsRemaining: 5, fuelPerLap: 0, currentFuel: 1 }).ok,
     false
@@ -73,7 +73,7 @@ t("calcFuel: input tak valid → ok:false", () => {
 
 /* ---------- projectTireWear ---------- */
 
-t("projectTireWear: monotonic dan cap 100%", () => {
+t("projectTireWear: monotonic and capped at 100%", () => {
   const r = IGPCore.projectTireWear({ currentWearPct: 50, wearPerLapPct: 6, lapsCount: 10 });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.rows.length, 11); // 0..10
@@ -82,12 +82,12 @@ t("projectTireWear: monotonic dan cap 100%", () => {
   assert.strictEqual(last, "100 %"); // 50+60 → cap
 });
 
-t("projectTireWear: wear 0 → konstan", () => {
+t("projectTireWear: wear 0 → constant", () => {
   const r = IGPCore.projectTireWear({ currentWearPct: 10, wearPerLapPct: 0, lapsCount: 5 });
   assert.strictEqual(r.rows[5][1], "10 %");
 });
 
-t("projectTireWear: input tak valid", () => {
+t("projectTireWear: invalid input", () => {
   assert.strictEqual(
     IGPCore.projectTireWear({ currentWearPct: 120, wearPerLapPct: 1, lapsCount: 5 }).ok,
     false
@@ -104,12 +104,12 @@ t("projectTireWear: input tak valid", () => {
 
 /* ---------- lapsToThreshold ---------- */
 
-t("lapsToThreshold: floor benar", () => {
+t("lapsToThreshold: correct floor", () => {
   const r = IGPCore.lapsToThreshold({ currentWearPct: 20, wearPerLapPct: 3, thresholdPct: 80 });
   assert.strictEqual(r.values.laps, 20); // floor(60/3)
 });
 
-t("lapsToThreshold: floor turun pada fraksi", () => {
+t("lapsToThreshold: floor rounds down on fractions", () => {
   const r = IGPCore.lapsToThreshold({ currentWearPct: 20, wearPerLapPct: 4, thresholdPct: 80 });
   assert.strictEqual(r.values.laps, 15);
 });
@@ -120,7 +120,7 @@ t("lapsToThreshold: wear 0 → Infinity", () => {
   assert.ok(r.rows[0][1].includes("∞"));
 });
 
-t("lapsToThreshold: threshold <= wear kini → error", () => {
+t("lapsToThreshold: threshold <= current wear → error", () => {
   assert.strictEqual(
     IGPCore.lapsToThreshold({ currentWearPct: 80, wearPerLapPct: 2, thresholdPct: 80 }).ok,
     false
@@ -129,28 +129,28 @@ t("lapsToThreshold: threshold <= wear kini → error", () => {
 
 /* ---------- pitWindow ---------- */
 
-t("pitWindow: fuel yang membatasi", () => {
+t("pitWindow: fuel is the limit", () => {
   const r = IGPCore.pitWindow({ lapsLeftOnFuel: 9.5, reserveLaps: 1, tireLaps: 30, marginLaps: 2 });
   assert.strictEqual(r.values.fuelLatest, 8); // floor(9.5-1)
   assert.strictEqual(r.values.latest, 8); // min(8, 30)
   assert.strictEqual(r.values.recommended, 6);
-  assert.strictEqual(r.rows[0][1], "8 lap");
+  assert.strictEqual(r.rows[0][1], "8 laps");
 });
 
-t("pitWindow: ban yang membatasi", () => {
+t("pitWindow: tyre is the limit", () => {
   const r = IGPCore.pitWindow({ lapsLeftOnFuel: 50, reserveLaps: 1, tireLaps: 12, marginLaps: 0 });
   assert.strictEqual(r.values.latest, 12);
-  assert.strictEqual(r.rows[0][1], "49 lap");
-  assert.strictEqual(r.rows[1][1], "12 lap");
+  assert.strictEqual(r.rows[0][1], "49 laps");
+  assert.strictEqual(r.rows[1][1], "12 laps");
 });
 
-t("pitWindow: tanpa data ban (kosong) → ∞", () => {
+t("pitWindow: no tyre data (empty) → ∞", () => {
   const r = IGPCore.pitWindow({ lapsLeftOnFuel: 20, reserveLaps: 1, tireLaps: "", marginLaps: 0 });
   assert.strictEqual(r.values.tireLatest, Infinity);
   assert.strictEqual(r.values.latest, 19);
 });
 
-t("pitWindow: tidak bisa menunggu → peringatan pit sekarang", () => {
+t("pitWindow: cannot wait → pit now warning", () => {
   const r = IGPCore.pitWindow({ lapsLeftOnFuel: 1, reserveLaps: 1, tireLaps: 10, marginLaps: 0 });
   assert.strictEqual(r.values.latest, 0);
   assert.ok(r.rows.some(row => String(row[0]).includes("⚠")));
@@ -158,34 +158,34 @@ t("pitWindow: tidak bisa menunggu → peringatan pit sekarang", () => {
 
 /* ---------- stintSplit ---------- */
 
-t("stintSplit: pembagian merata", () => {
+t("stintSplit: even split", () => {
   const r = IGPCore.stintSplit({ totalLaps: 30, tireLifeLaps: 18, pitLossLaps: 0.5 });
   assert.strictEqual(r.values.stops, 1);
   assert.deepStrictEqual(r.values.stints, [15, 15]);
   assert.strictEqual(r.values.timeCostLaps, 0.5);
 });
 
-t("stintSplit: rema dibagikan ke stint terdepan", () => {
+t("stintSplit: remainder goes to the leading stint", () => {
   const r = IGPCore.stintSplit({ totalLaps: 31, tireLifeLaps: 12, pitLossLaps: 0.5 });
   assert.strictEqual(r.values.segments, 3); // ceil(31/12)
   assert.deepStrictEqual(r.values.stints, [11, 10, 10]);
   assert.strictEqual(r.values.timeCostLaps, 1); // 2 * 0.5
 });
 
-t("stintSplit: ban lebih awet dari balapan → 0 stop", () => {
+t("stintSplit: tyres outlast the race → 0 stops", () => {
   const r = IGPCore.stintSplit({ totalLaps: 10, tireLifeLaps: 20, pitLossLaps: 1 });
   assert.strictEqual(r.values.stops, 0);
   assert.deepStrictEqual(r.values.stints, [10]);
 });
 
-t("stintSplit: input tak valid", () => {
+t("stintSplit: invalid input", () => {
   assert.strictEqual(IGPCore.stintSplit({ totalLaps: 0, tireLifeLaps: 10 }).ok, false);
   assert.strictEqual(IGPCore.stintSplit({ totalLaps: 10, tireLifeLaps: 0 }).ok, false);
 });
 
 /* ---------- strategyRecommendation ---------- */
 
-t("strategyRecommendation: rencana pit (fuel membatasi)", () => {
+t("strategyRecommendation: pit plan (fuel is the limit)", () => {
   const r = IGPCore.strategyRecommendation({
     lapsLeftOnFuel: 20,
     tyreLapsLeft: 30,
@@ -200,7 +200,7 @@ t("strategyRecommendation: rencana pit (fuel membatasi)", () => {
   assert.strictEqual(r.values.recommended, 17); // 19-2
 });
 
-t("strategyRecommendation: ban membatasi", () => {
+t("strategyRecommendation: tyre is the limit", () => {
   const r = IGPCore.strategyRecommendation({
     lapsLeftOnFuel: 50,
     tyreLapsLeft: 12,
@@ -213,7 +213,7 @@ t("strategyRecommendation: ban membatasi", () => {
   assert.strictEqual(r.values.decision, "plan");
 });
 
-t("strategyRecommendation: ban tanpa data → ∞", () => {
+t("strategyRecommendation: no tyre data → ∞", () => {
   const r = IGPCore.strategyRecommendation({
     lapsLeftOnFuel: 10,
     tyreLapsLeft: "",
@@ -225,7 +225,7 @@ t("strategyRecommendation: ban tanpa data → ∞", () => {
   assert.strictEqual(r.values.limiting, "fuel");
 });
 
-t("strategyRecommendation: pit dalam ±1 lap", () => {
+t("strategyRecommendation: pit within ±1 lap", () => {
   const r = IGPCore.strategyRecommendation({
     lapsLeftOnFuel: 3.2,
     tyreLapsLeft: 20,
@@ -238,7 +238,7 @@ t("strategyRecommendation: pit dalam ±1 lap", () => {
   assert.strictEqual(r.values.decision, "pit-soon");
 });
 
-t("strategyRecommendation: PIT SEKARANG + peringatan", () => {
+t("strategyRecommendation: PIT NOW + warning", () => {
   const r = IGPCore.strategyRecommendation({
     lapsLeftOnFuel: 1,
     tyreLapsLeft: 10,
@@ -250,7 +250,7 @@ t("strategyRecommendation: PIT SEKARANG + peringatan", () => {
   assert.ok(r.rows.some(row => String(row[0]).includes("⚠")));
 });
 
-t("strategyRecommendation: input tidak valid", () => {
+t("strategyRecommendation: invalid input", () => {
   assert.strictEqual(
     IGPCore.strategyRecommendation({ lapsLeftOnFuel: -1, tyreLapsLeft: 10 }).ok,
     false
@@ -267,12 +267,12 @@ t("strategyRecommendation: input tidak valid", () => {
 
 /* ---------- rankOptions ---------- */
 
-t("rankOptions: total bobot 0 → error (harus eksplisit)", () => {
+t("rankOptions: total weight 0 → error (must be explicit)", () => {
   const r = IGPCore.rankOptions({ items: [{ name: "A", ratings: { a: 5 } }], weights: {} });
   assert.strictEqual(r.ok, false);
 });
 
-t("rankOptions: ranking benar sesuai bobot", () => {
+t("rankOptions: ranking correct per weights", () => {
   const r = IGPCore.rankOptions({
     items: [
       { name: "A", ratings: { aero: 8, power: 6 } },
@@ -286,7 +286,7 @@ t("rankOptions: ranking benar sesuai bobot", () => {
   assert.strictEqual(r.rows[1][1], "6.67");
 });
 
-t("rankOptions: item kurang lengkap ditandai * dan tetap dijumlah parsialnya", () => {
+t("rankOptions: incomplete item marked * and still gets its partial sum", () => {
   const r = IGPCore.rankOptions({
     items: [
       { name: "A", ratings: { a: 8, b: 6 } },
@@ -300,17 +300,17 @@ t("rankOptions: item kurang lengkap ditandai * dan tetap dijumlah parsialnya", (
   assert.strictEqual(rowC[1], "4.67"); // 7*2/3
 });
 
-t("rankOptions: rating di luar 0–10 → error", () => {
+t("rankOptions: rating outside 0–10 → error", () => {
   const r = IGPCore.rankOptions({ items: [{ name: "A", ratings: { a: 11 } }], weights: { a: 1 } });
   assert.strictEqual(r.ok, false);
 });
 
-t("rankOptions: item tanpa nama → error", () => {
+t("rankOptions: item without a name → error", () => {
   const r = IGPCore.rankOptions({ items: [{ ratings: { a: 5 } }], weights: { a: 1 } });
   assert.strictEqual(r.ok, false);
 });
 
-t("rankOptions: seri → urutan alfabetis", () => {
+t("rankOptions: tie → alphabetical order", () => {
   const r = IGPCore.rankOptions({
     items: [
       { name: "Beta", ratings: { x: 5 } },
@@ -324,7 +324,7 @@ t("rankOptions: seri → urutan alfabetis", () => {
 
 /* ---------- designPriority (v0.7.0 advisor heuristik) ---------- */
 
-t("designPriority: gap terbesar diprioritaskan, share % proporsional", () => {
+t("designPriority: largest gap prioritized, share % proportional", () => {
   const r = IGPCore.designPriority({
     attrs: {
       acceleration: { label: "Acceleration", val: 120 },
@@ -339,7 +339,7 @@ t("designPriority: gap terbesar diprioritaskan, share % proporsional", () => {
     designPoints: 200,
   });
   assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.values.ranked[0].key, "acceleration"); // gap terbesar
+  assert.strictEqual(r.values.ranked[0].key, "acceleration"); // largest gap
   assert.strictEqual(r.values.totalGap, 210); // 180 + 20 + 10
   const shares = r.values.ranked.map(x => x.sharePct);
   assert.strictEqual(r.values.ranked[0].sharePct, Math.round((180 / 210) * 1000) / 10);
@@ -348,43 +348,43 @@ t("designPriority: gap terbesar diprioritaskan, share % proporsional", () => {
   assert.strictEqual(r.values.unbenchmarked, 0);
 });
 
-t("designPriority: atribut sudah >= max liga -> tanpa saran, ok:false jujur", () => {
+t("designPriority: attribute already >= league max -> no advice, honest ok:false", () => {
   const r = IGPCore.designPriority({
     attrs: { a: { label: "A", val: 320 } },
     best: { a: { max: 300 } },
   });
-  assert.strictEqual(r.ok, false); // tidak ada gap: tidak ada yang diusulkan
+  assert.strictEqual(r.ok, false); // no gap: nothing proposed
   assert.match(r.error, /gap/i);
 });
 
-t("designPriority: tanpa benchmark liga → gagal jujur", () => {
+t("designPriority: no league benchmark → fail honestly", () => {
   const r = IGPCore.designPriority({ attrs: { a: { label: "A", val: 100 } }, best: {} });
   assert.strictEqual(r.ok, false);
   assert.match(r.error, /gap/i);
 });
 
-t("designPriority: atribut kosong → error", () => {
+t("designPriority: empty attributes → error", () => {
   assert.strictEqual(IGPCore.designPriority({ attrs: {} }).ok, false);
   assert.strictEqual(IGPCore.designPriority({}).ok, false);
 });
 
-t("designPriority: atribut tanpa max tetap tercantum sbg unbenchmarked", () => {
+t("designPriority: attributes without max still listed as unbenchmarked", () => {
   const r = IGPCore.designPriority({
     attrs: {
-      a: { label: "A", val: 100 }, // ada benchmark
-      b: { label: "B", val: 50 }, // tanpa benchmark
+      a: { label: "A", val: 100 }, // has benchmark
+      b: { label: "B", val: 50 }, // without benchmark
     },
     best: { a: { max: 200 } },
   });
   assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.values.ranked.length, 1); // hanya yang ada gap
+  assert.strictEqual(r.values.ranked.length, 1); // only those with a gap
   assert.strictEqual(r.values.unbenchmarked, 1);
   assert.strictEqual(r.values.ranked[0].sharePct, 100);
 });
 
 /* ---------- rankSuppliers (v0.7.0 advisor heuristik) ---------- */
 
-t("rankSuppliers: nilai/biaya (per 1M) menentukan urutan, bukan nilai mentah", () => {
+t("rankSuppliers: value/cost (per 1M) determines order, not raw value", () => {
   const r = IGPCore.rankSuppliers({
     items: [
       { supplierId: 11, costPerRace: 1000000, bonuses: [{ stat: "handling", value: 5 }] }, // 5/1M
@@ -398,7 +398,7 @@ t("rankSuppliers: nilai/biaya (per 1M) menentukan urutan, bukan nilai mentah", (
   assert.strictEqual(r.values.ranked[0].valuePerCost, 6);
 });
 
-t("rankSuppliers: bonus negatif menurunkan nilai; tanpa biaya tidak juara nilai", () => {
+t("rankSuppliers: negative bonus lowers value; no cost cannot win on value", () => {
   const r = IGPCore.rankSuppliers({
     items: [
       {
@@ -409,13 +409,13 @@ t("rankSuppliers: bonus negatif menurunkan nilai; tanpa biaya tidak juara nilai"
           { stat: "power", value: 4 },
         ],
       }, // Σ2 -> 6.67/1M
-      { supplierId: 22, costPerRace: null, bonuses: [{ stat: "power", value: 9 }] }, // tanpa biaya
+      { supplierId: 22, costPerRace: null, bonuses: [{ stat: "power", value: 9 }] }, // no cost
     ],
   });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.values.withoutCost, 1);
-  // Supplier tanpa biaya tidak bisa dinilai "nilai/biaya" — jujur ditaruh setelah
-  // yang terukur, bukan juara hanya karena Σ bonus besar.
+  // A supplier without a cost cannot be scored on "value/cost" — honestly placed after
+  // the measurable ones, not crowned just because Σ bonus is large.
   assert.strictEqual(r.values.ranked[0].id, 21);
   assert.strictEqual(r.values.ranked[0].valuePerCost, 6.67);
   const last = r.values.ranked[r.values.ranked.length - 1];
@@ -424,14 +424,14 @@ t("rankSuppliers: bonus negatif menurunkan nilai; tanpa biaya tidak juara nilai"
   assert.strictEqual(last.valuePerCost, null);
 });
 
-t("rankSuppliers: kosong → error", () => {
+t("rankSuppliers: empty → error", () => {
   assert.strictEqual(IGPCore.rankSuppliers({ items: [] }).ok, false);
   assert.strictEqual(IGPCore.rankSuppliers({}).ok, false);
 });
 
 /* ---------- rankManufacturerItems (v0.7.0 advisor heuristik) ---------- */
 
-t("rankManufacturerItems: engine — rating menurun, efisiensi sbg tiebreak", () => {
+t("rankManufacturerItems: engine — rating descending, efficiency as tiebreak", () => {
   const r = IGPCore.rankManufacturerItems({
     items: [
       { id: 1, name: "A", ratingPct: 80, costPerRace: 1000000 },
@@ -443,10 +443,10 @@ t("rankManufacturerItems: engine — rating menurun, efisiensi sbg tiebreak", ()
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.values.bestRatingId, 3);
   assert.strictEqual(r.values.ranked[0].id, 3);
-  assert.strictEqual(r.values.bestValueId, 2); // 80% pada biaya separuh
+  assert.strictEqual(r.values.bestValueId, 2); // 80% at half the cost
 });
 
-t("rankManufacturerItems: chassis — rating saja, baris tanpa rating dihitung noData", () => {
+t("rankManufacturerItems: chassis — rating only, rows without rating counted as noData", () => {
   const r = IGPCore.rankManufacturerItems({
     items: [
       { id: 5, name: "X", ratingPct: 40 },
@@ -461,7 +461,7 @@ t("rankManufacturerItems: chassis — rating saja, baris tanpa rating dihitung n
   assert.strictEqual(r.values.noData, 1);
 });
 
-t("rankManufacturerItems: semua rating kosong → error jujur", () => {
+t("rankManufacturerItems: all ratings empty → honest error", () => {
   const r = IGPCore.rankManufacturerItems({
     items: [{ id: 1, name: "A", ratingPct: null }],
     withCost: false,
@@ -469,10 +469,10 @@ t("rankManufacturerItems: semua rating kosong → error jujur", () => {
   assert.strictEqual(r.ok, false);
 });
 
-/* ---------- rankSponsors (v0.11.0 advisor, dialog Sponsor) ---------- */
+/* ---------- rankSponsors (v0.11.0 advisor, Sponsor dialog) ---------- */
 
-// Angka nyata dari dialog Secondary sponsor (16 penawaran, disubset 4).
-// Income & bonus sama-sama PER RACE; bonus hanya bila objektif tercapai.
+// Real numbers from the Secondary sponsor dialog (16 offers, subset of 4).
+// Income & bonus are both PER RACE; bonus only when the objective is met.
 const SPONSOR_OFFERS = [
   { eId: 2, income: 171000, bonus: 1800000 },
   { eId: 5, income: 428000, bonus: 1500000 },
@@ -480,7 +480,7 @@ const SPONSOR_OFFERS = [
   { eId: 19, income: 1600000, bonus: 102000 },
 ];
 
-t("rankSponsors cash: peringkat dari income (jaminan), bonus tunai jadi alternatif", () => {
+t("rankSponsors cash: ranking by income (guarantee), cash bonus becomes the alternative", () => {
   const r = IGPCore.rankSponsors({ offers: SPONSOR_OFFERS, termRaces: 5 });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.values.incomeKind, "cash");
@@ -488,13 +488,13 @@ t("rankSponsors cash: peringkat dari income (jaminan), bonus tunai jadi alternat
     r.values.ranked.map(x => x.eId),
     ["19", "17", "5", "2"]
   );
-  assert.strictEqual(r.values.bestEId, "19"); // income tertinggi = jaminan
+  assert.strictEqual(r.values.bestEId, "19"); // highest income = guarantee
   assert.strictEqual(r.values.bestGuaranteeEId, "19");
   assert.strictEqual(r.values.bestBonusEId, "2"); // 1.8m/race
   assert.strictEqual(r.values.bestPotentialEId, "2"); // 171k + 1.8m = 1.971m/race
   assert.strictEqual(r.values.alternativeEId, "2"); // trade-off bonus vs income
   assert.strictEqual(r.values.termRaces, 5);
-  assert.strictEqual(r.values.breakEvenP, 0.84); // 84% objektif agar eId2 unggul
+  assert.strictEqual(r.values.breakEvenP, 0.84); // 84% objective rate for eId2 to win
   const top = r.values.ranked[0];
   assert.strictEqual(top.income, 1600000);
   assert.strictEqual(top.guaranteeTotal, 8000000); // 1.6m × 5
@@ -504,7 +504,7 @@ t("rankSponsors cash: peringkat dari income (jaminan), bonus tunai jadi alternat
   assert.strictEqual(r.values.ranked[3].potentialTotal, 9855000); // 1.971m × 5
 });
 
-t("rankSponsors cash: term tidak mengubah peringkat (bonus per race), total ikut term", () => {
+t("rankSponsors cash: term does not change ranking (bonus per race), totals follow term", () => {
   const r1 = IGPCore.rankSponsors({ offers: SPONSOR_OFFERS, termRaces: 1 });
   const r5 = IGPCore.rankSponsors({ offers: SPONSOR_OFFERS, termRaces: 5 });
   assert.deepStrictEqual(
@@ -517,10 +517,10 @@ t("rankSponsors cash: term tidak mengubah peringkat (bonus per race), total ikut
   );
   assert.strictEqual(r1.values.ranked[0].guaranteeTotal, 1600000);
   assert.strictEqual(r5.values.ranked[0].guaranteeTotal, 8000000);
-  assert.strictEqual(r1.values.breakEvenP, 0.84); // per race, bukan per kontrak
+  assert.strictEqual(r1.values.breakEvenP, 0.84); // per race, not per contract
 });
 
-t("rankSponsors cash: term tak terbaca → total null, peringkat & break-even tetap jujur", () => {
+t("rankSponsors cash: term not read → totals null, ranking & break-even stay honest", () => {
   const r = IGPCore.rankSponsors({ offers: SPONSOR_OFFERS, termRaces: null });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.values.termRaces, null);
@@ -535,7 +535,7 @@ t("rankSponsors cash: term tak terbaca → total null, peringkat & break-even te
   assert.strictEqual(r.values.breakEvenP, 0.84);
 });
 
-t("rankSponsors cash: income kosong/nol dilewati, semua kosong → error jujur", () => {
+t("rankSponsors cash: empty/zero income skipped, all empty → honest error", () => {
   const r = IGPCore.rankSponsors({
     offers: [
       ...SPONSOR_OFFERS,
@@ -551,7 +551,7 @@ t("rankSponsors cash: income kosong/nol dilewati, semua kosong → error jujur",
   assert.strictEqual(IGPCore.rankSponsors({}).ok, false);
 });
 
-t("rankSponsors cash: income seri → potensi (bonus) lebih tinggi menang", () => {
+t("rankSponsors cash: income tie → higher potential (bonus) wins", () => {
   const r = IGPCore.rankSponsors({
     offers: [
       { eId: 1, income: 100000, bonus: 900000 },
@@ -565,11 +565,11 @@ t("rankSponsors cash: income seri → potensi (bonus) lebih tinggi menang", () =
     ["1", "2"]
   );
   assert.strictEqual(r.values.bestEId, "1");
-  assert.strictEqual(r.values.alternativeEId, null); // income sama → #1 sudah potensi terbaik
-  assert.strictEqual(r.values.breakEvenP, null); // tidak ada trade-off income
+  assert.strictEqual(r.values.alternativeEId, null); // same income → #1 already has the best potential
+  assert.strictEqual(r.values.breakEvenP, null); // no income trade-off
 });
 
-// Primary sponsor: income TOKEN, bonus tunai — jangan pernah dicampur.
+// Primary sponsor: TOKEN income, cash bonus — never mixed.
 const PRIMARY_EIDS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 19];
 const PRIMARY_TOKENS = [1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3];
 const PRIMARY_BONUS = [
@@ -582,20 +582,20 @@ const PRIMARY_OFFERS = PRIMARY_EIDS.map((eId, i) => ({
   bonus: PRIMARY_BONUS[i],
 }));
 
-t("rankSponsors token: token diutamakan, bonus tunai tie-break, tanpa total campur", () => {
+t("rankSponsors token: tokens first, cash bonus as tie-break, no mixed totals", () => {
   const r = IGPCore.rankSponsors({ offers: PRIMARY_OFFERS, termRaces: 5, incomeKind: "token" });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.values.incomeKind, "token");
-  assert.strictEqual(r.values.bestEId, "14"); // 3 token, bonus 612k (tertinggi di grup 3 token)
-  assert.strictEqual(r.values.bestBonusEId, "2"); // 1.8m tunai
-  assert.strictEqual(r.values.alternativeEId, "2"); // trade-off: bonus tunai tertinggi
-  assert.strictEqual(r.values.bestGuaranteeEId, null); // "jaminan cash" tidak berlaku
-  assert.strictEqual(r.values.bestPotentialEId, null); // bukan sumbu cash
-  assert.strictEqual(r.values.breakEvenP, null); // token vs cash tidak dibandingkan
+  assert.strictEqual(r.values.bestEId, "14"); // 3 tokens, bonus 612k (highest in the 3-token group)
+  assert.strictEqual(r.values.bestBonusEId, "2"); // 1.8m cash
+  assert.strictEqual(r.values.alternativeEId, "2"); // trade-off: highest cash bonus
+  assert.strictEqual(r.values.bestGuaranteeEId, null); // "cash guarantee" does not apply
+  assert.strictEqual(r.values.bestPotentialEId, null); // not a cash axis
+  assert.strictEqual(r.values.breakEvenP, null); // tokens vs cash are not compared
   const top = r.values.ranked[0];
   assert.strictEqual(top.tokens, 3);
   assert.strictEqual(top.guaranteeTotal, null);
-  assert.strictEqual(top.potentialTotal, null); // token × term + cash TIDAK dijumlahkan
+  assert.strictEqual(top.potentialTotal, null); // token × term + cash are NOT summed
   assert.deepStrictEqual(
     r.values.ranked.slice(0, 4).map(x => x.eId),
     ["14", "15", "17", "19"]
@@ -610,7 +610,7 @@ t("rankSponsors token: token diutamakan, bonus tunai tie-break, tanpa total camp
   );
 });
 
-t("rankSponsors token: token kosong/nol dilewati, semua kosong → error jujur", () => {
+t("rankSponsors token: empty/zero tokens skipped, all empty → honest error", () => {
   const r = IGPCore.rankSponsors({
     offers: [
       { eId: 1, tokens: 0, bonus: 900000 },
@@ -628,9 +628,9 @@ t("rankSponsors token: token kosong/nol dilewati, semua kosong → error jujur",
   );
 });
 
-/* ---------- parseTraits (v0.7.2 advisor, halaman Transfers) ---------- */
+/* ---------- parseTraits (v0.7.2 advisor, Transfers page) ---------- */
 
-t("parseTraits: block-green/block-red dan specialA1 terbaca, None dibuang", () => {
+t("parseTraits: reads block-green/block-red and specialA1, drops None", () => {
   const staffHtml =
     "<div class='px-1 py-0.5 block-green' style='min-height: 32px;'><icon>igp-tyre</icon> Tyre economy</div> " +
     "<div class='px-1 py-0.5 block-red' style='min-height: 32px;'><icon>igp-brake</icon> Braking</div>";
@@ -650,23 +650,23 @@ t("parseTraits: block-green/block-red dan specialA1 terbaca, None dibuang", () =
   assert.deepStrictEqual(IGPCore.parseTraits(null), { boost: [], weaken: [], special: [] });
 });
 
-/* ---------- perbandingan keputusan (v0.8.0) ---------- */
+/* ---------- decision comparison (v0.8.0) ---------- */
 
-t('numberVerdict: arah naik, toleransi "sama", sisi kosong = unknown', () => {
+t('numberVerdict: upward direction, "same" tolerance, empty side = unknown', () => {
   assert.strictEqual(IGPCore.numberVerdict(60, 54).verdict, "better");
   assert.strictEqual(IGPCore.numberVerdict(50, 54).verdict, "worse");
   assert.strictEqual(IGPCore.numberVerdict(54, 54).verdict, "equal");
-  // selisih 1% masih di dalam toleransi bawaan 2% → sama
+  // 1% difference is still within the default 2% tolerance → equal
   assert.strictEqual(IGPCore.numberVerdict(54.5, 54).verdict, "equal");
-  // 5% → keluar toleransi
+  // 5% → outside tolerance
   assert.strictEqual(IGPCore.numberVerdict(57, 54).verdict, "better");
-  // sisi kosong tidak pernah dikarang jadi angka
+  // empty sides are never invented into numbers
   assert.strictEqual(IGPCore.numberVerdict(null, 54).verdict, "unknown");
   assert.strictEqual(IGPCore.numberVerdict(54, "").verdict, "unknown");
   assert.strictEqual(IGPCore.numberVerdict(undefined, null).verdict, "unknown");
 });
 
-t("numberVerdict: lowerIsBetter untuk biaya (turun = lebih bagus)", () => {
+t("numberVerdict: lowerIsBetter for cost (down = better)", () => {
   assert.strictEqual(
     IGPCore.numberVerdict(40000, 49000, { lowerIsBetter: true }).verdict,
     "better"
@@ -678,13 +678,13 @@ t("numberVerdict: lowerIsBetter untuk biaya (turun = lebih bagus)", () => {
   assert.strictEqual(d.pct, 11.1);
 });
 
-t("numberVerdict: nol di sisi pembanding — tidak meledak, delta yang bicara", () => {
+t("numberVerdict: zero on the comparison side — no blow-up, delta speaks", () => {
   assert.strictEqual(IGPCore.numberVerdict(0, 0).verdict, "equal");
   assert.strictEqual(IGPCore.numberVerdict(5, 0).verdict, "better");
-  assert.strictEqual(IGPCore.numberVerdict(5, 0).pct, null); // basis 0 → persen tak bermakna
+  assert.strictEqual(IGPCore.numberVerdict(5, 0).pct, null); // base 0 → percentage is meaningless
 });
 
-t("compareRoster: driver roster vs pasar — sumbu rating menang, gaji ikut dilaporkan", () => {
+t("compareRoster: driver roster vs market — rating axis wins, wage also reported", () => {
   const r = IGPCore.compareRoster({
     current: [
       { key: "D1", name: "Syarif", role: "DRV", rating: 60, costPerRace: 100000 },
@@ -700,23 +700,23 @@ t("compareRoster: driver roster vs pasar — sumbu rating menang, gaji ikut dila
   assert.strictEqual(v.rows.length, 2);
   assert.strictEqual(v.rows[0].verdict, "better"); // 60 > 54
   assert.strictEqual(v.rows[0].basis, "rating");
-  assert.strictEqual(v.rows[0].refRating.name, "Breno"); // pembanding = rating tertinggi pasar
-  assert.strictEqual(v.rows[0].cost.verdict, "worse"); // gaji 100k > termurah 46k
-  assert.strictEqual(v.rows[0].refCost.name, "Luke"); // pembanding = gaji termurah
+  assert.strictEqual(v.rows[0].refRating.name, "Breno"); // reference = highest market rating
+  assert.strictEqual(v.rows[0].cost.verdict, "worse"); // wage 100k > cheapest 46k
+  assert.strictEqual(v.rows[0].refCost.name, "Luke"); // reference = cheapest wage
   assert.strictEqual(v.rows[1].verdict, "worse"); // 30 < 54
   assert.strictEqual(v.counts.better, 1);
   assert.strictEqual(v.counts.worse, 1);
   assert.strictEqual(v.counts.unknown, 0);
 });
 
-t("compareRoster: pembanding hanya dari peran yang sama (CD tidak dibanding driver)", () => {
+t("compareRoster: reference only from the same role (CD is not compared with drivers)", () => {
   const r = IGPCore.compareRoster({
     current: [
       { key: "C1", name: "Fanissa", role: "Chief Designer", rating: 41, costPerRace: 50000 },
     ],
     market: [
-      { key: "M1", name: "Breno", role: "DRV", rating: 99, costPerRace: 1000 }, // peran beda: diabaikan
-      { key: "M2", name: "Rosberg", role: "CD", rating: 40, costPerRace: 31000 }, // kode CD vs label "Chief Designer" tetap cocok
+      { key: "M1", name: "Breno", role: "DRV", rating: 99, costPerRace: 1000 }, // different role: ignored
+      { key: "M2", name: "Rosberg", role: "CD", rating: 40, costPerRace: 31000 }, // code CD vs label "Chief Designer" still matches
     ],
   });
   assert.strictEqual(r.ok, true);
@@ -724,10 +724,10 @@ t("compareRoster: pembanding hanya dari peran yang sama (CD tidak dibanding driv
   assert.strictEqual(row.role, "CD");
   assert.strictEqual(row.refRating.name, "Rosberg");
   assert.strictEqual(row.verdict, "better");
-  assert.strictEqual(r.values.marketCount, 2); // daftar penuh tetap dilaporkan
+  assert.strictEqual(r.values.marketCount, 2); // full list still reported
 });
 
-t("compareRoster: rating tak terbaca → jatuh ke sumbu biaya, sebabnya dilaporkan jujur", () => {
+t("compareRoster: rating not read → falls back to cost axis, reason reported honestly", () => {
   const r = IGPCore.compareRoster({
     current: [
       { key: "D1", name: "Syarif", role: "DRV", rating: null, costPerRace: 100000 },
@@ -736,32 +736,32 @@ t("compareRoster: rating tak terbaca → jatuh ke sumbu biaya, sebabnya dilapork
     market: [{ key: "M1", name: "Breno", role: "DRV", rating: null, costPerRace: 49000 }],
   });
   const v = r.values;
-  assert.strictEqual(v.rows[0].basis, "biaya");
+  assert.strictEqual(v.rows[0].basis, "cost");
   assert.strictEqual(v.rows[0].verdict, "worse"); // 100k > 49k
   assert.strictEqual(v.rows[0].rating.verdict, "unknown");
   assert.strictEqual(v.ratingUnknown, 2);
   assert.strictEqual(v.ratingKnown, 0);
 });
 
-t("compareRoster: kedua sumbu kosong → unknown, bukan tebakan", () => {
+t("compareRoster: both axes empty → unknown, not a guess", () => {
   const r = IGPCore.compareRoster({
-    current: [{ key: "X", name: "Tanpa Angka", role: "DR", rating: null, costPerRace: null }],
-    market: [{ key: "Y", name: "Pasar", role: "DR", rating: null, costPerRace: null }],
+    current: [{ key: "X", name: "No Numbers", role: "DR", rating: null, costPerRace: null }],
+    market: [{ key: "Y", name: "Market", role: "DR", rating: null, costPerRace: null }],
   });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.values.rows[0].verdict, "unknown");
-  assert.strictEqual(r.values.rows[0].basis, "tidak ada");
+  assert.strictEqual(r.values.rows[0].basis, "none");
   assert.strictEqual(r.values.counts.unknown, 1);
 });
 
-t("compareRoster: roster/pasar kosong → error jujur (bukan verdict palsu)", () => {
+t("compareRoster: empty roster/market → honest error (not a fake verdict)", () => {
   assert.strictEqual(IGPCore.compareRoster({ current: [], market: [{ name: "A" }] }).ok, false);
   assert.strictEqual(IGPCore.compareRoster({ current: [{ name: "A" }], market: [] }).ok, false);
   assert.strictEqual(IGPCore.compareRoster({}).ok, false);
   assert.ok(IGPCore.compareRoster({}).error.length > 3);
 });
 
-t("compareSuppliers: supplier aktif vs terbaik/termurah di dialog yang sama", () => {
+t("compareSuppliers: active supplier vs best/cheapest in the same dialog", () => {
   const r = IGPCore.compareSuppliers({
     current: {
       supplierId: 2,
@@ -802,10 +802,10 @@ t("compareSuppliers: supplier aktif vs terbaik/termurah di dialog yang sama", ()
   assert.strictEqual(v.cheapest.id, 1);
   assert.strictEqual(v.bonus.verdict, "worse"); // 4 < 6
   assert.strictEqual(v.cost.verdict, "worse"); // 500k > 350k
-  assert.strictEqual(v.basis, "bonus"); // sumbu bonus yang dipakai untuk verdict akhir
+  assert.strictEqual(v.basis, "bonus"); // bonus axis used for the final verdict
 });
 
-t("compareSuppliers: alternatif kosong / aktif tak terbaca → error jujur", () => {
+t("compareSuppliers: empty alternatives / active not read → honest error", () => {
   assert.strictEqual(
     IGPCore.compareSuppliers({ current: { supplierId: 2 }, alternatives: [] }).ok,
     false
@@ -813,17 +813,17 @@ t("compareSuppliers: alternatif kosong / aktif tak terbaca → error jujur", () 
   assert.strictEqual(IGPCore.compareSuppliers({ alternatives: [{ eId: 1 }] }).ok, false);
 });
 
-/* ---------- statIndex / roleCode (v0.8.0, helper adapter) ---------- */
+/* ---------- statIndex / roleCode (v0.8.0, adapter helpers) ---------- */
 
-t("statIndex: rata-rata 12 angka CSV; CSV pendek → null (tidak dikarang)", () => {
+t("statIndex: average of 12 CSV numbers; short CSV → null (not invented)", () => {
   assert.strictEqual(Utils.statIndex("10,10,10,10,10,10,10,10,10,10,10,10,99,1,2"), 10);
   assert.strictEqual(Utils.statIndex("1,2,3,4,5,6,7,8,9,10,11,12"), 6.5);
-  assert.strictEqual(Utils.statIndex("40,40,40,40,54"), null); // hanya 5 angka (data-staff)
+  assert.strictEqual(Utils.statIndex("40,40,40,40,54"), null); // only 5 numbers (staff data)
   assert.strictEqual(Utils.statIndex(""), null);
   assert.strictEqual(Utils.statIndex(null), null);
 });
 
-t("roleCode: label & kode peran ternormalisasi agar roster/pasar sebanding", () => {
+t("roleCode: role labels & codes normalized so roster/market are comparable", () => {
   assert.strictEqual(Utils.roleCode("Chief Designer"), "CD");
   assert.strictEqual(Utils.roleCode("CD"), "CD");
   assert.strictEqual(Utils.roleCode("Technical Director"), "TD");
@@ -832,9 +832,9 @@ t("roleCode: label & kode peran ternormalisasi agar roster/pasar sebanding", () 
   assert.strictEqual(Utils.roleCode(""), null);
 });
 
-/* ---------- regresi v0.8.4: null bukan 0 (kalkulator jujur) ---------- */
+/* ---------- v0.8.4 regression: null is not 0 (honest calculator) ---------- */
 
-t("numOrNull: spasi kosong → null; angka 0 tetap 0", () => {
+t("numOrNull: blank whitespace → null; the number 0 stays 0", () => {
   assert.strictEqual(Utils.numOrNull("   "), null);
   assert.strictEqual(Utils.numOrNull(""), null);
   assert.strictEqual(Utils.numOrNull(null), null);
@@ -842,7 +842,7 @@ t("numOrNull: spasi kosong → null; angka 0 tetap 0", () => {
   assert.strictEqual(Utils.numOrNull(0), 0);
 });
 
-t("calcFuel: field kosong → ok:false (bukan '0 L')", () => {
+t("calcFuel: empty field → ok:false (not '0 L')", () => {
   assert.strictEqual(
     IGPCore.calcFuel({
       lapsRemaining: null,
@@ -866,7 +866,7 @@ t("calcFuel: field kosong → ok:false (bukan '0 L')", () => {
   );
 });
 
-t("projectTireWear/lapsToThreshold: field kosong → ok:false", () => {
+t("projectTireWear/lapsToThreshold: empty field → ok:false", () => {
   assert.strictEqual(
     IGPCore.projectTireWear({ currentWearPct: null, wearPerLapPct: 2, lapsCount: 5 }).ok,
     false
@@ -881,7 +881,7 @@ t("projectTireWear/lapsToThreshold: field kosong → ok:false", () => {
   );
 });
 
-t("pitWindow/stintSplit/strategyRecommendation: null & negatif ditolak", () => {
+t("pitWindow/stintSplit/strategyRecommendation: null & negative rejected", () => {
   assert.strictEqual(IGPCore.pitWindow({ lapsLeftOnFuel: null, reserveLaps: 0 }).ok, false);
   assert.strictEqual(IGPCore.pitWindow({ lapsLeftOnFuel: 10, reserveLaps: -1 }).ok, false);
   assert.strictEqual(IGPCore.pitWindow({ lapsLeftOnFuel: 10, marginLaps: -2 }).ok, false);
@@ -895,16 +895,16 @@ t("pitWindow/stintSplit/strategyRecommendation: null & negatif ditolak", () => {
   );
 });
 
-t("compareRoster: role tak terbaca tidak dibandingkan lintas peran", () => {
+t("compareRoster: unreadable role is not compared across roles", () => {
   const r = IGPCore.compareRoster({
     current: [{ name: "X", role: null, rating: 50 }],
-    market: [{ name: "Mekanik", role: "mechanic", rating: 99 }],
+    market: [{ name: "Mechanic", role: "mechanic", rating: 99 }],
   });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.values.rows[0].verdict, "unknown");
 });
 
-t("designPriority: designPoints null → null (bukan 0 DP)", () => {
+t("designPriority: designPoints null → null (not 0 DP)", () => {
   const r = IGPCore.designPriority({
     attrs: { a: { val: 10 } },
     best: { a: { max: 20 } },
@@ -919,7 +919,7 @@ t("designPriority: designPoints null → null (bukan 0 DP)", () => {
   assert.strictEqual(z.values.designPoints, 0);
 });
 
-t("repairAdvice: parts 30% fix sekarang, engine 62% tunda replace", () => {
+t("repairAdvice: parts 30% fix now, engine 62% defer replace", () => {
   const r = IGPCore.repairAdvice({
     condition: "30",
     engine: "62",
@@ -942,7 +942,7 @@ t("repairAdvice: parts 30% fix sekarang, engine 62% tunda replace", () => {
   assert.deepStrictEqual(r.values.thresholds, { now: 50, soon: 60 });
 });
 
-t("repairAdvice: batas ambang 50/60 dan stok kurang", () => {
+t("repairAdvice: 50/60 threshold boundaries and low stock", () => {
   const at = v => IGPCore.repairAdvice({ condition: v, partsStock: 10, partCost: 6 }).values.parts;
   assert.strictEqual(at(50).status, "now");
   assert.strictEqual(at(51).status, "soon");
@@ -956,7 +956,7 @@ t("repairAdvice: batas ambang 50/60 dan stok kurang", () => {
   assert.strictEqual(short.enough, false);
 });
 
-t("repairAdvice: data tak terbaca tidak dikarang", () => {
+t("repairAdvice: unreadable data is not invented", () => {
   assert.strictEqual(IGPCore.repairAdvice({}).ok, false);
   assert.strictEqual(IGPCore.repairAdvice({ condition: 101 }).ok, false);
   const r = IGPCore.repairAdvice({ condition: 30, engine: null });
@@ -964,7 +964,7 @@ t("repairAdvice: data tak terbaca tidak dikarang", () => {
   assert.strictEqual(r.values.engine.value, null);
   assert.strictEqual(r.values.engine.status, "unknown");
   assert.strictEqual(r.values.engine.enough, null);
-  assert.strictEqual(r.values.parts.enough, null); // biaya & stok tidak terbaca
+  assert.strictEqual(r.values.parts.enough, null); // cost & stock not read
 });
 
-console.log("\nSemua " + n + " test lulus ✔");
+console.log("\nAll " + n + " tests passed ✔");

@@ -1,29 +1,29 @@
 ---
 name: Bug report
-about: Laporkan bug / regresi
+about: Report a bug / regression
 labels: [bug]
 ---
 
-## Deskripsi
+## Description
 
-<!-- Apa yang terjadi vs yang diharapkan -->
+<!-- What happened vs what was expected -->
 
-## Langkah reproduksi
+## Reproduction steps
 
 1.
 2.
 3.
 
-## Lingkungan
+## Environment
 
-- Versi userscript (`@version`):
+- Userscript version (`@version`):
 - Browser + Tampermonkey/Violentmonkey:
-- Halaman iGP (`#pageId` / dialog):
+- iGP page (`#pageId` / dialog):
 
-## Log / Evidence
+## Logs / Evidence
 
-<!-- Console, screenshot, atau potongan DOM (harap redact PII) -->
+<!-- Console, screenshot, or DOM snippet (please redact PII) -->
 
 ## Checklist
 
-- [ ] Sudah coba `npm run verify` / `npm test` lokal bila terkait code
+- [ ] Already tried `npm run verify` / `npm test` locally when code-related

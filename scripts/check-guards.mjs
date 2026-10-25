@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// check-guards.mjs — gerbang kepatuhan userscript.
-//  - setiap GM_* yang dipakai WAJIB punya @grant yang cocok (bug nyata: menu
-//    capture v0.7.1 memanggil GM_registerMenuCommand tanpa @grant);
-//  - @match dibatasi allowlist: userscript tidak boleh disuntik ke sembarang
-//    domain (hanya igpmanager.com; web GUI/deploy sudah dihapus di v0.9.0);
-//  - tidak boleh ada jalur jaringan / eksekusi dinamis / remote code:
+// check-guards.mjs — userscript compliance gate.
+//  - every GM_* used MUST have a matching @grant (real bug: the v0.7.1
+//    capture menu called GM_registerMenuCommand without @grant);
+//  - @match is restricted to an allowlist: the userscript must not be injected
+//    into arbitrary domains (only igpmanager.com; web GUI/deploy was removed in v0.9.0);
+//  - there must be no network path / dynamic execution / remote code:
 //    fetch, XHR, sendBeacon, WebSocket, EventSource, dynamic import,
 //    @require, @resource, @connect, @updateURL;
-//  - userscript tidak boleh memakai eval/unsafeWindow/document.write.
-// Dijalankan oleh `npm run verify`, bukan hanya CI, agar drift lokal tertangkap.
+//  - the userscript must not use eval/unsafeWindow/document.write.
+// Run by `npm run verify`, not just CI, so local drift is caught.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -18,19 +18,19 @@ const SRC_DIR = path.join(ROOT, "src");
 
 const errors = [];
 const files = fs.readdirSync(SRC_DIR).filter(f => f.endsWith(".user.js"));
-if (!files.length) errors.push("src/: tidak ada *.user.js");
+if (!files.length) errors.push("src/: no *.user.js files");
 
-// Allowlist @match — perubahan harus disengaja dan di-review.
+// @match allowlist — changes must be intentional and reviewed.
 const ALLOWED_MATCH = [/^https:\/\/igpmanager\.com\/\*$/, /^https:\/\/\*\.igpmanager\.com\/\*$/];
 
-// Metadata yang bisa menarik kode/endpoint eksternal saat update.
+// Metadata that can pull external code/endpoints on update.
 const FORBIDDEN_META = ["@require", "@resource", "@connect", "@updateURL", "@downloadURL", "@icon"];
 
 for (const file of files) {
   const txt = fs.readFileSync(path.join(SRC_DIR, file), "utf8");
   const headerEnd = txt.indexOf("==/UserScript==");
   if (headerEnd < 0) {
-    errors.push(`${file}: header ==/UserScript== tidak ditemukan`);
+    errors.push(`${file}: ==/UserScript== header not found`);
     continue;
   }
   const header = txt.slice(0, headerEnd);
@@ -39,23 +39,23 @@ for (const file of files) {
   const granted = new Set([...header.matchAll(/@grant\s+(GM_\w+)/g)].map(m => m[1]));
   const used = new Set([...body.matchAll(/\b(GM_\w+)\b/g)].map(m => m[1]));
   for (const g of used) {
-    if (!granted.has(g)) errors.push(`${file}: memakai ${g} tanpa @grant ${g}`);
+    if (!granted.has(g)) errors.push(`${file}: uses ${g} without @grant ${g}`);
   }
 
   const matches = [...header.matchAll(/@match\s+(\S+)/g)].map(m => m[1]);
-  if (!matches.length) errors.push(`${file}: tidak ada @match`);
+  if (!matches.length) errors.push(`${file}: no @match`);
   for (const m of matches) {
     if (!ALLOWED_MATCH.some(re => re.test(m))) {
-      errors.push(`${file}: @match tidak diizinkan: ${m}`);
+      errors.push(`${file}: @match not allowed: ${m}`);
     }
   }
   if (!matches.some(m => /igpmanager\.com/.test(m))) {
-    errors.push(`${file}: @match wajib mencakup igpmanager.com`);
+    errors.push(`${file}: @match must cover igpmanager.com`);
   }
 
   for (const meta of FORBIDDEN_META) {
     if (new RegExp("^\\s*//\\s*" + meta + "\\b", "m").test(header)) {
-      errors.push(`${file}: ${meta} dilarang (remote code/endpoint)`);
+      errors.push(`${file}: ${meta} is forbidden (remote code/endpoint)`);
     }
   }
 
@@ -72,7 +72,7 @@ for (const file of files) {
   ];
   for (const [label, re] of forbidden) {
     if (re.test(body)) {
-      errors.push(`${file}: mengandung ${label} — harus 0 (lihat docs/PRIVACY.md)`);
+      errors.push(`${file}: contains ${label} — must be 0 (see docs/PRIVACY.md)`);
     }
   }
 }
@@ -81,4 +81,4 @@ if (errors.length) {
   for (const e of errors) console.error("  ✗ " + e);
   process.exit(1);
 }
-console.log("Guards OK: @grant lengkap, @match allowlist, tanpa network/eval/remote code");
+console.log("Guards OK: @grant complete, @match allowlist, no network/eval/remote code");

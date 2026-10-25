@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 22 = minimum yang didukung jsdom 30 (^22.22.2); 24 = versi dev (.nvmrc).
+        # 22 = minimum supported by jsdom 30 (^22.22.2); 24 = dev version (.nvmrc).
         node-version: [22, 24]
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +33,7 @@ jobs:
       - name: Install deps (npm ci)
         run: npm ci
 
-      # Satu gerbang tunggal: syntax + lint + format + versions + guards + tests.
-      # Jumlah test sengaja tidak di-hardcode di sini (drift berulang).
+      # One single gate: syntax + lint + format + versions + guards + tests.
+      # The test count is deliberately not hardcoded here (it drifted repeatedly).
       - name: Verify (syntax + lint + format + versions + guards + tests)
         run: npm run verify

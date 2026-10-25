@@ -1,8 +1,8 @@
 # Contributing — I.G.P.A.S
 
-> Alat **studi read-only**, bukan alat balapan. Jangan kirim perubahan yang
-> menambah otomasi, klik/submit, jaringan, atau yang menulis ke tab `#race`
-> live. Repo ini hanya berisi userscript — tidak ada web GUI/deploy.
+> A **read-only study tool**, not a racing tool. Do not submit changes that
+> add automation, clicks/submits, networking, or that write to the live
+> `#race` tab. This repo contains only a userscript — no web GUI/deploy.
 
 ## Quick start
 
@@ -11,66 +11,65 @@ npm install
 npm run verify   # syntax + lint + format:check + versions:check + guards:check + test
 ```
 
-Butuh Node ≥ 22.22.2 (lihat `.nvmrc`).
+Requires Node ≥ 22.22.2 (see `.nvmrc`).
 
-## Quality gate (wajib hijau sebelum PR)
+## Quality gate (must be green before a PR)
 
-| Gate         | Perintah                 | Catatan                                                              |
+| Gate         | Command                  | Notes                                                                |
 | ------------ | ------------------------ | -------------------------------------------------------------------- |
 | Syntax       | `npm run syntax`         | `node --check src/igpas.user.js`                                     |
 | Lint         | `npm run lint`           | `eslint .` (fix: `npm run lint:fix`)                                 |
 | Format       | `npm run format:check`   | `prettier --check .` (fix: `npm run format`)                         |
 | Version sync | `npm run versions:check` | source: `package.json` → `@version` + `const VERSION` + README badge |
-| Guards       | `npm run guards:check`   | `@match` hanya igpmanager.com + 0 network/eval/remote code           |
+| Guards       | `npm run guards:check`   | `@match` only igpmanager.com + 0 network/eval/remote code            |
 | Tests        | `npm test`               | 110 tests (72 core + 8 capture + 30 advisor)                         |
 
-CI (`.github/workflows/ci.yml`) menjalankan `npm run verify` di Node 22 **dan** 24. Guard menolak `fetch`/XHR/`sendBeacon`/WebSocket/EventSource/dynamic
-import/`eval`/`unsafeWindow`, `@require`/`@connect`, dan `@match` di luar
-allowlist.
+CI (`.github/workflows/ci.yml`) runs `npm run verify` on Node 22 **and** 24. Guards reject
+`fetch`/XHR/`sendBeacon`/WebSocket/EventSource/dynamic import/`eval`/`unsafeWindow`,
+`@require`/`@connect`, and `@match` outside the allowlist.
 
-## Struktur repo
+## Repository structure
 
 ```
-src/igpas.user.js          userscript utama — TANPA build step
-test/                      Node + jsdom (tanpa framework)
-  fixtures/*.html          DOM capture tersanitasi (PII/script dibuang)
-  core.test.js             unit test IGPCore/Utils
-  capture.test.js          redaksi PageCapture
-  advisor.test.js          advisor in-place vs fixture DOM nyata
+src/igpas.user.js          main userscript — NO build step
+test/                      Node + jsdom (no framework)
+  fixtures/*.html          sanitised DOM captures (PII/scripts stripped)
+  core.test.js             IGPCore/Utils unit tests
+  capture.test.js          PageCapture redaction
+  advisor.test.js          in-place advisor vs real fixture DOM
 docs/
-  ARCHITECTURE.md          komponen, alur data, disiplin DOM
-  PRIVACY.md               data, redaksi, risiko ToS
-scripts/check-versions.mjs sinkronisasi versi
+  ARCHITECTURE.md          components, data flow, DOM discipline
+  PRIVACY.md               data, redaction, ToS risk
+scripts/check-versions.mjs version sync
 scripts/check-guards.mjs   allowlist + anti network/remote code
 ```
 
-**Kenapa tanpa build?** Userscript instal via copy-paste / raw GitHub — build
-step menambah drift & risiko supply-chain. Satu file = audit paling mudah.
+**Why no build?** Userscripts install via copy-paste / raw GitHub — a build step adds drift &
+supply-chain risk. One file = easiest audit.
 
-## Menambah dukungan halaman baru
+## Adding support for a new page
 
-1. Capture DOM via menu userscript `I.G.P.A.S: salin capture DOM halaman ini`
-   (redaksi PII otomatis) — simpan sebagai `test/fixtures/<halaman>.html`.
-2. Tambah parser read-only `Igp<X>Adapter.captures(document)` dengan gate
-   `#pageId`/dialog; jangan menyimpan atau mengirim data.
-3. Tambah tulisan in-place di `Advisor` (teks + `title` pada node asli),
-   lengkap dengan `restore*()` yang menyimpan `data-igpas-orig` /
-   `data-igpas-written` dan tidak menimpa teks yang sudah diganti game.
-4. Tambah test di `test/advisor.test.js` (jsdom) — termasuk cek restore,
-   idempotensi, dan zero-UI di halaman lain / `#race`.
-5. Jangan pernah: `click`/`submit`/`fetch`/`GM_xmlhttpRequest`/`unsafeWindow`,
-   `GM_setValue` (storage sudah dihapus), atau menulis ke `#race`.
+1. Capture the DOM via the userscript menu `I.G.P.A.S: copy capture of this page's DOM`
+   (automatic PII redaction) — save it as `test/fixtures/<page>.html`.
+2. Add a read-only parser `Igp<X>Adapter.captures(document)` with a `#pageId`/dialog gate; do not
+   store or send data.
+3. Add in-place writes in `Advisor` (text + `title` on the original node), complete with
+   `restore*()` that stores `data-igpas-orig` / `data-igpas-written` and does not overwrite text
+   already replaced by the game.
+4. Add tests in `test/advisor.test.js` (jsdom) — including restore checks, idempotence, and
+   zero-UI on other pages / `#race`.
+5. Never: `click`/`submit`/`fetch`/`GM_xmlhttpRequest`/`unsafeWindow`, `GM_setValue` (storage has
+   been removed), or write to `#race`.
 
-## Konvensi
+## Conventions
 
 - Commit: `type(scope): desc` — `feat`, `fix`, `docs`, `chore`, `test`, `ci`.
-- Versi: bump `package.json` → sinkronkan `@version` + `const VERSION` + badge
-  README (dicek `scripts/check-versions.mjs`).
-- Format: `prettier` (LF, 100 cols), lint: `eslint` flat config, editor:
-  `.editorconfig`.
-- Lisensi: `GPL-3.0-or-later` — jangan commit aset/logo iGP.
+- Version: bump `package.json` → sync `@version` + `const VERSION` + README badge (checked by
+  `scripts/check-versions.mjs`).
+- Format: `prettier` (LF, 100 cols), lint: `eslint` flat config, editor: `.editorconfig`.
+- License: `GPL-3.0-or-later` — do not commit iGP assets/logos.
 
 ## PR checklist
 
-Lihat `.github/pull_request_template.md`. PR harus lulus `npm run verify`;
-tidak ada lagi deploy Pages.
+See `.github/pull_request_template.md`. PRs must pass `npm run verify`; there is no longer a Pages
+deploy.

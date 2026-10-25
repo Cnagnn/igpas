@@ -13,13 +13,13 @@ export default [
       sourceType: "script",
       globals: {
         ...globals.browser,
-        // Tampermonkey / Greasemonkey grants (v0.9.0: tanpa GM storage)
+        // Tampermonkey / Greasemonkey grants (v0.9.0: no GM storage)
         GM_setClipboard: "readonly",
         GM_registerMenuCommand: "readonly",
         GM_notification: "readonly",
         GM_xmlhttpRequest: "readonly",
         unsafeWindow: "readonly",
-        // Blok ekspor untuk tes Node (tidak aktif di browser — module undefined).
+        // Export block for the Node tests (inactive in the browser — module is undefined).
         module: "readonly",
       },
     },
@@ -28,6 +28,8 @@ export default [
       "no-undef": "error",
       "no-eval": "error",
       "no-implied-eval": "error",
+      // Empty catch blocks are deliberate: a failed restore must never break the game page.
+      "no-empty": ["error", { allowEmptyCatch: true }],
       eqeqeq: ["warn", "smart"],
       curly: ["warn", "multi-line"],
       "no-var": "warn",
@@ -53,7 +55,7 @@ export default [
     languageOptions: { sourceType: "module" },
   },
   {
-    // Skrip Node (ESM): check-versions.mjs — butuh global console/process.
+    // Node script (ESM): check-versions.mjs — needs the console/process globals.
     files: ["scripts/**/*.mjs"],
     languageOptions: {
       ecmaVersion: "latest",

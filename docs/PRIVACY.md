@@ -1,79 +1,78 @@
-# PRIVACY & RISIKO — I.G.P.A.S
+# PRIVACY & RISK — I.G.P.A.S
 
-Berlaku untuk v0.11.0. Ringkas dan faktual: apa yang tidak dilakukan userscript,
-apa yang disunting saat capture, dan risiko apa yang tetap ada.
+Applies to v0.12.0. Concise and factual: what the userscript does not do,
+what is redacted during capture, and what risks remain.
 
-## 1. Tidak ada jaringan
+## 1. No network
 
-Userscript **tidak** memanggil `fetch`, XHR, `sendBeacon`, WebSocket,
-EventSource, `import()` dinamis, atau `@require`/`@connect`. Dijaga otomatis
-oleh `scripts/check-guards.mjs` di `npm run verify` dan CI.
+The userscript **does not** call `fetch`, XHR, `sendBeacon`, WebSocket,
+EventSource, dynamic `import()`, or `@require`/`@connect`. Enforced automatically
+by `scripts/check-guards.mjs` in `npm run verify` and CI.
 
-Tidak ada server I.G.P.A.S. Tidak ada telemetri. Tidak ada akun.
+There is no I.G.P.A.S server. No telemetry. No accounts.
 
-## 2. Tidak ada penyimpanan data
+## 2. No data storage
 
-Sejak v0.9.0 userscript **tidak memakai GM storage** (`GM_getValue`,
-`GM_setValue`, `GM_deleteValue`, `GM_listValues` sudah dihapus, termasuk
-grant-nya). Tidak ada snapshot, profil, mailbox, atau heartbeat.
+Since v0.9.0 the userscript **does not use GM storage** (`GM_getValue`,
+`GM_setValue`, `GM_deleteValue`, `GM_listValues` have been removed, including
+their grants). There is no snapshot, profile, mailbox, or heartbeat.
 
-- Advisor hanya menulis **teks/`title`/warna tombol sementara** pada elemen
-  asli halaman dan **me-restore**-nya otomatis; tidak ada salinan yang
-  dipersistenkan.
-- Clipboard hanya terisi ketika Anda sendiri memilih menu **"salin capture DOM
-  halaman ini"**. Tidak ada penyalinan/pengiriman otomatis.
+- The advisor only writes **temporary text/`title`/button colour** on the
+  page's original elements and **restores** them automatically; no persisted
+  copy exists.
+- The clipboard is filled only when you yourself choose the **"copy capture of
+  this page's DOM"** menu. There is no automatic copying/sending.
 
-## 3. Capture DOM (`salin capture`)
+## 3. Capture DOM (`copy capture`)
 
-Fitur ini menyalin DOM halaman ke clipboard untuk pemetaan fixture. Hasilnya
-**dirancang untuk ditempel ke issue/PR publik**, jadi redaksi bersifat
-konservatif:
+This feature copies the page DOM to the clipboard for fixture mapping. The
+result is **designed to be pasted into public issues/PRs**, so redaction is
+conservative:
 
-Dibuang/diredaksi:
+Removed/redacted:
 - `<meta>`, `<link>`, `<base>`, `<template>`, `<iframe>`, `<object>`, `<embed>`,
-  `<script>` eksekutabel, komentar HTML, dan atribut `srcdoc`/`on*`;
-- nilai PII yang dikenal dari halaman (nama manajer, saldo, token, rank) di
-  **seluruh** teks dan atribut — termasuk `aria-label`, `alt`, `src`, `style`;
-- isi field sensitif (input/textarea), email, dan string token panjang
-  (32+ hex / 40+ alfanumerik) di teks, atribut, URL, dan JSON;
-- kunci JSON sensitif (`csrf`, `token`, `session`, `auth`, `password`,
+  executable `<script>`, HTML comments, and `srcdoc`/`on*` attributes;
+- known PII values from the page (manager name, balance, tokens, rank) in
+  **all** text and attributes — including `aria-label`, `alt`, `src`, `style`;
+- sensitive field contents (input/textarea), emails, and long token strings
+  (32+ hex / 40+ alphanumeric) in text, attributes, URLs, and JSON;
+- sensitive JSON keys (`csrf`, `token`, `session`, `auth`, `password`,
   `secret`, `apiKey`, `email`, `manager`, `username`);
-- parameter URL identitas (`manager`, `uid`, `userid`, `account`, `profile`,
-  `email`, `username`, token/csrf/session/auth/key); semua `id=` dalam konteks
-  `p=manager`/`page=manager` (profil akun/pemain);
-- path avatar/akun `/img/user/<id>/…` dan `/av/<id>…`;
-- atribut pelacak `data-sharkid`, `visitor`, `tracker`, `analytics`,
+- identity URL parameters (`manager`, `uid`, `userid`, `account`, `profile`,
+  `email`, `username`, token/csrf/session/auth/key); all `id=` in the context
+  of `p=manager`/`page=manager` (account/player profile);
+- avatar/account paths `/img/user/<id>/…` and `/av/<id>…`;
+- tracker attributes `data-sharkid`, `visitor`, `tracker`, `analytics`,
   `fingerprint`, `device`;
-- `id` level atas pada script bootstrap identitas (`userBootstrap` dsb.).
+- top-level `id` on identity bootstrap scripts (`userBootstrap` etc.).
 
-**Sisa risiko yang disengaja** (periksa sendiri sebelum menempel di publik):
-- nama manajer pihak ketiga / nama tim yang tampil sebagai data permainan
-  (tidak bisa dibedakan dari data game lain tanpa merusak fixture);
-- ID permainan yang memang dibutuhkan fixture (mis. `id` supplier/brand,
-  `data-driver`, id mobil) — bukan identitas akun;
-- ID panjang yang bukan token (mis. hash aset) — bisa jadi `[REDACTED]` dan
-  membuat sebagian fixture kurang informatif.
+**Intentionally residual risk** (check yourself before pasting in public):
+- third-party manager names / team names displayed as game data
+  (cannot be distinguished from other game data without breaking fixtures);
+- game IDs genuinely needed by fixtures (e.g. supplier/brand `id`,
+  `data-driver`, car id) — not account identities;
+- long IDs that are not tokens (e.g. asset hashes) — may become `[REDACTED]`
+  and make part of a fixture less informative.
 
-Untuk fixture, gunakan capture dari halaman **studi** (bukan halaman profil)
-dan buang ID unik sebelum menempel.
+For fixtures, use captures from **study** pages (not profile pages)
+and remove unique IDs before pasting.
 
-## 4. Tidak ada GUI web / mailbox
+## 4. No web GUI / mailbox
 
-Web Command Center, GitHub Pages, dan mailbox antar-tab sudah dihapus di
-v0.9.0. Userscript hanya berjalan di `igpmanager.com` dan tidak berkomunikasi
-dengan tab lain. Implementasi lama tetap ada di riwayat git (tag `v0.8.6`)
-tetapi tidak lagi dipelihara atau didistribusikan.
+The Web Command Center, GitHub Pages, and cross-tab mailbox were removed in
+v0.9.0. The userscript runs only on `igpmanager.com` and does not communicate
+with other tabs. The old implementation remains in git history (tag `v0.8.6`)
+but is no longer maintained or distributed.
 
-## 5. Risiko ToS
+## 5. ToS risk
 
-I.G.P.A.S adalah alat studi read-only: tidak mengklik, tidak submit, tidak
-mengotomasi balapan. Advisor menulis ulang teks/`title`/warna tombol pada elemen asli game
-(ToS § V.J tentang scripts). Risiko interpretasi Terms of Service iGP Manager
-sepenuhnya ditanggung pengguna. Jika ragu, jangan pasang userscript saat
-balapan live.
+I.G.P.A.S is a read-only study tool: it does not click, submit, or
+automate races. The advisor rewrites text/`title`/button colours on original game
+elements (ToS § V.J on scripts). The risk of interpreting iGP Manager's Terms of
+Service rests entirely with the user. If in doubt, do not install the userscript
+during a live race.
 
-## 6. Melaporkan masalah privasi
+## 6. Reporting a privacy issue
 
-Buka issue di <https://github.com/Cnagnn/igpas/issues> dengan label `security`
-dan sertakan langkah reproduksi **tanpa** data pribadi asli (gunakan nama/ID
-palsu).
+Open an issue at <https://github.com/Cnagnn/igpas/issues> with the `security` label
+and include reproduction steps **without** real personal data (use fake names/IDs).

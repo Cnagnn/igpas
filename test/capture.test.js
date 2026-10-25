@@ -1,7 +1,7 @@
-// Test redaksi PageCapture (jsdom) — I.G.P.A.S v0.8.5.
-// Tujuan: capture DOM untuk pemetaan fixture TIDAK boleh membawa kredensial,
-// email, token, atau identitas manajer — termasuk lewat meta/template/iframe,
-// komentar, JSON inline, dan nilai atribut. Data permainan harus tetap utuh.
+// PageCapture redaction tests (jsdom) — I.G.P.A.S v0.8.5.
+// Goal: capturing the DOM for fixture mapping MUST NOT carry credentials,
+// email, tokens, or manager identity — including via meta/template/iframe,
+// comments, inline JSON, and attribute values. Game data must stay intact.
 const { JSDOM } = require("jsdom");
 const { PageCapture } = require("../src/igpas.user.js");
 
@@ -18,7 +18,7 @@ function t(name, fn) {
   }
 }
 function assert(cond, msg) {
-  if (!cond) throw new Error(msg || "assert gagal");
+  if (!cond) throw new Error(msg || "assert failed");
 }
 function capture(html) {
   const dom = new JSDOM(html);
@@ -33,7 +33,7 @@ const hostile = `<!doctype html><html><head>
 <script type="application/json" id="leagueDesignData">{"speed":85,"manager":"LEAKJSONMANAGER","token":"LEAKJSONTOKEN","email":"leak.json@example.com","nested":{"csrf":"LEAKNEST","value":7}}</script>
 <script type="application/json" id="brokenJson">{not json leak.broken@example.com}</script>
 </head><body>
-<!-- komentar LEAKCOMMENT leak.comment@example.com -->
+<!-- comment LEAKCOMMENT leak.comment@example.com -->
 <template><div data-token="LEAKTEMPLATE">x</div></template>
 <iframe srcdoc="<p>LEAKSRCDOC leak.srcdoc@example.com</p>"></iframe>
 <div id="myProfileName">LEAKPROFILE</div>
@@ -48,7 +48,7 @@ const hostile = `<!doctype html><html><head>
 <div class="w-[calc(100%-40px)]" id="keep-me" data-tip="Speed: +2">ok</div>
 </body></html>`;
 
-t("capture: kredensial & identitas yang dikenal tidak lolos", () => {
+t("capture: known credentials & identity do not leak", () => {
   const out = capture(hostile);
   const leaks = [
     "LEAKMETA1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6",
@@ -72,51 +72,51 @@ t("capture: kredensial & identitas yang dikenal tidak lolos", () => {
     "LEAKTEXTAREA",
   ];
   for (const leak of leaks) {
-    assert(out.indexOf(leak) === -1, "nilai sensitif lolos: " + leak);
+    assert(out.indexOf(leak) === -1, "sensitive value leaked: " + leak);
   }
 });
 
-t("capture: email tidak lolos dalam bentuk apa pun", () => {
+t("capture: email does not leak in any form", () => {
   const out = capture(hostile);
-  assert(!/@example\.com/.test(out), "email masih ada di capture");
+  assert(!/@example\.com/.test(out), "email is still present in the capture");
 });
 
-t("capture: elemen berisiko dibuang (meta/link/base/template/iframe)", () => {
+t("capture: risky elements are dropped (meta/link/base/template/iframe)", () => {
   const out = capture(hostile);
   for (const tag of ["<meta", "<link", "<base", "<template", "<iframe"]) {
-    assert(out.toLowerCase().indexOf(tag) === -1, "elemen " + tag + " masih ada");
+    assert(out.toLowerCase().indexOf(tag) === -1, "element " + tag + " is still present");
   }
 });
 
-t("capture: script eksekutabel dibuang, script JSON dipertahankan", () => {
+t("capture: executable scripts are dropped, JSON scripts are kept", () => {
   const out = capture(hostile);
-  assert(out.indexOf("LEAKSCRIPTEXEC") === -1, "script eksekutabel ikut tersalin");
-  assert(out.indexOf('id="leagueDesignData"') !== -1, "script JSON fixture hilang");
+  assert(out.indexOf("LEAKSCRIPTEXEC") === -1, "executable script was copied");
+  assert(out.indexOf('id="leagueDesignData"') !== -1, "fixture JSON script is missing");
 });
 
-t("capture: data permainan utuh (angka, id, class, data-tip)", () => {
+t("capture: game data intact (numbers, id, class, data-tip)", () => {
   const out = capture(hostile);
-  assert(out.indexOf('"speed":85') !== -1, "angka JSON berubah");
-  assert(out.indexOf('id="d1AdvancedFuel"') !== -1, "input game hilang");
-  assert(out.indexOf('value="32"') !== -1, "nilai input game berubah");
-  assert(out.indexOf("w-[calc(100%-40px)]") !== -1, "class struktural berubah");
-  assert(out.indexOf('data-tip="Speed: +2"') !== -1, "data-tip fixture berubah");
-  assert(out.indexOf('id="keep-me"') !== -1, "id fixture hilang");
+  assert(out.indexOf('"speed":85') !== -1, "JSON number changed");
+  assert(out.indexOf('id="d1AdvancedFuel"') !== -1, "game input is missing");
+  assert(out.indexOf('value="32"') !== -1, "game input value changed");
+  assert(out.indexOf("w-[calc(100%-40px)]") !== -1, "structural class changed");
+  assert(out.indexOf('data-tip="Speed: +2"') !== -1, "fixture data-tip changed");
+  assert(out.indexOf('id="keep-me"') !== -1, "fixture id is missing");
 });
 
-t("capture: JSON inline di-redaksi per kunci, nilai aman tetap", () => {
+t("capture: inline JSON is redacted per key, safe values stay", () => {
   const out = capture(hostile);
-  assert(out.indexOf('"value":7') !== -1, "nilai JSON aman hilang");
-  assert(out.indexOf('"speed":85') !== -1, "nilai JSON aman berubah");
+  assert(out.indexOf('"value":7') !== -1, "safe JSON value is missing");
+  assert(out.indexOf('"speed":85') !== -1, "safe JSON value changed");
 });
 
-t("capture: komentar HTML tidak ikut", () => {
+t("capture: HTML comments are not included", () => {
   const out = capture(hostile);
-  assert(out.indexOf("LEAKCOMMENT") === -1, "komentar ikut tersalin");
-  assert(out.indexOf("<!--") === -1, "komentar masih ada");
+  assert(out.indexOf("LEAKCOMMENT") === -1, "comment was copied");
+  assert(out.indexOf("<!--") === -1, "comment is still present");
 });
 
-t("capture: ID akun/avatar, tracker, dan id bootstrap diredaksi", () => {
+t("capture: account/avatar ID, tracker, and bootstrap id are redacted", () => {
   const out = capture(`<!doctype html><html><body>
 <div id="myProfileName">Budi Santoso</div>
 <a href="p=manager&amp;id=441233">profil</a>
@@ -125,12 +125,12 @@ t("capture: ID akun/avatar, tracker, dan id bootstrap diredaksi", () => {
 <script type="application/json" id="userBootstrap">{"id":441233,"name":"Budi Santoso","tier":"gold"}</script>
 </body></html>`);
   for (const leak of ["441233", "SHARK_TRACKER_ID_998877", "Budi Santoso"]) {
-    assert(out.indexOf(leak) === -1, "identitas lolos: " + leak);
+    assert(out.indexOf(leak) === -1, "identity leaked: " + leak);
   }
-  assert(out.indexOf('data-tip="Weight: 41"') !== -1, "data permainan hilang");
-  assert(out.indexOf('"tier":"gold"') !== -1, "data JSON aman hilang");
-  assert(out.indexOf("id=[REDACTED]") !== -1, "id profil tidak diredaksi");
+  assert(out.indexOf('data-tip="Weight: 41"') !== -1, "game data is missing");
+  assert(out.indexOf('"tier":"gold"') !== -1, "safe JSON data is missing");
+  assert(out.indexOf("id=[REDACTED]") !== -1, "profile id was not redacted");
 });
 
-console.log("\n" + pass + " test, " + fail + " gagal" + (fail ? "" : " — semua lulus ✔"));
+console.log("\n" + pass + " tests, " + fail + " failed" + (fail ? "" : " — all passed ✔"));
 process.exit(fail ? 1 : 0);

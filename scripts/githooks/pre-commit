@@ -1,8 +1,8 @@
 #!/bin/sh
-# Local pre-commit guard — CI tetap source of truth.
+# Local pre-commit guard — CI remains the source of truth.
 # Enable: npm run prepare  (sets git config core.hooksPath)
-# Gate lokal sengaja sama dengan CI inti supaya drift tidak lolos ke remote:
-# syntax, lint, guards (allowlist @match + anti network), versions, tests.
+# The local gate intentionally mirrors core CI so drift does not reach the remote:
+# syntax, lint, guards (@match allowlist + anti network), versions, tests.
 if ! command -v npm >/dev/null 2>&1; then
   echo "[pre-commit] npm not found — skip"
   exit 0

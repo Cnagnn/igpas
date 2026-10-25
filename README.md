@@ -1,164 +1,164 @@
-# I.G.P.A.S — userscript penasihat studi iGP Manager (read-only)
+# I.G.P.A.S — iGP Manager study advisor userscript (read-only)
 
 [![CI](https://github.com/Cnagnn/igpas/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Cnagnn/igpas/actions/workflows/ci.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
-**Penasihat keputusan read-only untuk [iGP Manager](https://igpmanager.com) — langsung di
-halaman yang sudah Anda buka.** I.G.P.A.S membaca angka yang memang tampil pada halaman studi
-(prioritas design, kondisi parts, supplier, penawaran sponsor, target transfer) dan menuliskan
-rekomendasinya pada elemen asli game: teks, atribut `title`, dan warna tombol sementara. Satu
-file userscript, tanpa build step, dan **tanpa satu pun elemen baru** di halaman — tanpa panel,
-badge, atau tombol tambahan.
+**Read-only decision advisor for [iGP Manager](https://igpmanager.com) — right on the page you
+already have open.** I.G.P.A.S reads the numbers already displayed on study pages (design
+priority, part condition, supplier, sponsor offers, transfer targets) and writes its
+recommendations onto the game's original elements: text, `title` attributes, and temporary button
+colours. One userscript file, no build step, and **not a single new element** on the page — no
+panels, badges, or extra buttons.
 
-**"Read-only" berarti tidak ada aksi ke game.** Tidak ada klik atau submit atas nama Anda,
-tidak ada permintaan jaringan, dan tidak ada nilai game yang diubah. Halaman **Race, Setup, dan
-Strategy tidak pernah dibaca atau ditulis**. Semua tulisan advisor disimpan sebagai teks asli
-dan di-restore otomatis setiap re-render serta saat pindah halaman; angka yang tidak terbaca
-dibiarkan kosong — tidak pernah diganti tebakan.
+**"Read-only" means no actions on the game.** No clicks or submits on your behalf, no network
+requests, and no game values changed. The **Race, Setup, and Strategy pages are never read or
+written**. Every advisor write is kept as original text and restored automatically on every
+re-render and on page changes; unreadable numbers are left blank — never replaced with guesses.
 
-> ⚠️ **Alat studi — bukan alat balapan.** Tidak ada otomasi. Risiko interpretasi ToS iGP
-> Manager ditanggung sepenuhnya oleh pengguna — rinciannya di
+> ⚠️ **Study tool — not a racing tool.** No automation. The risk of interpreting iGP Manager's
+> ToS rests entirely with the user — details in
 > [docs/PRIVACY.md](docs/PRIVACY.md).
 
-`Status: <b>v0.11.0</b> · GPL-3.0-or-later · tanpa jaringan · tanpa penyimpanan persisten`
+`Status: <b>v0.12.0</b> · GPL-3.0-or-later · no network · no persistent storage`
 
-[Cara kerja](#cara-kerja) · [Fitur](#fitur) · [Instalasi](#instalasi-tampermonkey) ·
-[Batasan](#batasan) · [FAQ](#faq)
+[How it works](#how-it-works) · [Features](#features) · [Installation](#installation-tampermonkey) ·
+[Limitations](#limitations) · [FAQ](#faq)
 
-## Cara kerja
+## How it works
 
-Setiap rekomendasi menghasilkan satu siklus yang sama: adapter **membaca** DOM halaman studi
-(angka game tidak diubah), heuristik murni **menghitung** opsi yang ada dengan ambang yang
-ditulis terbuka, hasilnya **ditulis** pada node asli sebagai teks/`title` atau warna tombol,
-lalu **di-restore** persis saat re-render dan pindah halaman. Render bereaksi lewat
-`MutationObserver` tanpa polling, selalu setelah teks asli dipulihkan — pembacaan tidak pernah
-memakai data yang sudah ditulis advisor sendiri.
+Every recommendation follows the same cycle: an adapter **reads** the study page DOM (game numbers
+are not changed), pure heuristics **compute** the available options with openly documented
+thresholds, the result is **written** onto the original node as text/`title` or button colour, then
+**restored** exactly on re-render and page change. Rendering reacts through `MutationObserver`
+without polling, always after the original text is restored — reads never use data the advisor
+itself has written.
 
-## Fitur
+## Features
 
-| Halaman         | Output advisor                                                      | Bentuk          |
-| --------------- | ------------------------------------------------------------------- | --------------- |
-| Cars — Overview | Urutan atribut `#1..#n` + DP; val/max/gap di `title`                | teks + `title`  |
-| Cars — Repair   | Warna tombol `Fix`/`Replace`: ganti / siap-siap / tunda             | warna + `title` |
-| Manufacturers   | Peringkat engine & chassis (`★` terbaik); rating/biaya di `title`   | teks + `title`  |
-| Supply          | Tombol supplier diwarnai sesuai rekomendasi switch                  | warna + `title` |
-| Drivers & Staff | Countdown `Full Recover` pada nama driver; kontrak staff di `title` | teks + `title`  |
-| Transfers       | Peringkat baris pasar (driver/staff); link & flag tetap hidup       | teks + `title`  |
-| Sponsor         | Tombol `Sign` diwarnai sesuai model nilai (lihat di bawah)          | teks + warna    |
+| Page            | Advisor output                                                         | Form             |
+| --------------- | ---------------------------------------------------------------------- | ---------------- |
+| Cars — Overview | Attribute order `#1..#n` + DP; val/max/gap in `title`                  | text + `title`   |
+| Cars — Repair   | `Fix`/`Replace` button colours: replace / get ready / postpone         | colour + `title` |
+| Manufacturers   | Engine & chassis ranking (`★` best); rating/cost in `title`            | text + `title`   |
+| Supply          | Supplier buttons coloured by the switch recommendation                 | colour + `title` |
+| Drivers & Staff | `Full Recover` countdown on the driver name; staff contract in `title` | text + `title`   |
+| Transfers       | Market row ranking (driver/staff); links & flags stay live             | text + `title`   |
+| Sponsor         | `Sign` button coloured by the value model (see below)                  | text + colour    |
 
 ### Sponsor: Primary vs Secondary
 
-- **Secondary (cash)** — hijau + `Sign ★` = income/race tertinggi yang **dijamin**; tombol
-  amber = bonus tunai/race tertinggi, lengkap dengan break-even peluang objektif.
-- **Primary (token)** — hijau + `Sign ★` = token/race tertinggi; tombol amber = bonus tunai
-  tertinggi sebagai trade-off. Token dan cash beda satuan dan **tidak pernah dijumlahkan**.
-- Bonus adalah pembayaran **per race** hanya saat objektif tercapai; total kontrak ditampilkan
-  hanya bila term kontrak terbaca — tidak ada angka karangan.
+- **Secondary (cash)** — green + `Sign ★` = highest **guaranteed** income/race; amber button =
+  highest cash bonus/race, together with the break-even objective chance.
+- **Primary (token)** — green + `Sign ★` = highest token/race; amber button = highest cash bonus
+  as a trade-off. Tokens and cash are different units and are **never summed**.
+- Bonuses are paid **per race** only when the objective is met; the contract total is shown only
+  if the contract term can be read — no invented numbers.
 
 ### Cars: design & repair
 
-Prioritas design point memakai gap ke max liga; ambang repair 50/60% menentukan ganti,
-siap-siap, atau tunda — biaya, stok, dan restock tetap di `title`.
+Design point priority uses the gap to the league max; the 50/60% repair thresholds decide
+replace, get ready, or postpone — cost, stock, and restock stay in `title`.
 
 ### Supply: switch-aware
 
-Peringkat menggabungkan supplier aktif dan kandidat (Σ bonus per biaya); tombol alternatif
-merah hanya bila ≥5% lebih efisien — mencegah loop ganti-mengganti supplier.
+Ranking combines the active supplier and candidates (Σ bonus per cost); the red alternative button
+appears only when ≥5% more efficient — preventing supplier switch loops.
 
-### Race, Setup, Strategy: tidak disentuh
+### Race, Setup, Strategy: never touched
 
-Advisor hanya aktif di halaman studi dan dialog Sponsor. Tab Race, Setup, dan Strategy
-pra-balapan tidak dibaca dan tidak ditulis — sama sekali.
+The advisor is active only on study pages and the Sponsor dialog. The Race, Setup, and Strategy
+pre-race tabs are neither read nor written — at all.
 
-Semua tulisan berlabel **"estimasi — bukan rumus game"**: heuristik transparan atas angka yang
-tampil, bukan kepastian performa.
+Every write is labelled **"estimate — not the game formula"**: transparent heuristics over the
+displayed numbers, not a performance certainty.
 
-## Instalasi (Tampermonkey)
+## Installation (Tampermonkey)
 
-1. Pasang [Tampermonkey](https://www.tampermonkey.net/) (runner lain, mis. Violentmonkey,
-   belum diuji).
-2. Buka [src/igpas.user.js](https://raw.githubusercontent.com/Cnagnn/igpas/main/src/igpas.user.js)
-   dan setujui prompt instalasi userscript.
-3. Buka `igpmanager.com` — halaman studi dan dialog Sponsor langsung menampilkan rekomendasi;
-   halaman lain tetap senyap.
-4. Pembaruan: pasang ulang dari tautan di atas atau dari
-   [halaman Release](https://github.com/Cnagnn/igpas/releases) (setiap rilis bertag
-   `v*.*.*`), lalu biasanya cukup muat ulang tab iGP.
+1. Install [Tampermonkey](https://www.tampermonkey.net/) (other runners, e.g. Violentmonkey, are
+   untested).
+2. Open [src/igpas.user.js](https://raw.githubusercontent.com/Cnagnn/igpas/main/src/igpas.user.js)
+   and accept the userscript install prompt.
+3. Open `igpmanager.com` — study pages and the Sponsor dialog immediately show recommendations;
+   other pages stay silent.
+4. Updates: reinstall from the link above or from the
+   [Releases page](https://github.com/Cnagnn/igpas/releases) (every release is tagged
+   `v*.*.*`), then a reload of the iGP tab is usually enough.
 
 <details>
-<summary>Alternatif pemasangan manual</summary>
+<summary>Manual installation alternative</summary>
 
-Dasbor Tampermonkey → **Create new script** → tempel isi `src/igpas.user.js`, simpan, lalu muat
-ulang tab iGP. Tidak ada langkah build atau server lain.
+Tampermonkey dashboard → **Create new script** → paste the contents of `src/igpas.user.js`, save,
+then reload the iGP tab. No build step or additional server.
 </details>
 
-## Batasan
+## Limitations
 
-- **Tanpa jaringan** — tidak ada `fetch`, XHR, `sendBeacon`, WebSocket, `import()` dinamis,
-  `@require`, atau `@connect`; dijaga mekanis oleh `scripts/check-guards.mjs`.
-- **Tanpa penyimpanan persisten** — tidak ada GM storage, profil, snapshot, atau mailbox.
-  Clipboard hanya terisi saat Anda memilih menu capture; penanda internal `data-igpas-*`
-  hanya hidup di DOM selama halaman terbuka.
-- **Tanpa aksi game** — tidak ada klik/submit pada elemen game; advisor tidak pernah
-  mengubah nilai, state, atau urutan balapan.
-- **Risiko ToS ditanggung pengguna** — tool menulis ke DOM, jadi interpretasi ToS tetap milik
-  Anda ([docs/PRIVACY.md](docs/PRIVACY.md)). Jika ragu, jangan memasang userscript saat
-  balapan live.
+- **No network** — no `fetch`, XHR, `sendBeacon`, WebSocket, dynamic `import()`, `@require`, or
+  `@connect`; enforced mechanically by `scripts/check-guards.mjs`.
+- **No persistent storage** — no GM storage, profile, snapshot, or mailbox. The clipboard is filled
+  only when you choose the capture menu; internal `data-igpas-*` markers live only in the DOM while
+  the page is open.
+- **No game actions** — no clicks/submits on game elements; the advisor never changes values,
+  state, or race order.
+- **ToS risk borne by the user** — the tool writes to the DOM, so the ToS interpretation remains
+  yours ([docs/PRIVACY.md](docs/PRIVACY.md)). If in doubt, do not install the userscript during a
+  live race.
 
-## Kualitas & pemeliharaan
+## Quality & maintenance
 
-`npm run verify` menjalankan syntax, lint, format, version sync, guards, dan **110 test**
-(72 core + 8 capture + 30 advisor) di Node 22 dan 24. Guards menolak network, `eval`,
-remote code, dan `@match` di luar `igpmanager.com`. Setiap rilis bertag memicu workflow yang
-memvalidasi tag = `package.json`, menjalankan gate penuh, dan mengunggah asset userscript.
+`npm run verify` runs syntax, lint, format, version sync, guards, and **110 tests** (72 core + 8
+capture + 30 advisor) on Node 22 and 24. Guards reject network, `eval`, remote code, and `@match`
+outside `igpmanager.com`. Every tagged release triggers a workflow that validates tag =
+`package.json`, runs the full gate, and uploads the userscript asset.
 
-Tidak ada janji jadwal rilis. Jika data halaman tidak terbaca, advisor dirancang gagal jujur —
-menyembunyikan dirinya, bukan menulis angka karangan.
+There is no promise of a release schedule. If page data cannot be read, the advisor is designed to
+fail honestly — hiding itself rather than writing invented numbers.
 
-Menu **"I.G.P.A.S: salin capture DOM halaman ini"** menyalin DOM halaman aktif ke clipboard
-dengan PII otomatis teredaksi — tanpa pengiriman otomatis ([docs/PRIVACY.md](docs/PRIVACY.md)).
+The **"I.G.P.A.S: copy capture of this page's DOM"** menu copies the active page DOM to the
+clipboard with PII automatically redacted — no automatic sending
+([docs/PRIVACY.md](docs/PRIVACY.md)).
 
-## Pengembangan
+## Development
 
 ```bash
 npm install
 npm run verify   # syntax + lint + format + versions + guards + test
 ```
 
-Pre-commit memakai Git hook native (`scripts/githooks`, dipasang otomatis oleh `npm install`
-lewat script `prepare`). Panduan kontribusi, struktur repo, dan alur fixture ada di
-[CONTRIBUTING.md](CONTRIBUTING.md); butuh **Node ≥ 22.22.2** (`.nvmrc` memakai 24).
+Pre-commit uses a native Git hook (`scripts/githooks`, installed automatically by `npm install` via
+the `prepare` script). Contribution guidelines, repo structure, and the fixture workflow are in
+[CONTRIBUTING.md](CONTRIBUTING.md); requires **Node ≥ 22.22.2** (`.nvmrc` uses 24).
 
 ## FAQ
 
-### Apakah ini bot atau cheat?
+### Is this a bot or a cheat?
 
-Bukan. Tidak ada klik, submit, atau otomasi; Race/Setup/Strategy tidak disentuh.
+No. There are no clicks, submits, or automation; Race/Setup/Strategy are not touched.
 
-### Apakah akun saya bisa kena ban?
+### Can my account get banned?
 
-Tidak ada jaminan. Userscript menulis pada DOM game, sehingga interpretasi ToS iGP Manager
-sepenuhnya risiko pengguna — jangan memasangnya saat balapan live jika ragu.
+There is no guarantee. The userscript writes to the game DOM, so interpreting iGP Manager's ToS is
+entirely the user's risk — do not install it during a live race if in doubt.
 
-### Apakah data saya dikirim ke mana pun?
+### Is my data sent anywhere?
 
-Tidak. Tidak ada request jaringan dan tidak ada penyimpanan persisten; keduanya dijaga guard
-yang dijalankan CI, bukan sekadar janji di dokumen.
+No. There are no network requests and no persistent storage; both are enforced by guards run in
+CI, not just a promise in the docs.
 
-### Kenapa rekomendasi tidak muncul?
+### Why don't recommendations appear?
 
-Pastikan halaman studi atau dialog Sponsor sedang terbuka dan userscript aktif. Jika data
-tidak terbaca, I.G.P.A.S sengaja tidak menulis apa pun — bukan menampilkan angka `0`.
+Make sure a study page or the Sponsor dialog is open and the userscript is active. If data cannot
+be read, I.G.P.A.S deliberately writes nothing — rather than showing a `0`.
 
-### Apakah ada kalkulator setup atau strategi balapan?
+### Is there a setup or race strategy calculator?
 
-Tidak. Advisor Setup dan Strategy pra-balapan dihapus sejak v0.10.0; fokus tetap pada halaman
-studi dan dialog Sponsor.
+No. The pre-race Setup and Strategy advisors were removed in v0.10.0; the focus remains on study
+pages and the Sponsor dialog.
 
-## Lisensi
+## License
 
-GPL-3.0-or-later (SPDX) — lihat [LICENSE](LICENSE).
-Dokumen terkait: [PRIVACY](docs/PRIVACY.md) · [ARSITEKTUR](docs/ARCHITECTURE.md) ·
+GPL-3.0-or-later (SPDX) — see [LICENSE](LICENSE).
+Related documents: [PRIVACY](docs/PRIVACY.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
 [SECURITY](SECURITY.md) · [CONTRIBUTING](CONTRIBUTING.md) ·
 [Issues](https://github.com/Cnagnn/igpas/issues) ·
 [Releases](https://github.com/Cnagnn/igpas/releases).
