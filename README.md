@@ -19,7 +19,7 @@ re-render and on page changes; unreadable numbers are left blank — never repla
 > ToS rests entirely with the user — details in
 > [docs/PRIVACY.md](docs/PRIVACY.md).
 
-`Status: <b>v0.12.0</b> · GPL-3.0-or-later · no network · no persistent storage`
+`Status: <b>v0.12.1</b> · GPL-3.0-or-later · no network · no persistent storage`
 
 [How it works](#how-it-works) · [Features](#features) · [Installation](#installation-tampermonkey) ·
 [Limitations](#limitations) · [FAQ](#faq)
@@ -35,15 +35,16 @@ itself has written.
 
 ## Features
 
-| Page            | Advisor output                                                         | Form             |
-| --------------- | ---------------------------------------------------------------------- | ---------------- |
-| Cars — Overview | Attribute order `#1..#n` + DP; val/max/gap in `title`                  | text + `title`   |
-| Cars — Repair   | `Fix`/`Replace` button colours: replace / get ready / postpone         | colour + `title` |
-| Manufacturers   | Engine & chassis ranking (`★` best); rating/cost in `title`            | text + `title`   |
-| Supply          | Supplier buttons coloured by the switch recommendation                 | colour + `title` |
-| Drivers & Staff | `Full Recover` countdown on the driver name; staff contract in `title` | text + `title`   |
-| Transfers       | Market row ranking (driver/staff); links & flags stay live             | text + `title`   |
-| Sponsor         | `Sign` button coloured by the value model (see below)                  | text + colour    |
+| Page                    | Advisor output                                                         | Form             |
+| ----------------------- | ---------------------------------------------------------------------- | ---------------- |
+| Cars — Overview         | Attribute order `#1..#n` + DP; val/max/gap in `title`                  | text + `title`   |
+| Cars — Research/Upgrade | Same `#1..#n` order + `#n` label prefix (rows moved, inputs intact)    | text + order     |
+| Cars — Repair           | `Fix`/`Replace` button colours: replace / get ready / postpone         | colour + `title` |
+| Manufacturers           | Engine & chassis ranking (`★` best); rating/cost in `title`            | text + `title`   |
+| Supply                  | Supplier buttons coloured by the switch recommendation                 | colour + `title` |
+| Drivers & Staff         | `Full Recover` countdown on the driver name; staff contract in `title` | text + `title`   |
+| Transfers               | Market row ranking (driver/staff); links & flags stay live             | text + `title`   |
+| Sponsor                 | `Sign` button coloured by the value model (see below)                  | text + colour    |
 
 ### Sponsor: Primary vs Secondary
 

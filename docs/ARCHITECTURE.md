@@ -3,7 +3,7 @@
 A **read-only** study advisor for iGP Manager in a single userscript file, no
 build step, no web GUI, no network, and no storage.
 
-Current version 0.12.0.
+Current version 0.12.1.
 
 ## 1. Scope
 
@@ -13,6 +13,7 @@ Current version 0.12.0.
 - ✅ DOM capture menu with PII redaction for fixture mapping.
 - ✅ Supply **switch-aware**: efficiency = Σ bonus per 1M cost. Ranking combines the active supplier + alternatives (ties go to the active one); the alternative button is coloured red when the recommendation is to switch (≥5% more efficient), amber for active/candidate, grey for not an option. Cost text & titles are unchanged; verdict + details in `title` — preventing supplier switch loops.
 - ✅ Cars **Overview**: attribute rows sorted `#1..#n` from top to bottom and the original label written as `#n Attribute · X DP`; val/max/gap + DP estimate in `title`; no colour; game numbers & bars untouched.
+- ✅ Cars **Research / Upgrade**: both tab forms (`#designInline`, `#researchInline`) receive the same `#1..#n` order as the Overview, and each tab label gets the same `#n ` prefix (game text kept, no DP suffix). Rows are moved, never cloned, so every game input keeps its name/value/id and the hidden form fields stay last; original order and text are restored on navigate-away.
 - ✅ Cars **Repair**: `Fix`/`Replace` button coloured from the displayed condition + recommendation — red ≤50% (replace), amber 50–60% (get ready), grey >60% (postpone). Card titles are unchanged; cost/stock/restock/thresholds in `title`; no button clicks.
 - ❌ No Command Center / web GUI / GitHub Pages.
 - ❌ No cross-tab mailbox, GM storage, profile, or snapshot.
@@ -115,6 +116,11 @@ Total **110 tests**; run by `npm test` and `npm run verify` (CI Node 22/24).
 - v0.12.0 translated the repository to English (userscript UI, comments, docs,
   tests, scripts) and polished the userscript comments. No behaviour change
   beyond the visible copy; `Tyre` spelling now matches the game.
+- v0.12.1 added the **Cars Research / Upgrade** advisor: both tab forms follow
+  the same `#1..#n` priority as the Overview and each label gets the `#n `
+  prefix, with the row nodes moved (every input keeps its name/value/id) and the
+  original order/text restored on navigate-away. The Engine Supply dialog header
+  tint was removed so the card renders exactly as the game draws it.
 - Manual input/standalone calculator is no longer provided as a UI.
 
 ## 8. Ethics & limitations

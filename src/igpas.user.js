@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.12.0
+// @version      0.12.1
 // @description  Read-only in-page study advisor for iGP Manager: #1..#n sorted design-point priorities, colour-coded supply and parts/engine repair buttons, supplier/manufacturer rankings, staff/transfer notes, and sponsor-offer value rankings written only as text/title/style on original page elements. Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
@@ -35,7 +35,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.12.0';
+    const VERSION = '0.12.1';
 
     // =====================================================================
     // 1) CORE — pure functions, no DOM. Tested in Node (test/core.test.js).
@@ -1398,9 +1398,11 @@
         // Fully in-place (no new elements): each row's original label becomes
         // "#n Label · X DP" and rows are sorted #1, #2, ... top to bottom. The
         // val/max/gap details and the estimate label go in the title attribute of the
-        // same row; game numbers and bars are untouched. Original order and text are
-        // restored by restoreDesign(), and captures always run after restore so the
-        // adapter never reads the advisor's own output.
+        // same row; game numbers and bars are untouched. The Research and Upgrade tabs
+        // (their own forms) get the same #1..#n order and the same "#n Label" prefix,
+        // with the rows moved, not cloned. Original order and text are restored by
+        // restoreDesign(), and captures always run after restore so the adapter never
+        // reads the advisor's own output.
         function applyInlineStyle(el, props) {
             if (!el.hasAttribute('data-igpas-orig-style')) {
                 el.setAttribute('data-igpas-orig-style', el.getAttribute('style') || '');
@@ -1421,6 +1423,112 @@
             }
             el.removeAttribute('data-igpas-orig-style');
             el.removeAttribute('data-igpas-written-style');
+        }
+        // Cars page — Research and Upgrade tabs. Both tabs list the same eight attributes
+        // in their own forms (#designInline, #researchInline), server-rendered in
+        // alphabetical order. The rows are moved (never cloned) into the same #1..#n
+        // priority order as the Overview, and each row label gets the same "#n " prefix:
+        // every game input keeps its name/value/id, and the hidden form fields stay at the
+        // end of the form. Original order and text are stored per row in
+        // data-igpas-orig-order / data-igpas-form-orig and restored by restoreFormOrder().
+        function tabForms() {
+            return Array.from(document.querySelectorAll('#designInline, #researchInline'));
+        }
+        function formRowKey(row) {
+            // Upgrade rows carry the attribute in the number input's name; Research rows
+            // carry it in the checkbox value (their name is the shared "c[]" array).
+            const num = row.querySelector('input[type="number"][name]');
+            if (num) return num.getAttribute('name');
+            const cb = row.querySelector('input[type="checkbox"][value]');
+            if (cb) return cb.getAttribute('value');
+            return null;
+        }
+        function formAnchor(form) {
+            // First child that is not an attribute row (the hidden inputs), so rows always
+            // stay above the hidden fields they were rendered above.
+            return Array.from(form.children).find(el =>
+                !(el.classList && el.classList.contains('attribute-row'))) || null;
+        }
+        function restoreFormOrder(form) {
+            const rows = Array.from(form.children).filter(el =>
+                el.classList && el.classList.contains('attribute-row'));
+            for (const row of rows) {
+                if (row.hasAttribute('data-igpas-form-orig') ||
+                    row.hasAttribute('data-igpas-form-written')) {
+                    restoreTabRow(row);
+                }
+            }
+            const marked = rows.filter(row => row.hasAttribute('data-igpas-orig-order'));
+            if (!marked.length) return;
+            marked.sort((a, b) => Number(a.getAttribute('data-igpas-orig-order')) -
+                Number(b.getAttribute('data-igpas-orig-order')));
+            const anchor = formAnchor(form);
+            for (const row of marked) {
+                if (anchor && anchor.parentNode === form) form.insertBefore(row, anchor);
+                else form.appendChild(row);
+                row.removeAttribute('data-igpas-orig-order');
+            }
+        }
+        function tabRowLabel(row) {
+            return row.querySelector('.attribute-rating-header span:not(.ratingVal)');
+        }
+        function annotateTabRow(row, rank) {
+            const label = tabRowLabel(row);
+            if (!label) return;
+            const written = row.getAttribute('data-igpas-form-written');
+            let orig = row.getAttribute('data-igpas-form-orig');
+            // The game may have replaced the label after our write: adopt its text as the
+            // new original instead of prefixing the advisor's own output again.
+            if (orig == null || (written != null && label.textContent !== written)) {
+                orig = label.textContent;
+            }
+            const text = (rank != null) ? '#' + rank + ' ' + orig : orig;
+            row.setAttribute('data-igpas-form-orig', orig);
+            row.setAttribute('data-igpas-form-written', text);
+            if (label.textContent !== text) label.textContent = text;
+        }
+        function restoreTabRow(row) {
+            const orig = row.getAttribute('data-igpas-form-orig');
+            if (orig != null) {
+                const label = tabRowLabel(row);
+                const written = row.getAttribute('data-igpas-form-written');
+                // Never overwrite a label the game replaced after the advisor wrote it.
+                if (label && (written == null || label.textContent === written)) {
+                    label.textContent = orig;
+                }
+            }
+            row.removeAttribute('data-igpas-form-orig');
+            row.removeAttribute('data-igpas-form-written');
+        }
+        function sortFormRows(form, ranked) {
+            const rows = Array.from(form.children).filter(el =>
+                el.classList && el.classList.contains('attribute-row'));
+            if (rows.length < 2) return;
+            const current = rows.slice();
+            rows.forEach((row, i) => {
+                if (!row.hasAttribute('data-igpas-orig-order')) {
+                    row.setAttribute('data-igpas-orig-order', String(i));
+                }
+            });
+            const ordered = [];
+            const rankOf = new Map();
+            for (const r of ranked || []) {
+                const key = r && r.key != null ? String(r.key) : null;
+                if (!key) continue;
+                const row = rows.find(el => ordered.indexOf(el) === -1 && formRowKey(el) === key);
+                if (!row) continue;
+                ordered.push(row);
+                rankOf.set(row, ordered.length); // same #n as the Overview row
+            }
+            for (const row of rows) if (ordered.indexOf(row) === -1) ordered.push(row);
+            for (const row of ordered) annotateTabRow(row, rankOf.get(row) || null);
+            // Already in priority order: do not re-insert, so a focused field keeps its caret.
+            if (current.every((row, i) => row === ordered[i])) return;
+            const anchor = formAnchor(form);
+            for (const row of ordered) {
+                if (anchor && anchor.parentNode === form) form.insertBefore(row, anchor);
+                else form.appendChild(row);
+            }
         }
         function restoreDesign() {
             const display = document.getElementById('carAttributesDisplay');
@@ -1466,6 +1574,8 @@
                     }
                 }
             }
+            // Research / Upgrade forms: rows return to their original server order.
+            for (const form of tabForms()) restoreFormOrder(form);
             // Remove leftovers from the old badge/panel design without touching game nodes.
             for (const el of document.querySelectorAll('.igpas-adv-inline, .igpas-adv-inline-head')) el.remove();
             removeIfAny([PREFIX + '-design']);
@@ -1501,6 +1611,8 @@
             }
             for (const row of rows) if (ordered.indexOf(row) === -1) ordered.push(row);
             for (const row of ordered) anchor.appendChild(row);
+            // Research and Upgrade tabs follow the same #1..#n priority order.
+            for (const form of tabForms()) sortFormRows(form, ranked);
             ranked.forEach((r, i) => {
                 if (r.key == null || !/^[A-Za-z0-9_-]+$/.test(String(r.key))) return;
                 let row = null;
@@ -1649,20 +1761,17 @@
 
         // Supply dialog (engine / fuel / tyre): alternative buttons are coloured by
         // the recommendation — red means switch to this supplier, amber means active or
-        // candidate (keep or check), grey means not an option. The dialog title is not
-        // written; Σ bonus, value per 1M and verdict details stay in the header title
-        // and card titles. Game cost text is unchanged. Original style and title are
-        // restored by restoreSupply(), and captures always run after restore so the
-        // adapter never reads the advisor's own output.
+        // candidate (keep or check), grey means not an option. The dialog header and its
+        // title keep the game's own look (no tint, no background or box-shadow override),
+        // so the active supplier card renders exactly like the original. Σ bonus, value
+        // per 1M and verdict details stay in the header title and card titles. Game cost
+        // text is unchanged. Original style and title are restored by restoreSupply(), and
+        // captures always run after restore so the adapter never reads the advisor's own
+        // output.
         const SUPPLY_BUTTON_COLORS = {
             now: { bg: '#c0392b', fg: '#ffffff' },
             soon: { bg: '#d68910', fg: '#1b2631' },
             hold: { bg: '#5d6d7e', fg: '#ffffff' },
-        };
-        const SUPPLY_HEADER_COLORS = {
-            now: { bg: 'rgba(192, 57, 43, 0.18)', accent: '#c0392b' },
-            soon: { bg: 'rgba(214, 137, 16, 0.18)', accent: '#d68910' },
-            hold: { bg: 'rgba(93, 109, 126, 0.14)', accent: '#5d6d7e' },
         };
         function restoreSupply() {
             // Strict dialog scope: Cars and Manufacturers data-igpas-* attributes
@@ -1807,19 +1916,9 @@
                     card.setAttribute('data-igpas-written-title', advisorTitle);
                 }
             });
-            // Active supplier header: amber when the active supplier is readable (keep or
-            // check), grey when it is not. Red buttons are switch targets; text is unchanged.
-            const activeStatus = curValuePerCost == null ? 'hold' : 'soon';
-            const subhead = dlg.querySelector('.dialog-subhead');
-            if (subhead) {
-                const hc = SUPPLY_HEADER_COLORS[activeStatus];
-                applyInlineStyle(subhead, {
-                    'background-color': hc.bg,
-                    'background-image': 'none',
-                    'box-shadow': 'inset 5px 0 0 ' + hc.accent,
-                });
-            }
-            // The active supplier verdict lives only in the title; no extra text is added.
+            // The dialog header stays game-owned: it is never tinted and its background is
+            // never overridden, so the active supplier card keeps its original appearance.
+            // The active verdict lives only in the header title below.
             if (cmp.ok) {
                 const h2 = dlg.querySelector('.dialog-subhead-content h2');
                 if (h2) {

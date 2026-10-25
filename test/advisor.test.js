@@ -121,6 +121,83 @@ t("Design advisor: Cars rows sorted #1..#n, ranked labels, without colour", () =
   s.close();
 });
 
+t("Design advisor: Research & Upgrade tabs follow the same #1..#n order", () => {
+  const s = bootOn(load("cars-tabs.html"), URL_IGP);
+  const EXPECT =
+    "acceleration,fuel_economy,handling,downforce,braking,cooling,reliability,tyre_economy";
+  // Overview still ranked (the ranking source is unchanged).
+  const firstLabel = s.doc
+    .querySelector("#carAttributesDisplay .attribute-row .attribute-rating-header span")
+    .textContent.trim();
+  assert(/^#1 Acceleration/.test(firstLabel), "Overview rank #1 changed: " + firstLabel);
+  // Upgrade tab: rows moved into priority order.
+  const upgrade = s.doc.getElementById("designInline");
+  const upNames = Array.prototype.map
+    .call(upgrade.querySelectorAll('.attribute-row input[type="number"]'), i =>
+      i.getAttribute("name")
+    )
+    .join(",");
+  assert(upNames === EXPECT, "Upgrade order does not follow priority: " + upNames);
+  // Hidden form fields stay last, and game input values are untouched.
+  assert(
+    upgrade.lastElementChild && upgrade.lastElementChild.getAttribute("name") === "league",
+    "hidden field is no longer last in the Upgrade form"
+  );
+  const acc = upgrade.querySelector('input[name="acceleration"]');
+  assert(
+    acc.value === "29" &&
+      acc.getAttribute("min") === "29" &&
+      acc.getAttribute("data-base") === "29",
+    "Upgrade input values changed: " +
+      [acc.value, acc.getAttribute("min"), acc.getAttribute("data-base")].join("/")
+  );
+  // Research tab: same order, checkboxes keep id/value/state.
+  const research = s.doc.getElementById("researchInline");
+  const rsValues = Array.prototype.map
+    .call(research.querySelectorAll('.attribute-row input[type="checkbox"]'), i =>
+      i.getAttribute("value")
+    )
+    .join(",");
+  assert(rsValues === EXPECT, "Research order does not follow priority: " + rsValues);
+  const handling = research.querySelector('input[value="handling"]');
+  assert(handling && handling.id === "chandling" && handling.checked, "checkbox state/id lost");
+  assert(
+    research.lastElementChild.getAttribute("name") === "league",
+    "hidden field is no longer last in the Research form"
+  );
+  // Tab labels get the same #1..#n rank as the Overview (game text kept, no DP suffix).
+  const EXPECT_LABELS = [
+    "#1 Acceleration",
+    "#2 Fuel economy",
+    "#3 Handling",
+    "#4 Downforce",
+    "#5 Braking",
+    "#6 Cooling",
+    "#7 Reliability",
+    "#8 Tyre economy",
+  ];
+  const labelsOf = form =>
+    Array.prototype.map.call(
+      form.querySelectorAll(".attribute-row .attribute-rating-header span:not(.ratingVal)"),
+      el => el.textContent.trim()
+    );
+  assert(
+    labelsOf(research).join(" | ") === EXPECT_LABELS.join(" | "),
+    "Research labels not ranked: " + labelsOf(research).join(" | ")
+  );
+  assert(
+    labelsOf(upgrade).join(" | ") === EXPECT_LABELS.join(" | "),
+    "Upgrade labels not ranked: " + labelsOf(upgrade).join(" | ")
+  );
+  // The rank is written once: re-render must not stack "#1 #1".
+  assert(
+    labelsOf(research).every(x => !/^#\d+ #/.test(x)) &&
+      labelsOf(upgrade).every(x => !/^#\d+ #/.test(x)),
+    "duplicated rank prefix: " + labelsOf(research).join(" | ")
+  );
+  s.close();
+});
+
 t("Repair advisor: Fix/Replace buttons coloured, card titles not written", () => {
   const s = bootOn(load("cars-repair.html"), URL_IGP);
   const clean = el =>
@@ -250,11 +327,12 @@ t("Supply advisor: alternative buttons coloured by recommendation, cost text int
   // Active 8/1M vs best alternative Σ6/400k = 15/1M → eId6 red, the rest grey.
   assert(bg(btnByEid(6)) === "rgb(192, 57, 43)", "eId6 must be red: " + bg(btnByEid(6)));
   assert(bg(btnByEid(1)) === "rgb(93, 109, 126)", "eId1 must be grey: " + bg(btnByEid(1)));
-  // Active header always amber when readable; red buttons mark switch targets.
+  // The dialog header stays game-owned: no inline style at all, so the active card
+  // keeps the original background instead of an advisor tint.
   const subhead = s.doc.querySelector(".supplyDialog .dialog-subhead");
   assert(
-    /rgba\(214, 137, 16, 0\.18\)/.test(subhead.getAttribute("style") || ""),
-    "active header must be amber: " + subhead.getAttribute("style")
+    !subhead.getAttribute("style"),
+    "dialog header was styled: " + subhead.getAttribute("style")
   );
   const h2 = s.doc.querySelector(".dialog-subhead-content h2");
   assert(h2.textContent === "Engine supply", "dialog title was written: " + h2.textContent);
@@ -287,7 +365,7 @@ t("Supply advisor: alternative buttons coloured by recommendation, cost text int
   s.close();
 });
 
-t("Supply advisor: active supplier is more efficient → amber header, grey buttons", () => {
+t("Supply advisor: active supplier is more efficient → grey buttons, header untouched", () => {
   // Complaint scenario: active supplier Σ4 @250k = 16/1M, best alternative
   // Σ6 @400k = 15/1M. Do not crown the alternative — keep the active one.
   const s = bootOn(load("supply-engine.html").replace("500k per race", "250k per race"), URL_IGP);
@@ -300,8 +378,8 @@ t("Supply advisor: active supplier is more efficient → amber header, grey butt
   );
   const subhead = s.doc.querySelector(".supplyDialog .dialog-subhead");
   assert(
-    /rgba\(214, 137, 16, 0\.18\)/.test(subhead.getAttribute("style") || ""),
-    "active header must be amber: " + subhead.getAttribute("style")
+    !subhead.getAttribute("style"),
+    "dialog header was styled: " + subhead.getAttribute("style")
   );
   const h2 = s.doc.querySelector(".dialog-subhead-content h2");
   assert(h2.textContent === "Engine supply", "dialog title was written: " + h2.textContent);
@@ -974,8 +1052,8 @@ ta(
     const h2 = dlg.querySelector(".dialog-subhead-content h2");
     assert(h2 && h2.textContent === "Engine supply", "precondition: title changed");
     assert(
-      dlg.querySelector(".dialog-subhead").hasAttribute("data-igpas-orig-style"),
-      "precondition: header not coloured yet"
+      !dlg.querySelector(".dialog-subhead").getAttribute("style"),
+      "precondition: header must stay untouched"
     );
     // The game switches the dialog to another type: title + all cards change too.
     for (const a of dlg.querySelectorAll('a[data-tip*="supplyType=engine"]')) {
@@ -995,12 +1073,12 @@ ta(
     assert(/Active supplier/.test(ht), "header title not recalculated: " + ht);
     const subhead = dlg.querySelector(".dialog-subhead");
     assert(
-      subhead.hasAttribute("data-igpas-orig-style"),
-      "header style is missing after re-render"
+      !subhead.getAttribute("style"),
+      "header was styled after re-render: " + subhead.getAttribute("style")
     );
     assert(
-      dlg.querySelectorAll(".dialog-subhead[data-igpas-orig-style]").length === 1,
-      "header style marker is stacked"
+      dlg.querySelectorAll(".dialog-subhead[data-igpas-orig-style]").length === 0,
+      "header style marker appeared after re-render"
     );
     const btn6 = Array.prototype.find.call(dlg.querySelectorAll(".supplyDialog a.btn.confirm"), a =>
       /eId=6\b/.test(a.getAttribute("data-tip") || "")
@@ -1052,6 +1130,94 @@ ta(
     s.close();
   }
 );
+
+ta("Cars tabs: re-render keeps the priority order without duplicating rows", async () => {
+  const s = bootOn(load("cars-tabs.html"), URL_IGP);
+  const upgrade = s.doc.getElementById("designInline");
+  const names = () =>
+    Array.prototype.map
+      .call(upgrade.querySelectorAll('.attribute-row input[type="number"]'), i =>
+        i.getAttribute("name")
+      )
+      .join(",");
+  const before = names();
+  s.doc.dispatchEvent(new s.win.Event("click", { bubbles: true }));
+  await tick(320); // 250 ms navigation debounce
+  assert(names() === before, "order changed on re-render: " + names());
+  assert(
+    upgrade.querySelectorAll(".attribute-row").length === 8,
+    "row count changed: " + upgrade.querySelectorAll(".attribute-row").length
+  );
+  // Rank prefix is written once, even after several renders.
+  const labels = Array.prototype.map.call(
+    upgrade.querySelectorAll(".attribute-row .attribute-rating-header span:not(.ratingVal)"),
+    el => el.textContent.trim()
+  );
+  assert(
+    labels.join(" | ") ===
+      "#1 Acceleration | #2 Fuel economy | #3 Handling | #4 Downforce | #5 Braking | " +
+        "#6 Cooling | #7 Reliability | #8 Tyre economy",
+    "rank labels changed on re-render: " + labels.join(" | ")
+  );
+  s.close();
+});
+
+ta("Restore: Research/Upgrade rows return to the server order on page change", async () => {
+  const s = bootOn(load("cars-tabs.html"), URL_IGP);
+  const upgrade = s.doc.getElementById("designInline");
+  const research = s.doc.getElementById("researchInline");
+  const alpha =
+    "acceleration,braking,cooling,downforce,fuel_economy,handling,reliability,tyre_economy";
+  s.doc.getElementById("pageId").value = "standings";
+  upgrade.appendChild(s.doc.createElement("div"));
+  await tick(40);
+  const upNames = Array.prototype.map
+    .call(upgrade.querySelectorAll('.attribute-row input[type="number"]'), i =>
+      i.getAttribute("name")
+    )
+    .join(",");
+  assert(upNames === alpha, "Upgrade order not restored: " + upNames);
+  const rsValues = Array.prototype.map
+    .call(research.querySelectorAll('.attribute-row input[type="checkbox"]'), i =>
+      i.getAttribute("value")
+    )
+    .join(",");
+  assert(rsValues === alpha, "Research order not restored: " + rsValues);
+  // Labels are back to the game text (no "#n " prefix left behind).
+  const plain =
+    "Acceleration | Braking | Cooling | Downforce | Fuel economy | Handling | Reliability | Tyre economy";
+  const labelText = form =>
+    Array.prototype.map
+      .call(
+        form.querySelectorAll(".attribute-row .attribute-rating-header span:not(.ratingVal)"),
+        el => el.textContent.trim()
+      )
+      .join(" | ");
+  assert(labelText(upgrade) === plain, "Upgrade labels not restored: " + labelText(upgrade));
+  assert(labelText(research) === plain, "Research labels not restored: " + labelText(research));
+  assert(
+    !upgrade.querySelector("[data-igpas-form-orig]") &&
+      !research.querySelector("[data-igpas-form-orig]"),
+    "label marker left behind after restore"
+  );
+  assert(
+    !upgrade.querySelector(".attribute-row[data-igpas-orig-order]") &&
+      !research.querySelector(".attribute-row[data-igpas-orig-order]"),
+    "order marker left behind after restore"
+  );
+  const kids = Array.from(upgrade.children);
+  const lastRow = kids.map(el => el.classList.contains("attribute-row")).lastIndexOf(true);
+  const hiddenAt = kids.findIndex(el => el.getAttribute && el.getAttribute("name") === "league");
+  assert(
+    hiddenAt > lastRow,
+    "hidden field is not after the rows after restore (row " +
+      lastRow +
+      ", hidden " +
+      hiddenAt +
+      ")"
+  );
+  s.close();
+});
 
 (async () => {
   for (const [name, fn] of asyncTests) {
