@@ -1,6 +1,6 @@
 # PRIVACY & RISK — I.G.P.A.S
 
-Applies to v0.12.1. Concise and factual: what the userscript does not do,
+Applies to v0.13.0. Concise and factual: what the userscript does not do,
 what is redacted during capture, and what risks remain.
 
 ## 1. No network
@@ -56,6 +56,19 @@ Removed/redacted:
 
 For fixtures, use captures from **study** pages (not profile pages)
 and remove unique IDs before pasting.
+
+## 3b. Surface census (`copy surface census`)
+
+A separate menu entry copies a **structural** map of the active page: page id,
+region list, form ids/types/callbacks, field shapes (`number:acceleration`,
+`checkbox:c[]×8`, `hidden×2`), `data-*` attribute names with counts, table and
+dialog counts.
+
+Never included: element text, input values, `csrfName`/`csrfToken` values,
+profile identity, balance, tokens, rank, URLs with identity parameters, or any
+`data-igpas-*` marker written by the advisor. Storage keys are listed by name
+only, and names matching `token`/`session`/`auth` are skipped. The same PII
+scrub as the DOM capture runs over the final text as a second line of defence.
 
 ## 4. No web GUI / mailbox
 

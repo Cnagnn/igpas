@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.12.1
-// @description  Read-only in-page study advisor for iGP Manager: #1..#n sorted design-point priorities, colour-coded supply and parts/engine repair buttons, supplier/manufacturer rankings, staff/transfer notes, and sponsor-offer value rankings written only as text/title/style on original page elements. Includes a menu command to copy a PII-redacted DOM capture. Study tool only, no automation, no network.
+// @version      0.13.0
+// @description  Read-only in-page study advisor for iGP Manager: #1..#n sorted design-point priorities, colour-coded supply and parts/engine repair buttons, supplier/manufacturer rankings, staff/transfer notes, and sponsor-offer value rankings written only as text/title/style on original page elements. Includes menu commands to copy a PII-redacted DOM capture and a read-only surface census. Study tool only, no automation, no network.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
 // @supportURL   https://github.com/Cnagnn/igpas/issues
@@ -35,7 +35,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.12.1';
+    const VERSION = '0.13.0';
 
     // =====================================================================
     // 1) CORE — pure functions, no DOM. Tested in Node (test/core.test.js).
@@ -2512,15 +2512,17 @@
     })();
 
     // =====================================================================
-    // 4) PAGE CAPTURE (v0.7.1) — one-click DOM copy for fixture mapping.
-    //  - No page UI: one Tampermonkey / Violentmonkey menu entry
+    // 4) PAGE CAPTURE (v0.7.1) + SURFACE CENSUS — menu-only tools.
+    //  - No page UI: Tampermonkey / Violentmonkey menu entries
     //    (GM_registerMenuCommand). Nothing is added to the site, including on
     //    race pages.
-    //  - 100% user-triggered. The result is a read-only DOM copy with PII redacted
-    //    (name, balance, tokens, rank), copied via GM_setClipboard. No network, no
-    //    mailbox, no automatic storage.
-    //  - Purpose: let the user send a capture of an unmapped page (e.g. Develop or
-    //    Design) so the DP advisor can later be mapped correctly.
+    //  - 100% user-triggered, read-only, no network, no storage.
+    //  - "DOM capture": copies the page markup with PII redacted, for fixture
+    //    mapping of a page the advisor does not know yet.
+    //  - "Surface census": copies a structural map of the current page (ids,
+    //    form/field shapes, data-* names, row/table/dialog counts, regions) so
+    //    the modifiable surface of a mapped page can be planned. Text, values,
+    //    credentials and identity are never part of the census.
     // =====================================================================
     const PageCapture = (() => {
         // PII tables: visible blocks, credential attributes, form identity, and
@@ -2719,6 +2721,162 @@
             return clone;
         }
 
+        // ---- surface census -------------------------------------------------
+        // Structural only: names and counts, never text, values or identity.
+        const CENSUS_REGIONS = [
+            '#page-content', '#page-title-text', '#carAttributes', '#carAttributesDisplay',
+            '#designInline', '#researchInline', '#repair', '.supplyDialog', '#dialogs-container',
+            '#driver-table', '#staff-table', '#engine-table', '#chassis-table',
+            '#sponsorSignTable', '#race', '#setup', '#strategy',
+        ];
+        const CENSUS_STORAGE = /^igp/i;
+        const OWN_DATA_ATTR = /^data-igpas-/;
+
+        function censusName(name) {
+            const s = String(name == null ? '' : name);
+            if (!s) return '';
+            if (/csrf|token|session|auth|pass|secret/i.test(s)) return '[redacted]';
+            return s.length > 24 ? s.slice(0, 24) + '…' : s;
+        }
+        function censusForm(form) {
+            const id = censusName(form.getAttribute('id')) || '(no id)';
+            const action = String(form.getAttribute('action') || '');
+            const type = (action.match(/(?:^|[?&])type=([A-Za-z0-9_-]+)/) || [])[1] || '';
+            const cb = censusName(form.getAttribute('data-callback'));
+            const fields = new Map();
+            for (const el of form.querySelectorAll('input, select, textarea')) {
+                const tag = String(el.tagName || '').toLowerCase();
+                const t = String(el.getAttribute('type') || tag).toLowerCase();
+                if (t === 'hidden') {
+                    fields.set('hidden', (fields.get('hidden') || 0) + 1);
+                    continue;
+                }
+                const name = censusName(el.getAttribute('name'));
+                const key = name ? t + ':' + name : t;
+                fields.set(key, (fields.get(key) || 0) + 1);
+            }
+            const list = Array.from(fields.entries()).map(([k, v]) =>
+                (v > 1 || k === 'hidden') ? k + '×' + v : k);
+            const rows = form.querySelectorAll('.attribute-row').length;
+            return '  #' + id + (type ? ' type=' + type : '') + (cb ? ' cb=' + cb : '') +
+                (rows ? ' rows=' + rows : '') +
+                ' fields: ' + (list.length ? list.join(', ') : '(none)');
+        }
+        function censusDataAttrs(doc) {
+            const m = new Map();
+            for (const el of doc.querySelectorAll('*')) {
+                for (const a of Array.from(el.attributes || [])) {
+                    const n = String(a.name || '');
+                    if (n.indexOf('data-') !== 0 || OWN_DATA_ATTR.test(n)) continue;
+                    m.set(n, (m.get(n) || 0) + 1);
+                }
+            }
+            return Array.from(m.entries())
+                .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+                .slice(0, 25)
+                .map(([n, c]) => n + '×' + c);
+        }
+        function censusTables(doc) {
+            const out = [];
+            for (const t of doc.querySelectorAll('table')) {
+                const id = censusName(t.getAttribute('id'));
+                if (!id) continue;
+                const rows = t.querySelectorAll('tr').length;
+                const flags = [];
+                if (t.hasAttribute('data-sort')) flags.push('sort');
+                if (t.hasAttribute('data-searchable')) flags.push('searchable');
+                out.push('  #' + id + ' rows=' + rows + (flags.length ? ' ' + flags.join(' ') : ''));
+            }
+            return out;
+        }
+        function censusUrl(loc) {
+            if (!loc) return '';
+            const parts = [];
+            try {
+                const q = new URLSearchParams(String(loc.search || ''));
+                for (const k of ['p', 'page', 'tab', 'type']) {
+                    if (q.has(k)) parts.push(k + '=' + censusName(q.get(k)));
+                }
+            } catch {}
+            const path = scrub(String(loc.pathname || ''));
+            return path + (parts.length ? '?' + parts.join('&') : '');
+        }
+        function censusStorage(win) {
+            const out = [];
+            try {
+                const ls = win && win.localStorage;
+                if (!ls) return out;
+                for (let i = 0; i < ls.length && out.length < 12; i++) {
+                    const k = ls.key(i);
+                    if (k && CENSUS_STORAGE.test(k) && !/token|session|auth/i.test(k)) {
+                        out.push(censusName(k));
+                    }
+                }
+            } catch {}
+            return out;
+        }
+        function buildCensus(doc, loc, win) {
+            if (!doc || !doc.documentElement) return null;
+            const pageIdEl = doc.getElementById('pageId');
+            const pageId = pageIdEl ? String(pageIdEl.value || '') : '';
+            const titleEl = doc.getElementById('page-title-text');
+            const title = titleEl
+                ? String(titleEl.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60)
+                : '';
+            const lines = [];
+            lines.push('I.G.P.A.S surface census — v' + VERSION);
+            lines.push('host: ' + String((loc && loc.hostname) || '') + '  url: ' + censusUrl(loc));
+            lines.push('page: ' + (pageId || '(unknown)') + (title ? ' — ' + title : ''));
+            // Regions the advisor can attach to, and the ones this page lacks.
+            const present = [];
+            const absent = [];
+            for (const sel of CENSUS_REGIONS) {
+                let el = null;
+                try { el = doc.querySelector(sel); } catch { el = null; }
+                if (!el) { absent.push(sel); continue; }
+                present.push('  ' + sel + ' children=' + (el.children ? el.children.length : 0));
+            }
+            lines.push('', 'regions present (' + present.length + '):', ...present);
+            if (absent.length) lines.push('regions absent: ' + absent.join(', '));
+            // Forms: the write surface of the page (type + callback + field shape).
+            const forms = Array.from(doc.querySelectorAll('form'));
+            lines.push('', 'forms (' + forms.length + '):');
+            if (forms.length) for (const f of forms) lines.push(censusForm(f));
+            else lines.push('  (none)');
+            // Attribute-row lists (Cars / Repair pattern).
+            const rowCounts = [];
+            for (const sel of ['#carAttributesDisplay', '#designInline', '#researchInline', '#repair']) {
+                const el = doc.querySelector(sel);
+                if (!el) continue;
+                const n = el.querySelectorAll('.attribute-row').length;
+                if (n) rowCounts.push(sel + '=' + n);
+            }
+            if (rowCounts.length) lines.push('', 'attribute rows: ' + rowCounts.join(' '));
+            // Tables and their built-in affordances.
+            const tables = censusTables(doc);
+            lines.push('', 'tables (' + tables.length + '):');
+            if (tables.length) lines.push(...tables);
+            else lines.push('  (none)');
+            // Dialogs: what is open and how many stacked layers exist.
+            const dc = doc.getElementById('dialogs-container');
+            lines.push('', 'dialogs: container' + (dc ? ' children=' + dc.children.length : ' absent') +
+                ' dialogId=' + (doc.getElementById('dialogId') ? 'present' : 'absent'));
+            // data-* vocabulary: the page's own machine-readable hooks.
+            const dataAttrs = censusDataAttrs(doc);
+            lines.push('', 'data-* attributes (' + dataAttrs.length + '): ' +
+                (dataAttrs.length ? dataAttrs.join(', ') : '(none)'));
+            const store = censusStorage(win);
+            if (store.length) lines.push('', 'game storage keys: ' + store.join(', '));
+            lines.push('', 'counts: buttons=' +
+                doc.querySelectorAll('button, .btn, .btn2, [role="button"]').length +
+                ' links=' + doc.querySelectorAll('a[href]').length +
+                ' inputs=' + doc.querySelectorAll('input, select, textarea').length +
+                ' tables=' + doc.querySelectorAll('table').length +
+                ' rows=' + doc.querySelectorAll('.attribute-row, tbody tr').length);
+            lines.push('', 'not captured by design: text, values, CSRF, profile identity.');
+            return scrubKnown(lines.join('\n'), collectPii(doc));
+        }
+
         function buildCapture(doc) {
             if (!doc || !doc.documentElement) return null;
             const pii = collectPii(doc);
@@ -2739,8 +2897,20 @@
                     });
                 }
             });
+            GM_registerMenuCommand('I.G.P.A.S: copy surface census (read-only map)', () => {
+                const census = buildCensus(document, typeof location === 'undefined' ? null : location,
+                    typeof window === 'undefined' ? null : window);
+                if (!census) return;
+                GM_setClipboard(census, 'text/plain');
+                if (typeof GM_notification === 'function') {
+                    GM_notification({
+                        title: 'I.G.P.A.S v' + VERSION + ' — census',
+                        text: 'Surface census copied (ids, forms, data-* only — no text, values or identity).',
+                    });
+                }
+            });
         }
-        return { buildCapture: buildCapture, install: install };
+        return { buildCapture: buildCapture, buildCensus: buildCensus, install: install };
     })();
 
     // =====================================================================

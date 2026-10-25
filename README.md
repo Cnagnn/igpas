@@ -19,7 +19,7 @@ re-render and on page changes; unreadable numbers are left blank — never repla
 > ToS rests entirely with the user — details in
 > [docs/PRIVACY.md](docs/PRIVACY.md).
 
-`Status: <b>v0.12.1</b> · GPL-3.0-or-later · no network · no persistent storage`
+`Status: <b>v0.13.0</b> · GPL-3.0-or-later · no network · no persistent storage`
 
 [How it works](#how-it-works) · [Features](#features) · [Installation](#installation-tampermonkey) ·
 [Limitations](#limitations) · [FAQ](#faq)
@@ -107,8 +107,8 @@ then reload the iGP tab. No build step or additional server.
 
 ## Quality & maintenance
 
-`npm run verify` runs syntax, lint, format, version sync, guards, and **110 tests** (72 core + 8
-capture + 30 advisor) on Node 22 and 24. Guards reject network, `eval`, remote code, and `@match`
+`npm run verify` runs syntax, lint, format, version sync, guards, and **115 tests** (72 core + 8
+capture + 35 advisor) on Node 22 and 24. Guards reject network, `eval`, remote code, and `@match`
 outside `igpmanager.com`. Every tagged release triggers a workflow that validates tag =
 `package.json`, runs the full gate, and uploads the userscript asset.
 
@@ -117,7 +117,9 @@ fail honestly — hiding itself rather than writing invented numbers.
 
 The **"I.G.P.A.S: copy capture of this page's DOM"** menu copies the active page DOM to the
 clipboard with PII automatically redacted — no automatic sending
-([docs/PRIVACY.md](docs/PRIVACY.md)).
+([docs/PRIVACY.md](docs/PRIVACY.md)). The **"copy surface census"** menu copies only the page's
+structure (ids, form/field shapes, `data-*` names, counts) for planning advisor work — no text,
+values, credentials, or identity ([docs/SURFACE.md](docs/SURFACE.md)).
 
 ## Development
 
@@ -160,6 +162,7 @@ pages and the Sponsor dialog.
 
 GPL-3.0-or-later (SPDX) — see [LICENSE](LICENSE).
 Related documents: [PRIVACY](docs/PRIVACY.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
+[SURFACE](docs/SURFACE.md) · [ROADMAP](docs/ROADMAP.md) ·
 [SECURITY](SECURITY.md) · [CONTRIBUTING](CONTRIBUTING.md) ·
 [Issues](https://github.com/Cnagnn/igpas/issues) ·
 [Releases](https://github.com/Cnagnn/igpas/releases).

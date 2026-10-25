@@ -20,7 +20,10 @@ function bootOn(html, url, snapshotIds) {
   };
   win.GM_setClipboard = () => {}; // stub; tests override it for capture
   win.GM_registerMenuCommand = (label, fn) => {
-    win.__igpasMenuHandler = fn;
+    win.__igpasMenus = win.__igpasMenus || {};
+    win.__igpasMenus[label] = fn;
+    // Back-compat for the capture tests: the DOM capture entry, not the census.
+    if (/dom capture/i.test(label) && !/census/i.test(label)) win.__igpasMenuHandler = fn;
   };
   win.GM_notification = () => {};
   // Snapshot innerHTML BEFORE the userscript runs (to test "document unchanged").
@@ -36,6 +39,14 @@ function bootOn(html, url, snapshotIds) {
 
 function assert(ok, msg) {
   if (!ok) throw new Error(msg);
+}
+
+// Invoke a menu command registered by the userscript (label match).
+function runMenu(s, re) {
+  const labels = Object.keys(s.win.__igpasMenus || {});
+  const label = labels.filter(l => re.test(l))[0];
+  assert(label, "menu not registered for " + re + " (got: " + labels.join(" | ") + ")");
+  s.win.__igpasMenus[label]();
 }
 
 let pass = 0,
@@ -540,6 +551,67 @@ t(
     s.close();
   }
 );
+
+t("PageCapture: surface census maps structure only (no text, no values)", () => {
+  const s = bootOn(load("cars-tabs.html"), URL_IGP);
+  const copied = [];
+  s.win.GM_setClipboard = (data, type) => copied.push({ data: String(data), type: type });
+  runMenu(s, /census/i);
+  assert(copied.length === 1, "census menu did not fill the clipboard");
+  assert(copied[0].type === "text/plain", "census clipboard type is " + copied[0].type);
+  const txt = copied[0].data;
+  assert(/^I\.G\.P\.A\.S surface census/.test(txt), "census header missing:\n" + txt);
+  assert(/page: cars/.test(txt), "pageId missing from census:\n" + txt);
+  assert(
+    /#designInline type=design cb=carsDesignSaved/.test(txt),
+    "Upgrade form not mapped:\n" + txt
+  );
+  assert(
+    /#researchInline type=research cb=carsResearchSaved/.test(txt),
+    "Research form not mapped:\n" + txt
+  );
+  assert(/number:acceleration/.test(txt), "Upgrade number field not listed:\n" + txt);
+  assert(/checkbox:c\[\]/.test(txt), "Research checkbox field not listed:\n" + txt);
+  assert(/hidden×/.test(txt), "hidden fields not counted:\n" + txt);
+  assert(
+    /attribute rows: #carAttributesDisplay=8 #designInline=8 #researchInline=8/.test(txt),
+    "attribute-row counts wrong:\n" + txt
+  );
+  assert(/data-tip×/.test(txt), "data-* vocabulary missing:\n" + txt);
+  assert(/#carAttributes children=/.test(txt), "region list missing:\n" + txt);
+  assert(/not captured by design/.test(txt), "privacy footer missing:\n" + txt);
+  // Structure only: no row label text, no input values, no advisor output.
+  assert(!/Acceleration|Tyre economy/.test(txt), "page text leaked into the census");
+  assert(!/value=|#1 /.test(txt), "values or advisor ranks leaked into the census");
+  s.close();
+});
+
+t("PageCapture: surface census never copies identity, credentials, or values", () => {
+  const s = bootOn(
+    "<!doctype html><html><body>" +
+      '<input id="pageId" value="develop">' +
+      '<span id="myProfileName">Rahasia Manager</span>' +
+      '<span id="balanceText">$12.345.678</span>' +
+      '<span id="tokens-total">42</span>' +
+      '<span id="managerRankValue">777</span>' +
+      '<form id="f1" action="send&addon=igp&type=develop">' +
+      '<input type="number" name="budget" value="987654">' +
+      '<input type="hidden" name="csrfToken" value="abc123secret">' +
+      "</form></body></html>",
+    "https://www.igpmanager.com/app/p=develop"
+  );
+  const copied = [];
+  s.win.GM_setClipboard = data => copied.push(String(data));
+  runMenu(s, /census/i);
+  const txt = copied.join("\n");
+  for (const secret of ["Rahasia Manager", "12.345.678", "987654", "abc123secret"]) {
+    assert(txt.indexOf(secret) === -1, "census leaked: " + secret + "\n" + txt);
+  }
+  assert(/#f1 type=develop/.test(txt), "form not mapped:\n" + txt);
+  assert(/hidden×1/.test(txt), "hidden field not counted:\n" + txt);
+  assert(/number:budget/.test(txt), "named field not summarised:\n" + txt);
+  s.close();
+});
 
 t("Security: other pages (race without a tab container/unknown) get no advisor UI at all", () => {
   const s = bootOn(

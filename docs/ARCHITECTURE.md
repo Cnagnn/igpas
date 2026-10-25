@@ -3,7 +3,7 @@
 A **read-only** study advisor for iGP Manager in a single userscript file, no
 build step, no web GUI, no network, and no storage.
 
-Current version 0.12.1.
+Current version 0.13.0.
 
 ## 1. Scope
 
@@ -11,6 +11,10 @@ Current version 0.12.1.
   Supply, Drivers & Staff, Transfers) and the **Sponsor** dialog (Sign). The
   **pre-race Setup/Strategy** tabs no longer get an advisor (removed in v0.10.0).
 - ✅ DOM capture menu with PII redaction for fixture mapping.
+- ✅ Surface census menu: structural map of the active page (ids, form/field
+  shapes, `data-*` names, row/table/dialog counts, regions) so advisor work can
+  be planned per page. No text, values, credentials, or identity — see
+  [SURFACE.md](SURFACE.md).
 - ✅ Supply **switch-aware**: efficiency = Σ bonus per 1M cost. Ranking combines the active supplier + alternatives (ties go to the active one); the alternative button is coloured red when the recommendation is to switch (≥5% more efficient), amber for active/candidate, grey for not an option. Cost text & titles are unchanged; verdict + details in `title` — preventing supplier switch loops.
 - ✅ Cars **Overview**: attribute rows sorted `#1..#n` from top to bottom and the original label written as `#n Attribute · X DP`; val/max/gap + DP estimate in `title`; no colour; game numbers & bars untouched.
 - ✅ Cars **Research / Upgrade**: both tab forms (`#designInline`, `#researchInline`) receive the same `#1..#n` order as the Overview, and each tab label gets the same `#n ` prefix (game text kept, no DP suffix). Rows are moved, never cloned, so every game input keeps its name/value/id and the hidden form fields stay last; original order and text are restored on navigate-away.
@@ -34,7 +38,7 @@ Current version 0.12.1.
 | `IgpTransfersAdapter` | Read-only parser for the Transfers market (driver + staff) |
 | `IgpSponsorAdapter` | Read-only parser for the Sponsor dialog (Primary/Secondary) → `{ termRaces, incomeKind, offers }` |
 | `Advisor` | Writes recommendations to original element text/`title` + automatic restore |
-| `PageCapture` | Userscript menu: copy redacted DOM to clipboard |
+| `PageCapture` | Userscript menus: copy a PII-redacted DOM capture, and copy the structural surface census (ids/forms/`data-*` only — never text or values) |
 | `boot()` | `igpmanager.com` host gate, installs Advisor + capture menu |
 
 Adapters are **pure parsers over `document`** (no storage, no sending). The
@@ -121,6 +125,11 @@ Total **110 tests**; run by `npm test` and `npm run verify` (CI Node 22/24).
   prefix, with the row nodes moved (every input keeps its name/value/id) and the
   original order/text restored on navigate-away. The Engine Supply dialog header
   tint was removed so the card renders exactly as the game draws it.
+- v0.13.0 added the read-only **surface census** menu (regions, form
+  shapes/callbacks, `data-*` vocabulary, table/dialog counts — never text,
+  values, credentials, or identity), plus [SURFACE.md](SURFACE.md) documenting
+  the client surface and [ROADMAP.md](ROADMAP.md) listing the unbuilt backlog
+  with acceptance criteria.
 - Manual input/standalone calculator is no longer provided as a UI.
 
 ## 8. Ethics & limitations
