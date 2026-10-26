@@ -132,5 +132,85 @@ t("capture: account/avatar ID, tracker, and bootstrap id are redacted", () => {
   assert(out.indexOf("id=[REDACTED]") !== -1, "profile id was not redacted");
 });
 
+// Regression (v0.13.1): four redaction holes found during the project audit.
+t("capture: free-text, select and identity fields do not leak names/IDs", () => {
+  // The profile name is the page's own identity: it is collected as known PII and
+  // must then disappear from every field that repeats it, label attributes included.
+  const out = capture(`<!doctype html><html><body>
+<div id="myProfileName">AliceSmith</div>
+<input type="text" id="search" value="BobJones">
+<input type="search" name="q" value="BobJones">
+<select id="team"><option value="987654">AliceSmith</option><option value="5">5</option></select>
+<span aria-label="AliceSmith">z</span>
+<div title="AliceSmith profile">t</div>
+<input placeholder="AliceSmith">
+</body></html>`);
+  for (const leak of ["BobJones", "AliceSmith", "987654"]) {
+    assert(out.indexOf(leak) === -1, "identity leaked from a form/identity field: " + leak);
+  }
+  // Numeric game values still survive.
+  assert(out.indexOf(">5<") !== -1, "numeric option lost");
+});
+
+t("capture: lazy-loaded data-src avatar paths do not leak the account ID", () => {
+  const out = capture(`<!doctype html><html><body>
+<div data-src="/img/user/987654/x.png" data-original="/pic/987654.png">q</div>
+<a href="/x?PHPSESSID=abc123def456&sid=99">l</a>
+</body></html>`);
+  for (const leak of ["987654", "abc123def456", "sid=99"]) {
+    assert(out.indexOf(leak) === -1, "URL identity/session leaked: " + leak);
+  }
+});
+
+t("capture: nested JSON identity ids are redacted, game numbers stay", () => {
+  const out = capture(`<!doctype html><html><body>
+<script type="application/json">{"profile":{"id":441233,"name":"Joan"},"owner":{"managerId":778899},"cash":5}</script>
+</body></html>`);
+  for (const leak of ["441233", "778899", "Joan"]) {
+    assert(out.indexOf(leak) === -1, "nested identity leaked: " + leak);
+  }
+  assert(out.indexOf('"cash":5') !== -1, "game number lost");
+});
+
+t("capture: redaction does not damage ordinary game text or tips", () => {
+  // No PII present anywhere: nothing outside the identity tables may be rewritten.
+  const out = capture(`<!doctype html><html><body>
+<table><tr><td>Ace Racer Team</td></tr></table>
+<div data-tip="12">laps 12</div>
+</body></html>`);
+  assert(out.indexOf("Ace Racer Team") !== -1, "game text was over-redacted");
+  assert(out.indexOf('data-tip="12"') !== -1, "game tip was over-redacted");
+  assert(out.indexOf("laps 12") !== -1, "game text was over-redacted");
+});
+
+// Regression (review finding): an early fix blanked every title/alt/option value,
+// which destroyed the game vocabulary a fixture exists to capture — tyre compounds
+// and setup levels vanished. Redaction must remove identity, not game data.
+t("capture: game vocabulary in title/alt/option survives redaction", () => {
+  const out = capture(`<!doctype html><html><body>
+<table><tr><td title="Soft tyres">S</td></tr></table>
+<img alt="" src="empty.gif">
+<select name="tyre"><option value="SS">Super soft tyres</option><option value="H">Hard tyres</option></select>
+<select name="ride"><option value="100">Very high</option><option value="60" selected>Neutral</option></select>
+</body></html>`);
+  assert(out.indexOf('title="Soft tyres"') !== -1, "game tooltip was destroyed");
+  assert(out.indexOf("Super soft tyres") !== -1, "tyre compound option was destroyed");
+  assert(out.indexOf("Very high") !== -1, "setup level option was destroyed");
+  assert(out.indexOf('value="SS"') !== -1, "game option value was destroyed");
+});
+
+t("capture: identity hides even when it appears only in title/alt/option", () => {
+  const out = capture(`<!doctype html><html><body>
+<div id="myProfileName">Zed Quill</div>
+<span aria-label="Zed Quill">x</span>
+<div title="Zed Quill profile">t</div>
+<img alt="Zed Quill" src="empty.gif">
+<select><option value="441233">Zed Quill</option></select>
+</body></html>`);
+  for (const leak of ["Zed Quill", "441233"]) {
+    assert(out.indexOf(leak) === -1, "identity leaked via a label attribute: " + leak);
+  }
+});
+
 console.log("\n" + pass + " tests, " + fail + " failed" + (fail ? "" : " — all passed ✔"));
 process.exit(fail ? 1 : 0);

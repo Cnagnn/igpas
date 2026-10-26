@@ -42,9 +42,7 @@
     //    All maths is plain arithmetic over user input; no game formulas.
     // =====================================================================
 
-    const r1 = v => Math.round(v * 10) / 10;
-    // Grammatical units: "1 lap" / "8 laps" and "1 race" / "5 races".
-    const lapUnit = n => (Math.abs(Number(n)) === 1 ? ' lap' : ' laps');
+    // Grammatical unit: "1 race" / "5 races".
     const raceUnit = n => (Math.abs(Number(n)) === 1 ? ' race' : ' races');
 
     const Utils = Object.freeze({
@@ -69,15 +67,6 @@
         if (v >= 1e6) return (Math.round(v / 1e5) / 10) + ' M';
         if (v >= 1e3) return (Math.round(v / 1e2) / 10) + ' K';
         return String(v);
-      },
-      pitWindowCore(fuelLaps, reserveLaps, tyreLaps, marginLaps) {
-        const fuelLatest = Math.max(0, Math.floor(fuelLaps - reserveLaps));
-        const latest = Math.min(fuelLatest, tyreLaps);
-        const recommended = Math.max(0, latest - marginLaps);
-        return { fuelLatest, latest, recommended };
-      },
-      isSafeKind(k) {
-        return typeof k === 'string' && k.length > 0 && k.length < 80 && !/(__proto__|constructor|prototype)/i.test(k);
       },
       // 12-stat index derived from the page's `data-driver` / `data-staff` CSV
       // (v0.8.0). It is the mean of the first 12 CSV numbers and is computed the
@@ -114,284 +103,6 @@
 
 
     const IGPCore = Object.freeze({
-
-        // Fuel plan for the remaining laps of a stint.
-        // Inputs: lapsRemaining, fuelPerLap, currentFuel,
-        //   reserveLaps, tankCapacity.
-        // Returns { ok, values, rows } — rows are [label, text] pairs.
-        calcFuel(p) {
-            const numOrNull = Utils.numOrNull;
-            const src = p || {};
-            const lapsRemaining = numOrNull(src.lapsRemaining);
-            const fuelPerLap = numOrNull(src.fuelPerLap);
-            const currentFuel = numOrNull(src.currentFuel);
-            const reserveLaps = numOrNull(src.reserveLaps);
-            const tank = (src.tankCapacity == null || String(src.tankCapacity).trim() === '')
-                ? Infinity : numOrNull(src.tankCapacity);
-
-            // null means empty or unreadable — never coerce it to 0.
-            // (Number(null) === 0 once produced a confident "needs 0 L".)
-            if (lapsRemaining == null) return { ok: false, error: 'Laps remaining is required' };
-            if (fuelPerLap == null) return { ok: false, error: 'Fuel/lap is required' };
-            if (currentFuel == null) return { ok: false, error: 'Current fuel is required' };
-            if (!(lapsRemaining >= 0)) return { ok: false, error: 'Laps remaining must be >= 0' };
-            if (!(fuelPerLap > 0)) return { ok: false, error: 'Fuel/lap must be > 0' };
-            if (!(currentFuel >= 0)) return { ok: false, error: 'Current fuel must be >= 0' };
-            if (reserveLaps != null && reserveLaps < 0) return { ok: false, error: 'Reserve must be >= 0' };
-            if (tank !== Infinity && !(tank > 0)) return { ok: false, error: 'Tank capacity must be > 0' };
-
-            const reserve = reserveLaps != null ? reserveLaps : 0;
-            const fuelNeeded = lapsRemaining * fuelPerLap;
-            const totalRequired = fuelNeeded + reserve * fuelPerLap;
-            const fuelToAdd = Math.max(0, totalRequired - currentFuel);
-            const lapsLeftOnFuel = currentFuel / fuelPerLap;
-            const totalWithAdd = currentFuel + fuelToAdd;
-            const overCapacity = (totalWithAdd > tank)
-                ? r1(totalWithAdd - tank) : 0;
-
-            return {
-                ok: true,
-                values: { fuelNeeded: r1(fuelNeeded), fuelToAdd: r1(fuelToAdd), lapsLeftOnFuel: r1(lapsLeftOnFuel), overCapacity },
-                rows: [
-                    ['Total needed (' + lapsRemaining + lapUnit(lapsRemaining) + ')', r1(fuelNeeded) + ' L'],
-                    ['+ Reserve (' + reserve + lapUnit(reserve) + ')', r1(reserve * fuelPerLap) + ' L'],
-                    ['Fuel to add', r1(fuelToAdd) + ' L'],
-                    ['Current fuel range', r1(lapsLeftOnFuel) + lapUnit(lapsLeftOnFuel)],
-                    ...(overCapacity > 0 ? [['⚠ Exceeds tank', overCapacity + ' L']] : []),
-                ],
-            };
-        },
-
-        // Project tyre wear forward, one row per lap.
-        projectTireWear(p) {
-            const numOrNull = Utils.numOrNull;
-            const src = p || {};
-            const cur = numOrNull(src.currentWearPct);
-            const wpl = numOrNull(src.wearPerLapPct);
-            const laps = numOrNull(src.lapsCount);
-
-            if (cur == null) return { ok: false, error: 'Current wear is required' };
-            if (wpl == null) return { ok: false, error: 'Wear/lap is required' };
-            if (laps == null) return { ok: false, error: 'Horizon is required' };
-            if (!(cur >= 0 && cur <= 100)) return { ok: false, error: 'Current wear must be 0–100' };
-            if (!(wpl >= 0)) return { ok: false, error: 'Wear/lap must be >= 0' };
-            if (!(laps >= 1 && laps <= 200)) return { ok: false, error: 'Horizon 1–200 laps' };
-
-            const rows = [];
-            for (let n = 0; n <= laps; n++) {
-                rows.push([ 'lap +' + n, r1(Math.min(100, cur + n * wpl)) + ' %' ]);
-            }
-            const lapsTo100 = wpl > 0 ? Math.floor((100 - cur) / wpl) : Infinity;
-            return {
-                ok: true,
-                values: { lapsTo100 },
-                rows,
-            };
-        },
-
-        // Laps remaining until wear reaches the threshold.
-        lapsToThreshold(p) {
-            const numOrNull = Utils.numOrNull;
-            const src = p || {};
-            const cur = numOrNull(src.currentWearPct);
-            const wpl = numOrNull(src.wearPerLapPct);
-            const thr = numOrNull(src.thresholdPct);
-
-            if (cur == null) return { ok: false, error: 'Current wear is required' };
-            if (wpl == null) return { ok: false, error: 'Wear/lap is required' };
-            if (thr == null) return { ok: false, error: 'Threshold is required' };
-            if (!(cur >= 0 && cur <= 100)) return { ok: false, error: 'Current wear must be 0–100' };
-            if (!(wpl >= 0)) return { ok: false, error: 'Wear/lap must be >= 0' };
-            if (!(thr > cur)) return { ok: false, error: 'Threshold must be > current wear' };
-
-            const laps = wpl > 0 ? Math.floor((thr - cur) / wpl) : Infinity;
-            return {
-                ok: true,
-                values: { laps },
-                rows: [
-                    ['Laps to ' + thr + '%', (laps === Infinity ? '∞ (unlimited)' : laps + lapUnit(laps))],
-                ],
-            };
-        },
-
-        // Pit window — the latest lap on which a stop is still safe, given the fuel
-        // reserve, tyre life and safety margin.
-        // Inputs: lapsLeftOnFuel, reserveLaps, tireLaps, marginLaps.
-        pitWindow(p) {
-            const numOrNull = Utils.numOrNull;
-            const src = p || {};
-            const fuelLaps = numOrNull(src.lapsLeftOnFuel);
-            const reserveLaps = numOrNull(src.reserveLaps);
-            const tireLaps = (src.tireLaps == null || String(src.tireLaps).trim() === '')
-                ? Infinity : numOrNull(src.tireLaps);
-            const margin = numOrNull(src.marginLaps);
-
-            if (fuelLaps == null) return { ok: false, error: 'Laps left on fuel is required' };
-            if (!(fuelLaps >= 0)) return { ok: false, error: 'Laps left on fuel >= 0' };
-            // A negative value must not silently become 0: a negative reserve/margin
-            // flips the recommendation direction (pitting later than the safe limit).
-            if (reserveLaps != null && reserveLaps < 0) return { ok: false, error: 'Reserve must be >= 0' };
-            if (margin != null && margin < 0) return { ok: false, error: 'Margin must be >= 0' };
-            if (tireLaps !== Infinity && !(tireLaps > 0)) return { ok: false, error: 'Tyre laps must be > 0' };
-
-            const core = Utils.pitWindowCore(fuelLaps, reserveLaps != null ? reserveLaps : 0,
-                tireLaps, margin != null ? margin : 0);
-            const needPitNow = core.latest < 1;
-
-            return {
-                ok: true,
-                values: { fuelLatest: core.fuelLatest, tireLatest: (tireLaps === Infinity ? Infinity : tireLaps), latest: core.latest, recommended: core.recommended },
-                rows: [
-                    ['Fuel limit', core.fuelLatest + lapUnit(core.fuelLatest)],
-                    ['Tyre limit', (tireLaps === Infinity ? '∞' : tireLaps + lapUnit(tireLaps))],
-                    ['Latest pit after', core.latest + lapUnit(core.latest)],
-                    ['Recommended (−margin)', core.recommended + lapUnit(core.recommended)],
-                    ...(needPitNow ? [['⚠', 'Pit now — cannot wait a full lap']] : []),
-                ],
-            };
-        },
-
-        // Split a race into the fewest even stints that tyre life allows.
-        stintSplit(p) {
-            const numOrNull = Utils.numOrNull;
-            const src = p || {};
-            const total = numOrNull(src.totalLaps);
-            const life = numOrNull(src.tireLifeLaps);
-            const pitLoss = numOrNull(src.pitLossLaps);
-
-            if (total == null) return { ok: false, error: 'Total laps is required' };
-            if (life == null) return { ok: false, error: 'Tyre life is required' };
-            if (!(total >= 1)) return { ok: false, error: 'Total laps must be >= 1' };
-            if (!(life > 0)) return { ok: false, error: 'Tyre life must be > 0' };
-            // Life < 1 lap = corrupt data; without this guard Array.from builds
-            // tens of thousands of stints and freezes rendering.
-            if (life < 1) return { ok: false, error: 'Tyre life must be at least 1 lap' };
-            if (pitLoss != null && !(pitLoss >= 0)) return { ok: false, error: 'Pit loss must be >= 0' };
-            const loss = pitLoss != null ? pitLoss : 0;
-
-            const segments = Math.ceil(total / life);
-            const stops = segments - 1;
-            const rem = total % segments;
-            const base = (total - rem) / segments;
-            const stints = Array.from({ length: segments }, (_, i) => base + (i < rem ? 1 : 0));
-            const timeCostLaps = r1(stops * loss);
-
-            return {
-                ok: true,
-                values: { stops, segments, stints, timeCostLaps },
-                rows: [
-                    ['Minimum stops', stops + '×'],
-                    ['Stint split', stints.join(' / ') + lapUnit(total)],
-                    ['Total pit cost', timeCostLaps + ' lap-equivalent'],
-                ],
-            };
-        },
-
-        // Pit decision — 'plan', 'pit-soon' or 'pit-now', with the numbers behind it.
-        // Inputs: lapsLeftOnFuel, tyreLapsLeft, reserveLaps,
-        //   pitLossLaps, marginLaps.
-        strategyRecommendation(p) {
-            const numOrNull = Utils.numOrNull;
-            const src = p || {};
-            const fuelLaps = numOrNull(src.lapsLeftOnFuel);
-            const tyreRaw = (src.tyreLapsLeft == null || String(src.tyreLapsLeft).trim() === '')
-                ? Infinity : numOrNull(src.tyreLapsLeft);
-            const reserve = numOrNull(src.reserveLaps);
-            const pitLoss = numOrNull(src.pitLossLaps);
-            const margin = numOrNull(src.marginLaps);
-
-            if (fuelLaps == null) return { ok: false, error: 'Laps left on fuel is required' };
-            if (!(fuelLaps >= 0)) return { ok: false, error: 'Laps left on fuel >= 0' };
-            if (tyreRaw !== Infinity && !(tyreRaw > 0)) return { ok: false, error: 'Tyre laps must be > 0' };
-            if ((reserve != null && !(reserve >= 0)) || (pitLoss != null && !(pitLoss >= 0)) ||
-                (margin != null && !(margin >= 0))) {
-                return { ok: false, error: 'Reserve/pit-loss/margin >= 0' };
-            }
-
-            const res = reserve != null ? reserve : 0;
-            const loss = pitLoss != null ? pitLoss : 0;
-            const mar = margin != null ? margin : 0;
-            const core = Utils.pitWindowCore(fuelLaps, res, tyreRaw, mar);
-            const limiting = core.fuelLatest < tyreRaw ? 'fuel' : (tyreRaw < core.fuelLatest ? 'tyre' : 'tie');
-            const decision = core.latest < 1 ? 'pit-now' : (core.recommended <= 1 ? 'pit-soon' : 'plan');
-
-            return {
-                ok: true,
-                values: { decision, latest: core.latest, recommended: core.recommended, limiting, pitLoss: loss },
-                rows: [
-                    ['Decision', decision],
-                    ['Limiting factor', limiting],
-                    ['Latest pit after', core.latest + lapUnit(core.latest)],
-                    ['Recommended (−margin)', core.recommended + lapUnit(core.recommended)],
-                    ['Pit cost', loss + ' lap-equivalent'],
-                    ...(core.latest < 1 ? [['⚠', 'Cannot wait a full lap']] : []),
-                ],
-            };
-        },
-
-        // Rank options (manufacturers, cars or parts) by weighted criteria.
-        // Explicit assumption: the ratings are 0–10 and come from the user;
-        // score = Σ(rating × weight) / Σweight.
-        rankOptions(p) {
-            const items = (p && Array.isArray(p.items)) ? p.items : null;
-            const weights = (p && p.weights && typeof p.weights === 'object') ? p.weights : {};
-            if (!items || items.length < 1) return { ok: false, error: 'At least 1 item' };
-            if (items.length > 50) return { ok: false, error: 'At most 50 items' };
-            for (const it of items) {
-                if (!it || typeof it.name !== 'string' || !it.name.trim()) {
-                    return { ok: false, error: 'Every item needs a "name"' };
-                }
-            }
-
-            const keys = new Set();
-            for (const it of items) {
-                for (const k of Object.keys((it && it.ratings) || {})) keys.add(k);
-            }
-            const criteria = Array.from(keys);
-            if (criteria.length === 0) return { ok: false, error: 'ratings is empty' };
-
-            const w = {};
-            let totalW = 0;
-            for (const k of criteria) {
-                const ww = Number(weights[k]);
-                w[k] = (Number.isFinite(ww) && ww > 0) ? ww : 0;
-                totalW += w[k];
-            }
-            if (totalW <= 0) return { ok: false, error: 'Total weight must be > 0' };
-
-            const scored = [];
-            for (const it of items) {
-                let s = 0;
-                let incomplete = false;
-                for (const k of criteria) {
-                    if (!(k in (it.ratings || {}))) { incomplete = true; continue; }
-                    // null, '' and booleans mean "not rated yet" — not 0 (worst) or 1.
-                    const v = Utils.numOrNull(it.ratings[k]);
-                    if (v == null) { incomplete = true; continue; }
-                    if (v < 0 || v > 10) {
-                        return { ok: false, error: 'Rating must be a number 0–10 (' + it.name + '.' + k + ')' };
-                    }
-                    s += v * w[k];
-                }
-                scored.push({
-                    name: it.name,
-                    score: Math.round((s / totalW) * 100) / 100,
-                    incomplete: incomplete,
-                });
-            }
-            scored.sort((a, b) => (b.score - a.score) || a.name.localeCompare(b.name));
-
-            const rows = scored.map((sc, i) =>
-                [(i + 1) + '. ' + sc.name + (sc.incomplete ? ' *' : ''), sc.score.toFixed(2)]);
-
-            return {
-                ok: true,
-                values: { ranking: scored, best: scored[0].name },
-                rows: rows,
-                criteria: criteria,
-                weightsUsed: w,
-            };
-        },
 
         // Design-point allocation priority (v0.7.0).
         // Heuristic: compare each car attribute with the best value in the league
@@ -718,89 +429,6 @@
             return { verdict: better ? 'better' : 'worse', delta: delta, pct: pct };
         },
 
-        // Compare the active roster with an outside list for the same role.
-        // Two axes, always reported separately and unchanged:
-        // - rating (higher is better) — reference is the highest rating outside;
-        // - cost per race (lower is better) — reference is the lowest cost outside.
-        // The verdict uses the rating axis when both sides have a rating, otherwise
-        // the cost axis, otherwise 'unknown'. Rating coverage is reported as well so
-        // the UI can explain why a verdict is missing.
-        // Inputs: current, market, ratingLabel, costLabel, tolerance.
-        compareRoster(p) {
-            const cur = (p && Array.isArray(p.current)) ? p.current : null;
-            const mkt = (p && Array.isArray(p.market)) ? p.market : null;
-            if (!cur || !cur.length) {
-                return { ok: false, error: 'Active roster not read (needs the Drivers & Staff page)' };
-            }
-            if (!mkt || !mkt.length) {
-                return { ok: false, error: 'Market list not read (needs the Transfers page)' };
-            }
-            const ratingLabel = (p && p.ratingLabel) || 'rating';
-            const costLabel = (p && p.costLabel) || 'cost/race';
-            const tol = p && p.tolerance;
-            const rows = [];
-            const counts = { better: 0, worse: 0, equal: 0, unknown: 0 };
-            let ratingKnown = 0;
-            let ratingUnknown = 0;
-            for (const c of cur) {
-                if (!c) continue;
-                // Normalize roles ("Chief Designer" vs "CD") so the
-                // Teams roster can be compared with the Transfers market.
-                const role = Utils.roleCode(c.role);
-                // Never compare unreadable roles across roles:
-                // mechanic vs driver would produce a false verdict.
-                const peers = (role == null) ? []
-                    : mkt.filter(m => m && Utils.roleCode(m.role) === role);
-                const byRating = peers.filter(m => Utils.numOrNull(m.rating) != null)
-                    .sort((x, y) => Utils.numOrNull(y.rating) - Utils.numOrNull(x.rating));
-                const byCost = peers.filter(m => Utils.numOrNull(m.costPerRace) != null)
-                    .sort((x, y) => Utils.numOrNull(x.costPerRace) - Utils.numOrNull(y.costPerRace));
-                const refRating = byRating.length ? byRating[0] : null;
-                const refCost = byCost.length ? byCost[0] : null;
-                const byFee = peers.filter(m => Utils.numOrNull(m.fee) != null)
-                    .sort((x, y) => Utils.numOrNull(x.fee) - Utils.numOrNull(y.fee));
-                const refFee = byFee.length ? byFee[0] : null;
-                const vRating = IGPCore.numberVerdict(c.rating, refRating ? refRating.rating : null, { tolerance: tol });
-                const vCost = IGPCore.numberVerdict(c.costPerRace, refCost ? refCost.costPerRace : null, { lowerIsBetter: true, tolerance: tol });
-                if (vRating.verdict === 'unknown') ratingUnknown += 1; else ratingKnown += 1;
-                const basis = (vRating.verdict !== 'unknown') ? 'rating'
-                    : (vCost.verdict !== 'unknown') ? 'cost' : 'none';
-                const verdict = (basis === 'rating') ? vRating.verdict
-                    : (basis === 'cost') ? vCost.verdict : 'unknown';
-                counts[verdict] += 1;
-                rows.push({
-                    key: (c.key != null) ? c.key : (c.name != null ? c.name : null),
-                    name: c.name || '?',
-                    role: role,
-                    rating: Object.assign({ now: Utils.numOrNull(c.rating) }, vRating),
-                    cost: Object.assign({ now: Utils.numOrNull(c.costPerRace) }, vCost),
-                    basis: basis,
-                    verdict: verdict,
-                    refRating: refRating ? { name: refRating.name, value: Utils.numOrNull(refRating.rating) } : null,
-                    refCost: refCost ? { name: refCost.name, value: Utils.numOrNull(refCost.costPerRace) } : null,
-                    // Informational only, no verdict: the cheapest signing fee on the market is a
-                    // one-off cost and does not compare with a per-race wage.
-                    refFee: refFee ? { name: refFee.name, value: Utils.numOrNull(refFee.fee) } : null,
-                    refName: (basis === 'rating' && refRating) ? refRating.name
-                        : (basis === 'cost' && refCost) ? refCost.name : null,
-                });
-            }
-            if (!rows.length) return { ok: false, error: 'Active roster is empty' };
-            return {
-                ok: true,
-                values: {
-                    rows: rows,
-                    counts: counts,
-                    ratingKnown: ratingKnown,
-                    ratingUnknown: ratingUnknown,
-                    marketCount: mkt.length,
-                    ratingLabel: ratingLabel,
-                    costLabel: costLabel,
-                },
-                rows: rows.map(r => [r.name, r.verdict]),
-            };
-        },
-
         // Compare the active supplier with alternatives in the same Supply dialog
         // (one page, one snapshot), not the outside market.
         // Two axes: Σ bonus (higher is better) and cost per race (lower is better).
@@ -846,57 +474,6 @@
                     basis: basis,
                     verdict: verdict,
                 },
-            };
-        },
-
-        // Parse traits from `data-append` text (v0.7.2, Transfers page).
-        // Tries a DOM parse first (single or double quotes) and falls back to a regex.
-        // Returns { boost, weaken, special } with labels only; 'None' is dropped.
-        // - block-green — attribute-boosting specialization.
-        // - block-red — related weakness.
-        // - specialA* — driver special ability.
-        parseTraits(html) {
-            const s = String(html == null ? '' : html);
-            if (typeof DOMParser !== 'undefined' || (typeof document !== 'undefined' && document.createElement)) {
-                try {
-                    const holder = (typeof document !== 'undefined' && document.createElement)
-                        ? document.createElement('div') : null;
-                    if (holder) {
-                        holder.innerHTML = s;
-                        // Icons are rendered as <icon>igp-tyre</icon> followed by the
-                        // label; the icons are dropped so only the statistic remains.
-                        const textOf = el => {
-                            const c = el.cloneNode(true);
-                            for (const ic of c.querySelectorAll('icon')) ic.remove();
-                            return Utils.clean(c.textContent || '');
-                        };
-                        const byClass = cls => Array.from(holder.querySelectorAll('.' + cls))
-                            .map(textOf).filter(Boolean);
-                        const specials = Array.from(holder.querySelectorAll('[class*="specialA"]'))
-                            .map(textOf)
-                            .filter(t => t && t.toLowerCase() !== 'none');
-                        const hasDomHit = byClass('block-green').length || byClass('block-red').length || specials.length;
-                        if (hasDomHit || holder.querySelector('[class*="block-"],[class*="specialA"]')) {
-                            return { boost: byClass('block-green'), weaken: byClass('block-red'), special: specials };
-                        }
-                    }
-                } catch {}
-            }
-            const grab = pattern => {
-                const out = [];
-                const re = new RegExp(pattern, 'gi');
-                let m;
-                while ((m = re.exec(s)) !== null) {
-                    const t = Utils.clean(m[1] || '');
-                    if (t) out.push(t);
-                }
-                return out;
-            };
-            return {
-                boost: grab('class=[\'"][^\'"]*block-green[^\'"]*[\'"][^>]*>(?:<icon>[^<]*</icon>)?([^<]+)'),
-                weaken: grab('class=[\'"][^\'"]*block-red[^\'"]*[\'"][^>]*>(?:<icon>[^<]*</icon>)?([^<]+)'),
-                special: grab('class=[\'"][^\'"]*specialA\\d*[^\'"]*[\'"][^>]*>([^<]+)')
-                    .filter(x => x.toLowerCase() !== 'none'),
             };
         },
     });
@@ -2572,16 +2149,28 @@
         // fixtures; URLs keep their path but lose sensitive parameters, emails and
         // long tokens.
         const KEEP_ATTR = /^(class|id|type|name|for|role|colspan|rowspan|width|height|viewbox|d|fill|stroke|points|transform)$/i;
-        const URL_ATTR = /^(href|src|action|formaction|poster|srcset)$/i;
+        // `data-*` variants are included: avatar/profile images are often lazy-loaded
+        // through data-src / data-original rather than src.
+        const URL_ATTR = /^(href|src|action|formaction|poster|srcset|data-(?:src|href|original|url|bg|background|image))$/i;
 
-        function scrubJson(v, depth) {
+        // Keys whose *object* describes a person/account: nested `id`, `name` and
+        // `*Id` values under such a path are identity, not game data. The root of the
+        // identity bootstrap script is treated as one of these via `identRoot`.
+        const IDENTITY_KEY = /^(user|users|manager|managers|account|profile|owner|member|player|bootstrap|identity)$/i;
+        const IDENTITY_VALUE_KEY = /^(id|.*[-_]?id|name|nick(name)?|login|handle|e-?mail)$/i;
+        function scrubJson(v, depth, ident) {
             const d = depth || 0;
             if (d > 12) return '[REDACTED]';
-            if (Array.isArray(v)) return v.map(x => scrubJson(x, d + 1));
+            if (Array.isArray(v)) return v.map(x => scrubJson(x, d + 1, ident));
             if (v && typeof v === 'object') {
                 const out = {};
                 for (const k of Object.keys(v)) {
-                    out[k] = SENSITIVE_KEY.test(k) ? '[REDACTED]' : scrubJson(v[k], d + 1);
+                    const ownIdent = ident || IDENTITY_KEY.test(k);
+                    if (SENSITIVE_KEY.test(k) || (ownIdent && IDENTITY_VALUE_KEY.test(k))) {
+                        out[k] = '[REDACTED]';
+                    } else {
+                        out[k] = scrubJson(v[k], d + 1, ownIdent);
+                    }
                 }
                 return out;
             }
@@ -2589,20 +2178,29 @@
             return v;
         }
 
+        // Session/credential query parameters. Covers PHP session names (PHPSESSID,
+        // jsessionid), short aliases (sid/sess/sessid), verification hashes and the
+        // game's manager identity parameters.
+        const URL_SECRET_PARAM =
+            /(^|[?&])((?:token|csrf|session|sessid|sess|sid|phpsessid|jsessionid|auth|key|api[-_]?key|hash|verif(?:y|ier)?|manager|managerid|e-?mail|username|uid|userid|user_id|account|profile)=)[^&#]*/gi;
+        // Avatar, account and profile image paths, wherever they appear in a URL.
+        const URL_IDENTITY_PATH = [
+            [/(\/img\/user\/)[^/?#]+/gi, '$1[REDACTED]'],
+            [/(\/av(?:atar)?\/)[^/?#]+/gi, '$1[REDACTED]'],
+            [/(\/pic\/)[^/?#]+/gi, '$1[REDACTED]'],
+        ];
+
         function scrubUrl(value) {
             let v = String(value);
             // Credential and identity parameters. The `(^|[?&])` prefix also catches
             // relative URLs that start with "p=manager&id=..." and have no "?".
-            v = v.replace(
-                /(^|[?&])((?:token|csrf|session|auth|key|api[-_]?key|manager|e-?mail|username|uid|userid|user_id|account|profile)=)[^&#]*/gi,
-                '$1$2[REDACTED]');
+            v = v.replace(URL_SECRET_PARAM, '$1$2[REDACTED]');
             // Manager profile context: every `id=` is an account or player identity.
             if (/(^|[?&])(?:p|page)=manager\b/i.test(v)) {
                 v = v.replace(/(^|[?&])id=[^&#]*/gi, '$1id=[REDACTED]');
             }
             // Avatar and account paths: /img/user/<id>/... and /av/<id>...
-            v = v.replace(/(\/img\/user\/)[^/?#]+/gi, '$1[REDACTED]')
-                .replace(/(\/av(?:atar)?\/)[^/?#]+/gi, '$1[REDACTED]');
+            for (const [re, rep] of URL_IDENTITY_PATH) v = v.replace(re, rep);
             // Email anywhere in the URL.
             v = v.replace(EMAIL_RE, '[REDACTED]');
             // Long token used as a path segment.
@@ -2635,21 +2233,44 @@
                 const el = clone.querySelector(sel);
                 if (el) el.textContent = '[REDACTED]';
             }
-            // 4) Form fields: hidden, password, email and tel fields, plus fields with
-            //    sensitive identity (csrf, user, session), have their values blanked. Game
-            //    numbers (e.g. #d1AdvancedFuel) stay intact so the fixture remains usable
-            //    and still passes through pattern scrubbing.
-            for (const el of clone.querySelectorAll('input, textarea')) {
+            // 4) Form fields. Blanked: every credential/identity field (hidden,
+            //    password, email, tel, search and named csrf/user/session), plus any
+            //    free-text field that is not a game number — a search or note box can
+            //    hold a typed player name. Game number inputs (e.g. #d1AdvancedFuel)
+            //    stay intact so the fixture remains usable.
+            for (const el of clone.querySelectorAll('input, textarea, select')) {
                 const tag = String(el.tagName || '').toUpperCase();
                 const type = String(el.getAttribute('type') || '').toLowerCase();
                 const ident = [el.getAttribute('id'), el.getAttribute('name'), el.getAttribute('class')]
                     .filter(Boolean).join(' ');
-                const sensitive = tag === 'TEXTAREA' || type === 'hidden' || type === 'password' ||
-                    type === 'email' || type === 'tel' || SENSITIVE_IDENT.test(ident);
-                if (sensitive) {
-                    if (tag === 'TEXTAREA') el.textContent = '[REDACTED]';
-                    else el.setAttribute('value', '[REDACTED]');
-                    if (el.hasAttribute('data-initialvalue')) el.setAttribute('data-initialvalue', '[REDACTED]');
+                // Numbers and checkboxes are game data, never identity.
+                const numeric = type === 'number' || type === 'range' || type === 'checkbox' ||
+                    type === 'radio' || type === 'submit' || type === 'button';
+                // A field whose value is purely numeric is a game number even when the
+                // game omits `type` (e.g. #d1AdvancedFuel value="32"). A player name or
+                // other identity string is not.
+                const rawValue = String(el.getAttribute('value') || '').trim();
+                const numericValue = rawValue !== '' && Utils.numOrNull(rawValue) != null;
+                const sensitive = tag === 'TEXTAREA' || tag === 'SELECT' ||
+                    (!numeric && !numericValue) ||
+                    type === 'hidden' || type === 'password' || type === 'email' || type === 'tel' ||
+                    SENSITIVE_IDENT.test(ident);
+                if (!sensitive) continue;
+                if (tag === 'TEXTAREA') el.textContent = '[REDACTED]';
+                else if (el.hasAttribute('value')) el.setAttribute('value', '[REDACTED]');
+                if (el.hasAttribute('data-initialvalue')) el.setAttribute('data-initialvalue', '[REDACTED]');
+                // A <select> is usually a game control (tyre compound, setup level, fuel
+                // map); its options are game vocabulary and must survive so the fixture
+                // stays usable. Only an option whose value looks like an identity/entity
+                // id (long digits) or that repeats known PII is blanked.
+                for (const opt of el.querySelectorAll('option')) {
+                    const optVal = String(opt.getAttribute('value') || '').trim();
+                    const optText = String(opt.textContent || '');
+                    const identityOption = /^\d{5,}$/.test(optVal) ||
+                        (pii || []).some(v => v && optText.indexOf(v) !== -1);
+                    if (!identityOption) continue;
+                    if (opt.hasAttribute('value')) opt.setAttribute('value', '[REDACTED]');
+                    if (optText.trim()) opt.textContent = '[REDACTED]';
                 }
             }
             // 5) JSON scripts: redact per key (token, email, manager) without breaking
@@ -2660,14 +2281,11 @@
                 try {
                     const parsed = JSON.parse(raw);
                     // Identity bootstrap script: its top-level `id` is the user/manager id,
-                    // not a game id.
+                    // not a game id. Treat the whole root as identity context so nested
+                    // `id`/`name` values inside it are redacted too.
                     const ident = String(s.id || '') + ' ' + String(s.className || '');
-                    if (/(user|manager|account|profile|bootstrap)/i.test(ident) &&
-                        parsed && typeof parsed === 'object' && !Array.isArray(parsed) &&
-                        Object.prototype.hasOwnProperty.call(parsed, 'id')) {
-                        parsed.id = '[REDACTED]';
-                    }
-                    out = scrubKnown(JSON.stringify(scrubJson(parsed)), pii);
+                    const identRoot = /(user|manager|account|profile|bootstrap|identity)/i.test(ident);
+                    out = scrubKnown(JSON.stringify(scrubJson(parsed, 0, identRoot)), pii);
                 } catch {
                     out = scrubKnown(raw, pii);
                 }
@@ -2686,6 +2304,10 @@
                         if (v !== attr.value) attr.value = v;
                         continue;
                     }
+                    // Identity-bearing attributes (title/alt/aria-label/placeholder) fall
+                    // through to the scrubKnown() sweep below: known PII values are
+                    // removed but the game's own vocabulary ("Soft tyres") survives, so a
+                    // captured fixture stays usable for mapping work.
                     if (KEEP_ATTR.test(name)) continue; // structural value, no PII
                     // Attributes holding JSON (data-config and friends): redact per key.
                     const raw = String(attr.value || '');
@@ -2724,13 +2346,20 @@
         // ---- surface census -------------------------------------------------
         // Structural only: names and counts, never text, values or identity.
         const CENSUS_REGIONS = [
-            '#page-content', '#page-title-text', '#carAttributes', '#carAttributesDisplay',
+            '#page-wrap', '#page-content', '#page-title-text', '#menuContainer',
+            '#carAttributes', '#carAttributesDisplay',
             '#designInline', '#researchInline', '#repair', '.supplyDialog', '#dialogs-container',
             '#driver-table', '#staff-table', '#engine-table', '#chassis-table',
-            '#sponsorSignTable', '#race', '#setup', '#strategy',
+            '#sponsorSignTable', '#hq-container', '#hq-boost-container', '#hq-json',
+            '#race', '#setup', '#strategy',
         ];
         const CENSUS_STORAGE = /^igp/i;
         const OWN_DATA_ATTR = /^data-igpas-/;
+        // Attributes injected by unrelated browser extensions (translation, password
+        // managers, ad tools). They are not part of the game's vocabulary and would
+        // otherwise dominate the data-* list on a real session.
+        const NOISE_DATA_ATTR =
+            /^data-(protonpass-|immersive-translate-|qb-|uwv|darkreader|grammarly|bitwarden|lastpass|onepassword)/i;
 
         function censusName(name) {
             const s = String(name == null ? '' : name);
@@ -2767,7 +2396,8 @@
             for (const el of doc.querySelectorAll('*')) {
                 for (const a of Array.from(el.attributes || [])) {
                     const n = String(a.name || '');
-                    if (n.indexOf('data-') !== 0 || OWN_DATA_ATTR.test(n)) continue;
+                    if (n.indexOf('data-') !== 0 || OWN_DATA_ATTR.test(n) ||
+                        NOISE_DATA_ATTR.test(n)) continue;
                     m.set(n, (m.get(n) || 0) + 1);
                 }
             }
@@ -2775,6 +2405,28 @@
                 .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
                 .slice(0, 25)
                 .map(([n, c]) => n + '×' + c);
+        }
+        // Embedded JSON payloads: page data the userscript can read without any
+        // request. Only the key names and sizes are reported — never the values.
+        function censusJson(doc) {
+            const out = [];
+            for (const s of doc.querySelectorAll('script[type="application/json"]')) {
+                const id = censusName(s.getAttribute('id')) || '(no id)';
+                const raw = String(s.textContent || '').trim();
+                let parsed = null;
+                try { parsed = JSON.parse(raw); } catch { parsed = null; }
+                if (parsed === null) {
+                    out.push('  #' + id + ' bytes=' + raw.length + ' unparsed');
+                    continue;
+                }
+                const isArr = Array.isArray(parsed);
+                const first = isArr ? parsed[0] : parsed;
+                const keys = first && typeof first === 'object' ? Object.keys(first) : [];
+                out.push('  #' + id + ' bytes=' + raw.length +
+                    (isArr ? ' items=' + parsed.length : '') +
+                    ' keys=' + (keys.length ? keys.slice(0, 20).join(', ') : '(none)'));
+            }
+            return out;
         }
         function censusTables(doc) {
             const out = [];
@@ -2857,6 +2509,9 @@
             lines.push('', 'tables (' + tables.length + '):');
             if (tables.length) lines.push(...tables);
             else lines.push('  (none)');
+            // Embedded data (HQ map, and any page that ships its state as JSON).
+            const json = censusJson(doc);
+            if (json.length) lines.push('', 'embedded json (' + json.length + '):', ...json);
             // Dialogs: what is open and how many stacked layers exist.
             const dc = doc.getElementById('dialogs-container');
             lines.push('', 'dialogs: container' + (dc ? ' children=' + dc.children.length : ' absent') +

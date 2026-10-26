@@ -33,15 +33,22 @@ Removed/redacted:
 - `<meta>`, `<link>`, `<base>`, `<template>`, `<iframe>`, `<object>`, `<embed>`,
   executable `<script>`, HTML comments, and `srcdoc`/`on*` attributes;
 - known PII values from the page (manager name, balance, tokens, rank) in
-  **all** text and attributes — including `aria-label`, `alt`, `src`, `style`;
+  **all** text and attributes — including `aria-label`, `alt`, `placeholder`,
+  `title`, `src` and lazy-load `data-src`/`data-original`, `style`;
+- form field contents that are not game numbers: text/search/select/textarea and
+  every credential field, plus `<option>` values that carry a player id or name
+  (game vocabulary such as tyre compounds and setup levels is kept);
 - sensitive field contents (input/textarea), emails, and long token strings
   (32+ hex / 40+ alphanumeric) in text, attributes, URLs, and JSON;
 - sensitive JSON keys (`csrf`, `token`, `session`, `auth`, `password`,
-  `secret`, `apiKey`, `email`, `manager`, `username`);
+  `secret`, `apiKey`, `email`, `manager`, `username`), and `id`/`name`/`*Id`
+  values nested under an identity context (`profile`, `user`, `manager`,
+  `owner`, `account`, `member`, `player`, or the identity bootstrap script);
 - identity URL parameters (`manager`, `uid`, `userid`, `account`, `profile`,
-  `email`, `username`, token/csrf/session/auth/key); all `id=` in the context
+  `email`, `username`, token/csrf/session/auth/key, PHP/JS session ids such as
+  `PHPSESSID`, `sess`, `sid`, `sessid`); all `id=` in the context
   of `p=manager`/`page=manager` (account/player profile);
-- avatar/account paths `/img/user/<id>/…` and `/av/<id>…`;
+- avatar/account paths `/img/user/<id>/…`, `/av/<id>…` and `/pic/<id>…`;
 - tracker attributes `data-sharkid`, `visitor`, `tracker`, `analytics`,
   `fingerprint`, `device`;
 - top-level `id` on identity bootstrap scripts (`userBootstrap` etc.).
