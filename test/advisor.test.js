@@ -233,15 +233,12 @@ t("Repair advisor: Fix/Replace buttons coloured, card titles not written", () =>
   assert(/^Replace\s+1$/.test(clean(eng)), "Replace button text changed: " + clean(eng));
   assert(fix.getAttribute("href").indexOf("btn=c1PartSwap") >= 0, "Fix button href changed");
   assert(!fix.hasAttribute("data-igpas-orig"), "Fix button was written by the advisor");
-  // Parts 30% = red (act now); engine 62% = grey (defer).
+  // Parts 30% = red (act now); engine 62% = no fill (defer keeps game style).
   assert(
     bg(fix) === "#c0392b" || bg(fix) === "rgb(192, 57, 43)",
     "Fix 30% must be red, got: " + bg(fix)
   );
-  assert(
-    bg(eng) === "#5d6d7e" || bg(eng) === "rgb(93, 109, 126)",
-    "Replace 62% must be grey, got: " + bg(eng)
-  );
+  assert(bg(eng) === "", "Replace 62% must keep the game style, got: " + bg(eng));
   // Stock/restock/estimate details stay in the button + circle title.
   const fixTitle = fix.getAttribute("title") || "";
   const engTitle = eng.getAttribute("title") || "";
@@ -253,7 +250,7 @@ t("Repair advisor: Fix/Replace buttons coloured, card titles not written", () =>
     /1 engine/.test(engTitle) && /stock 40/.test(engTitle),
     "Replace title without cost/stock"
   );
-  assert(/restock 15 races/.test(engTitle), "Replace title without restock");
+  assert(/restock in 15 races/.test(engTitle), "Replace title without restock");
   assert(/fix now/.test(condTitle), "parts condition title without advice");
   assert(/estimate/i.test(fixTitle), "button title without estimate label");
   assert(
@@ -272,11 +269,11 @@ t("Repair advisor: 55% condition uses amber colour (prepare)", () => {
   const fix = s.doc.getElementById("c1PartSwap");
   const eng = s.doc.getElementById("c1EngSwap");
   assert(
-    bg(fix) === "#d68910" || bg(fix) === "rgb(214, 137, 16)",
+    bg(fix) === "#9c6500" || bg(fix) === "rgb(156, 101, 0)",
     "Fix 55% must be amber, got: " + bg(fix)
   );
   assert(
-    bg(eng) === "#d68910" || bg(eng) === "rgb(214, 137, 16)",
+    bg(eng) === "#9c6500" || bg(eng) === "rgb(156, 101, 0)",
     "Replace 55% must be amber, got: " + bg(eng)
   );
   assert(/prepare to fix/.test(fix.getAttribute("title") || ""), "Fix title is not prepare");
@@ -338,9 +335,10 @@ t("Supply advisor: alternative buttons coloured by recommendation, cost text int
     return links.find(a => re.test(a.getAttribute("data-tip") || ""));
   };
   const bg = el => String(el.style.getPropertyValue("background-color") || "").toLowerCase();
-  // Active 8/1M vs best alternative Σ6/400k = 15/1M → eId6 red, the rest grey.
-  assert(bg(btnByEid(6)) === "rgb(192, 57, 43)", "eId6 must be red: " + bg(btnByEid(6)));
-  assert(bg(btnByEid(1)) === "rgb(93, 109, 126)", "eId1 must be grey: " + bg(btnByEid(1)));
+  // Active 8/1M vs best alternative total +6/400k = 15/1M → eId6 green,
+  // every non-option keeps the game style.
+  assert(bg(btnByEid(6)) === "rgb(25, 111, 61)", "eId6 must be green: " + bg(btnByEid(6)));
+  assert(bg(btnByEid(1)) === "", "eId1 must keep the game style: " + bg(btnByEid(1)));
   // The dialog header stays game-owned: no inline style at all, so the active card
   // keeps the original background instead of an advisor tint.
   const subhead = s.doc.querySelector(".supplyDialog .dialog-subhead");
@@ -352,23 +350,22 @@ t("Supply advisor: alternative buttons coloured by recommendation, cost text int
   assert(h2.textContent === "Engine supply", "dialog title was written: " + h2.textContent);
   assert(!h2.hasAttribute("data-igpas-orig"), "title still uses the old text annotation");
   const ht = h2.getAttribute("title") || "";
-  assert(/value\/1M 15/.test(ht), "header title without alternative value: " + ht);
+  assert(/15\.0 value per 1M/.test(ht), "header title without alternative value: " + ht);
   assert(/switch advised/.test(ht), "header title without verdict: " + ht);
-  assert(/(#4 of 6)/.test(ht), "header title without active rank: " + ht);
-  assert(
-    /Rule: switch only when an alternative is ≥5% more efficient/.test(ht),
-    "title without threshold rule"
-  );
+  assert(/Active #4 of 6/.test(ht), "header title without active rank: " + ht);
+  assert(/switch only at ≥5% gain/.test(ht), "title without threshold rule");
   assert(/estimate/i.test(ht), "header title without estimate label");
+  assert(ht.length <= 180, "header title exceeds the tooltip budget: " + ht.length);
   // Details stay in the card title; game price/icon/data-tip text is untouched.
   const card1 = btnByEid(1).closest(".inline-block");
   const t1 = card1.getAttribute("title") || "";
-  assert(/#2 of 6/.test(t1), "card title without rank: " + t1);
-  assert(/Σ bonus \+5/.test(t1), "card title without Σ bonus: " + t1);
-  assert(/value\/1M/.test(t1), "card title without value/1M");
+  assert(/Alternative #2 of 6/.test(t1), "card title without rank: " + t1);
+  assert(/total bonus \+5/.test(t1), "card title without total bonus: " + t1);
+  assert(/value per 1M 14\.3/.test(t1), "card title without value per 1M: " + t1);
   assert(/estimate/i.test(t1), "card title without estimate label");
+  assert(t1.length <= 180, "card title exceeds the tooltip budget: " + t1.length);
   const card6 = btnByEid(6).closest(".inline-block");
-  assert(/#1 of 6/.test(card6.getAttribute("title") || ""), "best card without #1");
+  assert(/Alternative #1 of 6/.test(card6.getAttribute("title") || ""), "best card without #1");
   assert(
     /switch recommended/.test(card6.getAttribute("title") || ""),
     "best card without a recommendation"
@@ -379,7 +376,7 @@ t("Supply advisor: alternative buttons coloured by recommendation, cost text int
   s.close();
 });
 
-t("Supply advisor: active supplier is more efficient → grey buttons, header untouched", () => {
+t("Supply advisor: active supplier is more efficient → no fill, header untouched", () => {
   // Complaint scenario: active supplier Σ4 @250k = 16/1M, best alternative
   // Σ6 @400k = 15/1M. Do not crown the alternative — keep the active one.
   const s = bootOn(load("supply-engine.html").replace("500k per race", "250k per race"), URL_IGP);
@@ -387,8 +384,8 @@ t("Supply advisor: active supplier is more efficient → grey buttons, header un
   assert(links.length === 5, "alternative cards must be 5, got " + links.length);
   const bg = el => String(el.style.getPropertyValue("background-color") || "").toLowerCase();
   assert(
-    links.every(a => bg(a) === "rgb(93, 109, 126)"),
-    "a button other than grey is still present: " + links.map(bg).join(" | ")
+    links.every(a => bg(a) === ""),
+    "a non-option got a fill: " + links.map(bg).join(" | ")
   );
   const subhead = s.doc.querySelector(".supplyDialog .dialog-subhead");
   assert(
@@ -398,18 +395,18 @@ t("Supply advisor: active supplier is more efficient → grey buttons, header un
   const h2 = s.doc.querySelector(".dialog-subhead-content h2");
   assert(h2.textContent === "Engine supply", "dialog title was written: " + h2.textContent);
   const ht = h2.getAttribute("title") || "";
-  assert(/value\/1M 16/.test(ht), "header title without active value: " + ht);
-  assert(/Verdict: keep/.test(ht), "header title does not state keep: " + ht);
-  assert(/(#1 of 6)/.test(ht), "header title without active rank: " + ht);
+  assert(/Active #1 of 6/.test(ht), "header title without active rank: " + ht);
+  assert(/— keep ·/.test(ht), "header title does not state keep: " + ht);
+  assert(/vs 16\.0/.test(ht), "header title without active value: " + ht);
   const card = links[0].closest(".inline-block");
   assert(
-    /active #1 \(16\/1M\) — keep/.test(card.getAttribute("title") || ""),
-    "card title does not confirm keep: " + card.getAttribute("title")
+    /active #1/.test(card.getAttribute("title") || ""),
+    "card title does not include the active rank: " + card.getAttribute("title")
   );
   s.close();
 });
 
-t("Supply advisor: Fuel dialog — best button red, original price intact", () => {
+t("Supply advisor: Fuel dialog — switch pick green, original price intact", () => {
   const s = bootOn(load("supply-fuel.html"), URL_IGP);
   assert(!s.doc.querySelector("section.igpas-adv-panel"), "separate panel still present");
   const links = Array.prototype.slice.call(s.doc.querySelectorAll(".supplyDialog a.btn.confirm"));
@@ -429,9 +426,9 @@ t("Supply advisor: Fuel dialog — best button red, original price intact", () =
     return links.find(a => re.test(a.getAttribute("data-tip") || ""));
   };
   const bg = el => String(el.style.getPropertyValue("background-color") || "").toLowerCase();
-  // Active 40/1M. Alternative 30k Σ2 = 66.67/1M → eId10 red.
-  assert(bg(btnByEid(10)) === "rgb(192, 57, 43)", "eId10 fuel must be red");
-  assert(bg(btnByEid(7)) === "rgb(93, 109, 126)", "eId7 fuel must be grey");
+  // Active 40/1M. Alternative 30k total +2 = 66.7/1M → eId10 green.
+  assert(bg(btnByEid(10)) === "rgb(25, 111, 61)", "eId10 fuel must be green");
+  assert(bg(btnByEid(7)) === "", "eId7 fuel must keep the game style");
   const h2 = s.doc.querySelector(".dialog-subhead-content h2");
   assert(/^Fuel supply/.test(h2.textContent), "fuel dialog title changed: " + h2.textContent);
   assert(!/·/.test(h2.textContent), "fuel title still has verdict text: " + h2.textContent);
@@ -440,7 +437,7 @@ t("Supply advisor: Fuel dialog — best button red, original price intact", () =
   s.close();
 });
 
-t("Supply advisor: Tyre dialog — best button red, original price intact", () => {
+t("Supply advisor: Tyre dialog — switch pick green, original price intact", () => {
   const s = bootOn(load("supply-tyre.html"), URL_IGP);
   assert(!s.doc.querySelector("section.igpas-adv-panel"), "separate panel still present");
   const links = Array.prototype.slice.call(s.doc.querySelectorAll(".supplyDialog a.btn.confirm"));
@@ -460,9 +457,9 @@ t("Supply advisor: Tyre dialog — best button red, original price intact", () =
     return links.find(a => re.test(a.getAttribute("data-tip") || ""));
   };
   const bg = el => String(el.style.getPropertyValue("background-color") || "").toLowerCase();
-  // Active 20/1M (tie with 100k, active wins). 60k Σ2 = 66.67/1M → eId14 red.
-  assert(bg(btnByEid(14)) === "rgb(192, 57, 43)", "eId14 tyre must be red");
-  assert(bg(btnByEid(12)) === "rgb(93, 109, 126)", "eId12 tyre must be grey");
+  // Active 20/1M (tie with 100k, active wins). 60k total +2 = 66.7/1M → eId14 green.
+  assert(bg(btnByEid(14)) === "rgb(25, 111, 61)", "eId14 tyre must be green");
+  assert(bg(btnByEid(12)) === "", "eId12 tyre must keep the game style");
   const h2 = s.doc.querySelector(".dialog-subhead-content h2");
   assert(/^Tyre supply/.test(h2.textContent), "tyre dialog title changed: " + h2.textContent);
   assert(!/·/.test(h2.textContent), "tyre title still has verdict text: " + h2.textContent);
@@ -496,6 +493,15 @@ t(
       assert(
         names.filter(x => /^#1 /.test(x)).length === 1,
         tid + ": there must be exactly one #1 rank"
+      );
+      const ranks = names.map(x => Number((x.match(/^#(\d+)/) || [])[1]));
+      assert(
+        ranks.every((n, i) => n === i + 1),
+        tid + ": rows are not sorted by rank: " + ranks.slice(0, 8).join(",")
+      );
+      assert(
+        names.every(x => !/★/.test(x)),
+        tid + ": advisor star is still present in a table with game stars"
       );
     }
     // Engine: rating 100 + highest rating/1M → CAVEIRA #1.
@@ -547,8 +553,8 @@ t(
     // Details + estimate in the same row's title.
     assert(/rating 100%/.test(caveira.getAttribute("title") || ""), "title without rating");
     assert(
-      /rating\/1M/.test(caveira.getAttribute("title") || ""),
-      "engine title without rating/1M"
+      /rating per 1M/.test(caveira.getAttribute("title") || ""),
+      "engine title without rating per 1M"
     );
     assert(/estimate/i.test(caveira.getAttribute("title") || ""), "title without estimate label");
     s.close();
@@ -745,7 +751,7 @@ ta("Restore: title-only annotation (staff portrait) cleaned up after page change
 ta("Restore: game text changed after the advisor's write is not overwritten", async () => {
   const s = bootOn(load("transfers.html"), URL_TRANSFERS);
   const td = s.doc.querySelector("#driver-table tbody tr td");
-  assert(/^#\d+ /.test(td.textContent), "advisor ranking not written");
+  assert(/ · best$/.test(td.textContent), "advisor marker not written");
   // The game updates the cell (AJAX/re-render) after the advisor writes.
   td.textContent = "NEW DRIVER NAME";
   s.doc.getElementById("pageId").value = "cars";
@@ -770,17 +776,15 @@ t("Staff advisor in-place", () => {
   // Game structure intact: br + span still present, no new advisor elements.
   assert(d.querySelector("br") && d.querySelector("span"), ".driverName structure is broken");
   assert(!d.querySelector("[class*=igpas]"), "advisor element leaked into .driverName");
-  // Clean label: name | Full Recover <countdown>, not "low health" jargon.
+  // Clean label: name · fit <countdown>, not the old pipe/"Full Recover" jargon.
   const span = d.querySelector("span");
-  assert(
-    / \| Full Recover 14h 49m$/.test(span.textContent),
-    "Full Recover label is wrong: " + span.textContent
-  );
+  assert(/ · fit 14h 49m$/.test(span.textContent), "fit label is wrong: " + span.textContent);
   const tip = d.getAttribute("title") || "";
   assert(/Health 2%/.test(tip), "health not included in title: " + tip);
-  assert(/recovery 6\.615\/hr/.test(tip), "recovery rate not included in title: " + tip);
-  assert(/Full Recover ±14h 49m/.test(tip), "ETA not included in title: " + tip);
+  assert(/recovery 6\.6%\/hr/.test(tip), "recovery rate not included in title: " + tip);
+  assert(/fit in 14h 49m/.test(tip), "ETA not included in title: " + tip);
   assert(/estimate/i.test(tip), "title without estimate label: " + tip);
+  assert(tip.length <= 180, "staff title exceeds the tooltip budget: " + tip.length);
   const h = s.doc.querySelector("#staff .c-wrap .c-head");
   assert(h && /Chief Designer/i.test(h.textContent), "staff header is missing");
   assert(
@@ -795,8 +799,9 @@ t("Transfers advisor in-place for driver and staff", () => {
   assert(!s.doc.querySelector(".igpas-adv-panel"), "transfers panel still present");
   const d = s.doc.querySelector("#driver-table tbody tr td");
   const st = s.doc.querySelector("#staff-table tbody tr td");
-  assert(d && /^#\d+ /.test(d.textContent), "driver was not ranked in-place");
-  assert(st && /^#\d+ /.test(st.textContent), "staff was not ranked in-place");
+  assert(d && / · best$/.test(d.textContent), "driver top row was not marked best");
+  assert(st && / · best$/.test(st.textContent), "staff top row was not marked best");
+  assert(!/^#\d+ /.test(d.textContent), "live transfer order must not be numbered");
   // Game links & flags inside the cell stay alive (not victims of textContent).
   assert(d.querySelector("a.linkParent"), "driver contract link is broken");
   assert(d.querySelector("img.flag"), "driver flag is missing");
@@ -821,9 +826,9 @@ t("Transfers deadline: row tooltip carries the time left, never a guess", () => 
   };
   // Past date -> "ended"
   assert(/ended/.test(tipOf("13673757")), "past deadline not marked ended: " + tipOf("13673757"));
-  // Far-future date -> "ends in", with an hour figure
+  // Far-future date -> capped at >30d instead of hundreds of hours.
   const far = tipOf("15727552");
-  assert(/ends in .*\d+h/.test(far), "open deadline not shown: " + far);
+  assert(/ends in >30d/.test(far), "open deadline not shown: " + far);
   // Missing data-enddate -> the tooltip keeps rank/overall/fee but no deadline claim
   const none = tipOf("15894502");
   assert(/overall/.test(none), "row lost its other details: " + none);
@@ -855,34 +860,31 @@ t("Sponsor advisor: highest income green + ★, highest cash bonus amber", () =>
   const bg = el => String(el.style.getPropertyValue("background-color") || "").toLowerCase();
   const best = btnByEid(19);
   assert(/Sign ★/.test(best.textContent), "eId19 is not the primary choice: " + best.textContent);
-  assert(bg(best) === "rgb(30, 132, 73)", "eId19 is not green: " + bg(best));
+  assert(bg(best) === "rgb(25, 111, 61)", "eId19 is not green: " + bg(best));
   const tip = best.getAttribute("title") || "";
-  assert(/best value #1/.test(tip), "title without #1 verdict: " + tip);
-  assert(/income 1\.6 M\/race \(guaranteed every race\)/.test(tip), "title without income: " + tip);
-  assert(
-    /cash bonus 102 K\/race if the objective is met/.test(tip),
-    "title without bonus/race: " + tip
-  );
-  assert(/guaranteed 8 M \(5 races\)/.test(tip), "title without guarantee: " + tip);
-  assert(/max potential 8\.5 M/.test(tip), "title without potential: " + tip);
+  assert(/best income/.test(tip), "title without #1 verdict: " + tip);
+  assert(/income 1\.6m\/race guaranteed/.test(tip), "title without income: " + tip);
+  assert(/bonus 102k\/race if objective met/.test(tip), "title without bonus/race: " + tip);
+  assert(/guaranteed 8m, max 8\.5m over 5 races/.test(tip), "title without totals: " + tip);
   assert(/estimate, not the game formula/.test(tip), "title without estimate label: " + tip);
+  assert(tip.length <= 180, "sponsor title exceeds the tooltip budget: " + tip.length);
   const second = btnByEid(17);
   assert(/^Sponsor #2 of 4/.test(second.getAttribute("title") || ""), "eId17 is not #2");
   assert(
-    /guaranteed 7\.5 M \(5 races\)/.test(second.getAttribute("title") || ""),
-    "eId17 without guarantee"
+    /guaranteed 7\.5m, max 9m over 5 races/.test(second.getAttribute("title") || ""),
+    "eId17 without totals"
   );
-  assert(/max potential 9 M/.test(second.getAttribute("title") || ""), "eId17 without potential");
   assert(bg(second) === "", "eId17 must not be coloured: " + bg(second));
   // Highest cash bonus (eId2) = amber alternative + objective break-even.
   const alt = btnByEid(2);
-  assert(bg(alt) === "rgb(185, 119, 14)", "eId2 is not amber: " + bg(alt));
+  assert(bg(alt) === "rgb(156, 101, 0)", "eId2 is not amber: " + bg(alt));
+  assert(/Sign \(bonus\)/.test(alt.textContent), "eId2 is not marked as the bonus option");
   assert(!/Sign ★/.test(alt.textContent), "eId2 must not have ★");
   const altTip = alt.getAttribute("title") || "";
   assert(/^Sponsor #4 of 4/.test(altTip), "eId2 is not #4: " + altTip);
-  assert(/highest cash bonus — trade-off against income/.test(altTip), "eId2 without trade-off");
-  assert(/>84% of races/.test(altTip), "eId2 without break-even: " + altTip);
-  assert(/max potential 9\.9 M/.test(altTip), "eId2 without potential: " + altTip);
+  assert(/highest cash bonus/.test(altTip), "eId2 without trade-off");
+  assert(/better when objective met >84%/.test(altTip), "eId2 without break-even: " + altTip);
+  assert(altTip.length <= 180, "alt sponsor title exceeds the tooltip budget: " + altTip.length);
   // Game numbers do not change.
   const rows = table.querySelectorAll("tr");
   const income = Array.prototype.map.call(rows[1].querySelectorAll("td"), td =>
@@ -908,13 +910,13 @@ t("Sponsor advisor: term not read → income ranking, no invented totals", () =>
   const best = links.find(a => /eId=19\b/.test(a.getAttribute("data-tip") || ""));
   assert(/Sign ★/.test(best.textContent), "eId19 is not the primary choice when the term is empty");
   const tip = best.getAttribute("title") || "";
-  assert(/contract term not read/.test(tip), "title is not honest about the term: " + tip);
+  assert(/term not read/.test(tip), "title is not honest about the term: " + tip);
   assert(!/total \d/.test(tip), "total invented when the term is empty: " + tip);
   const first = links.find(a => /eId=2\b/.test(a.getAttribute("data-tip") || ""));
   assert(/^Sponsor #4 of 4/.test(first.getAttribute("title") || ""), "eId2 is not #4");
   assert(
     String(first.style.getPropertyValue("background-color") || "").toLowerCase() ===
-      "rgb(185, 119, 14)",
+      "rgb(156, 101, 0)",
     "eId2 is not amber when the term is empty"
   );
   s.close();
@@ -934,29 +936,26 @@ t("Sponsor advisor (primary): tokens first, cash bonus amber trade-off", () => {
   // 3 tokens/race + cash bonus 612k = rank #1 (tokens first).
   const best = btnByEid(14);
   assert(/Sign ★/.test(best.textContent), "eId14 is not the primary choice: " + best.textContent);
-  assert(bg(best) === "rgb(30, 132, 73)", "eId14 is not green: " + bg(best));
+  assert(bg(best) === "rgb(25, 111, 61)", "eId14 is not green: " + bg(best));
   const tip = best.getAttribute("title") || "";
-  assert(/best value #1/.test(tip), "title without #1 verdict: " + tip);
-  assert(/3 token\/race/.test(tip), "title without token/race: " + tip);
-  assert(/cash bonus 612 K/.test(tip), "title without cash bonus: " + tip);
-  assert(/contract term not read/.test(tip), "title is not honest about the term: " + tip);
-  assert(
-    /cash bonus 612 K\/race if the objective is met/.test(tip),
-    "title without bonus/race: " + tip
-  );
-  assert(/token preferred/.test(tip), "title without the token model: " + tip);
+  assert(/best token value/.test(tip), "title without #1 verdict: " + tip);
+  assert(/3 tokens\/race/.test(tip), "title without tokens/race: " + tip);
+  assert(/bonus 612k/.test(tip), "title without cash bonus: " + tip);
+  assert(/term not read/.test(tip), "title is not honest about the term: " + tip);
+  assert(/bonus 612k\/race if objective met/.test(tip), "title without bonus/race: " + tip);
+  assert(/tokens and cash separate/.test(tip), "title without the token model: " + tip);
   assert(!/total \d/.test(tip), "tokens must not be summed with cash: " + tip);
+  assert(tip.length <= 180, "sponsor title exceeds the tooltip budget: " + tip.length);
   // Highest cash bonus (eId2: 1 token + 1.8m) = amber alternative, not ★.
   const alt = btnByEid(2);
-  assert(bg(alt) === "rgb(185, 119, 14)", "eId2 is not amber: " + bg(alt));
+  assert(bg(alt) === "rgb(156, 101, 0)", "eId2 is not amber: " + bg(alt));
+  assert(/Sign \(bonus\)/.test(alt.textContent), "eId2 is not marked as the bonus option");
   assert(!/Sign ★/.test(alt.textContent), "eId2 must not have ★");
   const altTip = alt.getAttribute("title") || "";
   assert(/^Sponsor #14 of 16/.test(altTip), "eId2 is not #14: " + altTip);
-  assert(
-    /highest cash bonus — trade-off against tokens/.test(altTip),
-    "eId2 without the trade-off label"
-  );
-  assert(/cash bonus 1\.8 M/.test(altTip), "eId2 without cash bonus: " + altTip);
+  assert(/highest cash bonus/.test(altTip), "eId2 without the trade-off label");
+  assert(/bonus 1\.8m/.test(altTip), "eId2 without cash bonus: " + altTip);
+  assert(altTip.length <= 180, "alt sponsor title exceeds the tooltip budget: " + altTip.length);
   // 2 tokens/race, bonus 1.5m = #5, no colour.
   const mid = btnByEid(5);
   assert(/^Sponsor #5 of 16/.test(mid.getAttribute("title") || ""), "eId5 is not #5");
@@ -1020,30 +1019,54 @@ ta("Race live (#race): innerHTML identical before/after boot & re-render", async
   s.close();
 });
 
-ta("Restore manufacturers: original name returns exactly, without duplication", async () => {
-  const s = bootOn(
-    load("manufacturers-engines.html"),
-    "https://www.igpmanager.com/app/p=manufacturers"
-  );
-  const rows = Array.prototype.slice.call(s.doc.querySelectorAll("#engine-table tbody tr"));
-  const tr = rows.filter(x => /Akina SpeedStars/.test(x.textContent))[0];
-  assert(tr, "Akina row not found");
-  const td = tr.querySelector("td");
-  assert(/^#\d+ /.test(td.textContent), "ranking not written: " + td.textContent);
-  s.doc.getElementById("pageId").value = "cars";
-  s.doc.getElementById("engine-table").appendChild(s.doc.createElement("div"));
-  await new Promise(r => setTimeout(r, 25));
-  assert(
-    td.textContent.trim() === "Akina SpeedStars",
-    "manufacturers restore is wrong: " + JSON.stringify(td.textContent)
-  );
-  assert(
-    td.textContent.split("Akina SpeedStars").length === 2,
-    "name duplicated after restore: " + td.textContent
-  );
-  assert(!tr.hasAttribute("data-igpas-orig"), "data-igpas-orig left behind");
-  s.close();
-});
+ta(
+  "Restore manufacturers: order and original names return exactly, without duplication",
+  async () => {
+    const pristine = new JSDOM(load("manufacturers-engines.html")).window.document;
+    const originalOrder = Array.prototype.map
+      .call(pristine.querySelectorAll("#engine-table tbody tr"), tr =>
+        tr.getAttribute("data-searchable")
+      )
+      .join("|");
+    pristine.defaultView.close();
+    const s = bootOn(
+      load("manufacturers-engines.html"),
+      "https://www.igpmanager.com/app/p=manufacturers"
+    );
+    const rows = Array.prototype.slice.call(s.doc.querySelectorAll("#engine-table tbody tr"));
+    const tr = rows.filter(x => /Akina SpeedStars/.test(x.textContent))[0];
+    assert(tr, "Akina row not found");
+    const td = tr.querySelector("td");
+    assert(/^#\d+ /.test(td.textContent), "ranking not written: " + td.textContent);
+    assert(
+      rows.slice(0, 2).every(x => !/Akina SpeedStars/.test(x.textContent)),
+      "rows were not sorted by rank"
+    );
+    s.doc.getElementById("pageId").value = "cars";
+    s.doc.getElementById("engine-table").appendChild(s.doc.createElement("div"));
+    await new Promise(r => setTimeout(r, 25));
+    assert(
+      td.textContent.trim() === "Akina SpeedStars",
+      "manufacturers restore is wrong: " + JSON.stringify(td.textContent)
+    );
+    assert(
+      td.textContent.split("Akina SpeedStars").length === 2,
+      "name duplicated after restore: " + td.textContent
+    );
+    assert(!tr.hasAttribute("data-igpas-orig"), "data-igpas-orig left behind");
+    const restoredOrder = Array.prototype.map
+      .call(s.doc.querySelectorAll("#engine-table tbody tr"), x =>
+        x.getAttribute("data-searchable")
+      )
+      .join("|");
+    assert(restoredOrder === originalOrder, "manufacturer row order was not restored");
+    assert(
+      !s.doc.querySelector("#engine-table [data-igpas-orig-order]"),
+      "order marker left behind after restore"
+    );
+    s.close();
+  }
+);
 
 ta(
   "Instant render: Cars rows injected asynchronously by the game are ranked immediately without user action",
@@ -1187,7 +1210,7 @@ ta(
     );
     assert(!h2.hasAttribute("data-igpas-orig"), "title uses the old text annotation");
     const ht = h2.getAttribute("title") || "";
-    assert(/Active supplier/.test(ht), "header title not recalculated: " + ht);
+    assert(/Active #\d+ of \d+/.test(ht), "header title not recalculated: " + ht);
     const subhead = dlg.querySelector(".dialog-subhead");
     assert(
       !subhead.getAttribute("style"),
@@ -1203,7 +1226,7 @@ ta(
     assert(btn6, "eId6 button is missing");
     assert(
       String(btn6.style.getPropertyValue("background-color") || "").toLowerCase() ===
-        "rgb(192, 57, 43)",
+        "rgb(25, 111, 61)",
       "recommendation button colour is missing after re-render"
     );
     s.close();

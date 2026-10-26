@@ -10,18 +10,19 @@ Current version 0.14.0.
 - ✅ In-page recommendations on iGP **study** pages (Cars, Manufacturers,
   Supply, Drivers & Staff, Transfers) and the **Sponsor** dialog (Sign). The
   **pre-race Setup/Strategy** tabs no longer get an advisor (removed in v0.10.0).
-- ✅ DOM capture menu with PII redaction for fixture mapping.
-- ✅ Surface census menu: structural map of the active page (ids, form/field
-  shapes, `data-*` names, row/table/dialog counts, regions) so advisor work can
-  be planned per page. No text, values, credentials, or identity — see
-  [SURFACE.md](SURFACE.md).
-- ✅ Supply **switch-aware**: efficiency = Σ bonus per 1M cost. Ranking combines the active supplier + alternatives (ties go to the active one); the alternative button is coloured red when the recommendation is to switch (≥5% more efficient), amber for active/candidate, grey for not an option. Cost text & titles are unchanged; verdict + details in `title` — preventing supplier switch loops.
+- ✅ **Copy DOM capture (redacted)** menu with PII redaction for fixture mapping.
+- ✅ **Copy surface census (structure only)** menu: structural map of the active page (ids,
+  form/field shapes, `data-*` names, row/table/dialog counts, regions) so advisor work can be
+  planned per page. No text, values, credentials, or identity — see [SURFACE.md](SURFACE.md).
+- ✅ Supply **switch-aware**: efficiency = total bonus per 1M cost. Ranking combines the active supplier + alternatives (ties go to the active one). Only the recommended switch gets a green fill when it is ≥5% more efficient; if the active supplier cannot be read, the best candidate is amber and the header says “compare manually”. Active and non-option cards keep the game style. Cost text is unchanged; verdict + details are in `title`, preventing supplier switch loops.
 - ✅ Cars **Overview**: attribute rows sorted `#1..#n` from top to bottom and the original label written as `#n Attribute · X DP`; val/max/gap + DP estimate in `title`; no colour; game numbers & bars untouched.
 - ✅ Cars **Research / Upgrade**: both tab forms (`#designInline`, `#researchInline`) receive the same `#1..#n` order as the Overview, and each tab label gets the same `#n ` prefix (game text kept, no DP suffix). Rows are moved, never cloned, so every game input keeps its name/value/id and the hidden form fields stay last; original order and text are restored on navigate-away.
-- ✅ Cars **Repair**: `Fix`/`Replace` button coloured from the displayed condition + recommendation — red ≤50% (replace), amber 50–60% (get ready), grey >60% (postpone). Card titles are unchanged; cost/stock/restock/thresholds in `title`; no button clicks.
+- ✅ Cars **Repair**: `Fix`/`Replace` button coloured from the displayed condition + recommendation — red ≤50% (act now), amber 50–60% (prepare), no fill >60% (defer, keeps the game style). Card titles are unchanged; cost/stock/restock/thresholds in `title`; no button clicks.
+- ✅ Manufacturers: engine and chassis rows are sorted by the advisor rank (`#1..#n`) and the original name is prefixed in place; rating, cost, and rating per 1M are in `title`. Rows are moved, never cloned; original server order returns on navigate-away. No advisor `★` because the tables already contain game stars.
+- ✅ Drivers & Staff / Transfers: a driver name gets the compact ` · fit <ETA>` suffix, while health/recovery and staff wage/contract details stay in `title`. Transfer rows keep the live game order; only the top row gets ` · best`, with numeric rank, overall, fee, and deadline in `title`.
 - ❌ No Command Center / web GUI / GitHub Pages.
 - ❌ No cross-tab mailbox, GM storage, profile, or snapshot.
-- ✅ Sponsor **Primary & Secondary**: green `Sign` + `Sign ★` for the safe choice — Secondary highest income/race (guaranteed), Primary highest token/race. The amber button marks the trade-off alternative: highest cash bonus/race (Secondary + break-even objective chance; Primary cash bonus vs token). Explicit model: bonuses are paid **per race** when the objective is met (not once per contract); tokens & cash are different units and are never summed/converted. Contract total (`income × term`, potential `(income+bonus) × term`) only if the term is readable from the Primary sponsor card — no invented numbers.
+- ✅ Sponsor **Primary & Secondary**: green `Sign ★` for the safe choice — Secondary highest income/race (guaranteed), Primary highest token/race. The amber `Sign (bonus)` button marks the trade-off alternative: highest cash bonus/race (Secondary + break-even objective chance; Primary cash bonus vs token). `★` appears only here, never in tables that already contain game star icons. Explicit model: bonuses are paid **per race** when the objective is met (not once per contract); tokens & cash are different units and are never summed/converted. Contract total (`income × term`, potential `(income+bonus) × term`) only if the term is readable from the Primary sponsor card — no invented numbers.
 - ❌ No scraping/automation during live races; `#race`, `#setup`, and `#strategy` are never touched (neither read nor written).
 - ❌ No clicks/submits/fetch/XHR.
 

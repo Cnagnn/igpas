@@ -54,18 +54,36 @@
       clean(s) {
         return String(s || '').replace(/\s+/g, ' ').trim();
       },
+      // Money text from the game ("350k", "1.2m", "1,234", "1,234,567") to a number.
+      // A comma followed by exactly three digits is a thousands separator and is removed:
+      // reading "1,234" as 1 would turn a 1.234M fee into a 1M one and corrupt every
+      // value-per-cost ranking (Supply, Transfers, Manufacturers, Sponsor). Every other
+      // dot/comma stays a decimal point; no rounding, so callers decide how to display.
       parseMoney(t) {
-        const m = String(t || '').match(/(\d+(?:\.\d+)?)\s*([kmb]?)/i);
+        const m = String(t || '').match(/(\d+(?:[.,]\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kmb]?)/i);
         if (!m) return null;
+        // Only comma-groups of three are thousands separators; every other dot/comma is a
+        // decimal point, so "1.5" stays 1.5 and "1,234" / "1,234,567" lose their commas.
+        const digits = m[1].replace(/,(?=\d{3}\b)/g, '');
+        const n = parseFloat(digits);
+        if (!Number.isFinite(n)) return null;
         const suf = m[2].toLowerCase();
-        return Math.round(parseFloat(m[1]) * (suf === 'k' ? 1e3 : suf === 'm' ? 1e6 : suf === 'b' ? 1e9 : 1));
+        const scale = suf === 'k' ? 1e3 : suf === 'm' ? 1e6 : suf === 'b' ? 1e9 : 1;
+        return n * scale;
       },
+      // Game-style compact money: lowercase suffix, no space, one decimal at most
+      // ("350k", "1.2m", "1m"). Missing values stay missing ("—").
       fmtMoney(n) {
         const v = Number(n);
         if (n == null || !Number.isFinite(v)) return '—';
-        if (v >= 1e9) return (Math.round(v / 1e8) / 10) + ' B';
-        if (v >= 1e6) return (Math.round(v / 1e5) / 10) + ' M';
-        if (v >= 1e3) return (Math.round(v / 1e2) / 10) + ' K';
+        const scale = (value, suffix) => {
+          const rounded = Math.round(value * 10) / 10;
+          return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) + suffix;
+        };
+        const abs = Math.abs(v);
+        if (abs >= 1e9) return scale(v / 1e9, 'b');
+        if (abs >= 1e6) return scale(v / 1e6, 'm');
+        if (abs >= 1e3) return scale(v / 1e3, 'k');
         return String(v);
       },
       // 12-stat index derived from the page's `data-driver` / `data-staff` CSV
@@ -108,6 +126,9 @@
         // Heuristic: compare each car attribute with the best value in the league
         // (#leagueDesignData) and propose a DP share proportional to the largest gap.
         // This is not the game formula; the user still has to test the result.
+        // An attribute whose value cannot be read is never dropped silently: its key is
+        // listed in values.unreadable and the DP estimate is suppressed (the missing gap
+        // could be the largest), so no other attribute inherits its share.
         designPriority(p) {
             const attrs = (p && p.attrs && typeof p.attrs === 'object') ? p.attrs : null;
             if (!attrs || !Object.keys(attrs).length) {
@@ -116,11 +137,18 @@
             const best = (p && p.best && typeof p.best === 'object') ? p.best : {};
             const numOrNull = Utils.numOrNull;
             const rows = [];
+            const unreadable = [];
             let totalGap = 0;
             for (const key of Object.keys(attrs)) {
                 const a = attrs[key];
                 const val = a ? numOrNull(a.val) : null;
-                if (val == null) continue;
+                // A null val means the attribute could not be read. Keep it in the
+                // totals as unreadable instead of dropping it, so the remaining
+                // shares are not inflated and no DP estimate is invented for it.
+                if (val == null) {
+                    unreadable.push(key);
+                    continue;
+                }
                 const maxEntry = best[key];
                 const max = maxEntry ? numOrNull(maxEntry.max) : null;
                 const effMax = (max != null) ? Math.max(max, val) : null;
@@ -128,14 +156,29 @@
                 if (gap != null) totalGap += gap;
                 rows.push({ key: key, label: a.label || key, val: val, max: effMax, gap: gap });
             }
-            if (!rows.length) return { ok: false, error: 'No attributes were read' };
+            const dpSuppressed = unreadable.length > 0;
+            if (!rows.length) {
+                return { ok: false, error: 'No attributes were read' };
+            }
             if (totalGap <= 0) {
                 return { ok: false, error: 'No gap to league max (already ≥ max, or league benchmark unavailable)' };
             }
             const ranked = rows.filter(r => r.gap != null)
                 .sort((a, b) => (b.gap - a.gap) || String(a.key).localeCompare(String(b.key)));
+            // Shares are computed over readable attributes only. They always add up
+            // to 100% of the readable gap, so they are honest even when a DP estimate
+            // is suppressed; the caller must not turn them into DP in that case.
             for (const r of ranked) {
                 r.sharePct = Math.round((r.gap / totalGap) * 1000) / 10;
+            }
+            // An unreadable attribute has an unknown gap in [0, ∞): any share computed
+            // from the readable gaps alone is therefore biased upwards (the missing gap
+            // could be the largest). Shares stay exact only when everything was read, so
+            // the readable-gap percentage is reported as biased rather than as a proposal.
+            if (dpSuppressed) {
+                for (const r of ranked) {
+                    r.shareBiased = true;
+                }
             }
             return {
                 ok: true,
@@ -144,6 +187,8 @@
                     totalGap: totalGap,
                     designPoints: numOrNull(p ? p.designPoints : null),
                     unbenchmarked: rows.filter(r => r.gap == null).length,
+                    unreadable: unreadable,
+                    dpEstimateSuppressed: dpSuppressed,
                 },
             };
         },
@@ -985,6 +1030,44 @@
     const Advisor = (() => {
         const PREFIX = 'igpas-adv';
         const fmtMoney = Utils.fmtMoney; // one money format for the whole advisor
+        const ESTIMATE = ' — estimate, not the game formula.';
+        // Semantic fills: green = recommended, amber = consider, red = urgent.
+        // No fill means "no advice" and keeps the game's own button style.
+        const COLORS = Object.freeze({
+            recommended: { bg: '#196f3d', fg: '#ffffff' },
+            consider: { bg: '#9c6500', fg: '#ffffff' },
+            urgent: { bg: '#c0392b', fg: '#ffffff' },
+        });
+        const fmtRatio = n => {
+            const v = Number(n);
+            return n == null || !Number.isFinite(v) ? '—' : v.toFixed(1);
+        };
+        const fmtPercent = n => {
+            const v = Number(n);
+            if (n == null || !Number.isFinite(v)) return '—';
+            const rounded = Math.round(v * 10) / 10;
+            return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) + '%';
+        };
+        // d/h/m with spaces: "2d 3h", "14h 49m", "30m". The optional cap
+        // keeps deadline tooltips readable ("ends in >30d").
+        const formatDuration = (minutes, capDays) => {
+            const v = Number(minutes);
+            if (minutes == null || !Number.isFinite(v)) return '—';
+            const total = Math.max(0, Math.ceil(v));
+            if (capDays != null && total > capDays * 1440) return '>' + capDays + 'd';
+            const days = Math.floor(total / 1440);
+            const hours = Math.floor((total % 1440) / 60);
+            const mins = total % 60;
+            if (days > 0) return days + 'd' + (hours > 0 ? ' ' + hours + 'h' : '');
+            if (hours > 0) return hours + 'h' + (mins > 0 ? ' ' + mins + 'm' : '');
+            return mins + 'm';
+        };
+        const tokenCount = n => {
+            const v = Number(n);
+            return (Number.isFinite(v) ? v : '?') + (Math.abs(v) === 1 ? ' token' : ' tokens');
+        };
+        const normaliseRaceCount = s => String(s || '').replace(
+            /(\d+)\s*race\(s\)/ig, (_, n) => String(Number(n)) + raceUnit(Number(n)));
         const pageId = () => {
             const el = document.getElementById('pageId');
             return el ? String(el.value || '').trim() : null;
@@ -1007,13 +1090,34 @@
         // restoreDesign(), and captures always run after restore so the adapter never
         // reads the advisor's own output.
         function applyInlineStyle(el, props) {
+            // Skip writes that change nothing: in CSSOM mode assigning the same value still
+            // emits a `style` mutation, and rewriting the marker afterwards kept one colour
+            // update re-triggering the observer on every render.
+            // Compare the colour as the browser reports it, so the check is not sensitive to
+            // "#c0392b" vs "rgb(192, 57, 43)" (a false difference would write every render).
+            const same = (prop, value) => {
+                if (el.style.getPropertyPriority(prop) !== 'important') return false;
+                const now = String(el.style.getPropertyValue(prop) || '').trim();
+                if (now === value) return true;
+                // The browser normalises hex to rgb(); probe by writing then reading back.
+                const prev = el.getAttribute('style') || '';
+                el.style.setProperty(prop, value, 'important');
+                const hit = String(el.style.getPropertyValue(prop) || '').trim() === now;
+                if (hit) el.style.setProperty(prop, now, 'important');
+                else el.setAttribute('style', prev);
+                return hit;
+            };
+            if (Object.keys(props).every(prop => same(prop, props[prop]))) return;
             if (!el.hasAttribute('data-igpas-orig-style')) {
                 el.setAttribute('data-igpas-orig-style', el.getAttribute('style') || '');
             }
             for (const prop of Object.keys(props)) {
                 el.style.setProperty(prop, props[prop], 'important');
             }
-            el.setAttribute('data-igpas-written-style', el.getAttribute('style') || '');
+            const style = el.getAttribute('style') || '';
+            if (el.getAttribute('data-igpas-written-style') !== style) {
+                el.setAttribute('data-igpas-written-style', style);
+            }
         }
         function restoreInlineStyle(el) {
             const saved = el.getAttribute('data-igpas-orig-style');
@@ -1052,7 +1156,7 @@
             return Array.from(form.children).find(el =>
                 !(el.classList && el.classList.contains('attribute-row'))) || null;
         }
-        function restoreFormOrder(form) {
+        function restoreFormOrder(form, restoreOrder) {
             const rows = Array.from(form.children).filter(el =>
                 el.classList && el.classList.contains('attribute-row'));
             for (const row of rows) {
@@ -1061,6 +1165,7 @@
                     restoreTabRow(row);
                 }
             }
+            if (!restoreOrder) return; // labels only: keep the advisor's rank order while active
             const marked = rows.filter(row => row.hasAttribute('data-igpas-orig-order'));
             if (!marked.length) return;
             marked.sort((a, b) => Number(a.getAttribute('data-igpas-orig-order')) -
@@ -1071,6 +1176,9 @@
                 else form.appendChild(row);
                 row.removeAttribute('data-igpas-orig-order');
             }
+        }
+        function restoreTabOrder() {
+            for (const form of tabForms()) restoreFormOrder(form, true);
         }
         function tabRowLabel(row) {
             return row.querySelector('.attribute-rating-header span:not(.ratingVal)');
@@ -1133,17 +1241,39 @@
                 else form.appendChild(row);
             }
         }
+        // Server order for the Overview rows, used only when the advisor leaves the page:
+        // restoring it on every render re-sorted eight rows twice per pass, and that churn
+        // is itself a childList mutation the observer read back as a game update.
+        function restoreDesignOrder() {
+            const display = document.getElementById('carAttributesDisplay');
+            if (!display) return;
+            const marked = Array.from(display.children).filter(el =>
+                el && el.classList && el.classList.contains('attribute-row') &&
+                el.hasAttribute('data-igpas-orig-order'));
+            if (!marked.length) return;
+            marked.sort((a, b) => Number(a.getAttribute('data-igpas-orig-order')) -
+                Number(b.getAttribute('data-igpas-orig-order')));
+            for (const row of marked) display.appendChild(row);
+            for (const row of marked) row.removeAttribute('data-igpas-orig-order');
+        }
+
         function restoreDesign() {
             const display = document.getElementById('carAttributesDisplay');
             const rows = display ? display.querySelectorAll('.attribute-row') : [];
             for (const row of rows) {
+                // The game replaced the label after the advisor wrote it: keep the game text
+                // AND the markers, so the next render adopts it instead of prefixing "#n" onto
+                // an unmarked label every time (which left the row permanently unranked).
+                let keepMarkers = false;
                 try {
                     const orig = row.getAttribute('data-igpas-orig');
                     if (orig != null) {
                         const label = row.querySelector('.attribute-rating-header span:not(.ratingVal)');
                         const written = row.getAttribute('data-igpas-written');
                         // Never overwrite a label the game replaced after the advisor wrote it.
-                        if (label && (written == null || label.textContent === written)) {
+                        if (label && (written != null && label.textContent !== written)) {
+                            keepMarkers = true;
+                        } else if (label) {
                             label.textContent = orig;
                         }
                     }
@@ -1159,33 +1289,25 @@
                         restoreInlineStyle(row);
                     }
                 } catch {}
+                if (keepMarkers) continue; // the next capture adopts the new game text
                 row.removeAttribute('data-igpas-orig');
                 row.removeAttribute('data-igpas-written');
                 row.removeAttribute('data-igpas-title');
                 row.removeAttribute('data-igpas-written-title');
             }
-                    if (display) {
-                const marked = Array.from(display.children).filter(el =>
-                    el && el.classList && el.classList.contains('attribute-row') &&
-                    el.hasAttribute('data-igpas-orig-order'));
-                if (marked.length) {
-                    marked.sort((a, b) => Number(a.getAttribute('data-igpas-orig-order')) -
-                        Number(b.getAttribute('data-igpas-orig-order')));
-                    for (const row of marked) {
-                        display.appendChild(row);
-                        row.removeAttribute('data-igpas-orig-order');
-                    }
-                }
-            }
-            // Research / Upgrade forms: rows return to their original server order.
-            for (const form of tabForms()) restoreFormOrder(form);
+            // The Overview rows keep the advisor's #1..#n order while the advisor is active;
+            // restoreDesignOrder() restores the server order only when leaving the page.
+            // Research / Upgrade forms: restore the game labels before every capture, but
+            // keep the advisor's rank order while the page is active. Re-sorting on every
+            // render is itself a childList mutation and used to re-trigger the observer.
+            for (const form of tabForms()) restoreFormOrder(form, false);
             // Remove leftovers from the old badge/panel design without touching game nodes.
             for (const el of document.querySelectorAll('.igpas-adv-inline, .igpas-adv-inline-head')) el.remove();
             removeIfAny([PREFIX + '-design']);
         }
         function mountDesign() {
             const anchor = (pageId() === 'cars') ? document.getElementById('carAttributesDisplay') : null;
-            if (!anchor) { restoreDesign(); return; }
+            if (!anchor) { restoreDesign(); restoreDesignOrder(); restoreTabOrder(); return; }
             restoreDesign(); // restore original text/order first so captures read pure data
             const data = IgpCarsAdapter.captures(document);
             const res = IGPCore.designPriority({
@@ -1194,6 +1316,14 @@
                 designPoints: data && data.designPoints,
             });
                     if (!res.ok) return;
+            // Unreadable attributes suppress the DP estimate: the ranked order is
+            // still written, but without any ' · X DP' suffix or DP number.
+            const dpSuppressed = res.values.dpEstimateSuppressed === true;
+            const unreadableCount = Array.isArray(res.values.unreadable) ? res.values.unreadable.length : 0;
+            const suppressionNote = dpSuppressed
+                ? 'estimate unavailable (' + unreadableCount + ' attribute' +
+                    (unreadableCount === 1 ? '' : 's') + ' not read) · order only'
+                : '';
             const dpTotal = res.values.designPoints;
             const ranked = res.values.ranked;
             const rows = Array.from(anchor.children).filter(el =>
@@ -1213,7 +1343,13 @@
                 if (row && ordered.indexOf(row) === -1) ordered.push(row);
             }
             for (const row of rows) if (ordered.indexOf(row) === -1) ordered.push(row);
-            for (const row of ordered) anchor.appendChild(row);
+            // Already in priority order: do not re-append, so no childList mutation is
+            // emitted for a render that changes nothing (same rule as the tab forms).
+            const currentOrder = Array.from(anchor.children).filter(el =>
+                el && el.classList && el.classList.contains('attribute-row'));
+            if (!(currentOrder.length === ordered.length && currentOrder.every((row, i) => row === ordered[i]))) {
+                for (const row of ordered) anchor.appendChild(row);
+            }
             // Research and Upgrade tabs follow the same #1..#n priority order.
             for (const form of tabForms()) sortFormRows(form, ranked);
             ranked.forEach((r, i) => {
@@ -1225,33 +1361,34 @@
                 if (!label) return;
                 const orig = label.textContent;
                 const share = (r.sharePct != null ? r.sharePct : 0);
-                const dpEst = (dpTotal != null) ? Math.round(dpTotal * share / 100) : null;
+                const dpEst = (!dpSuppressed && dpTotal != null) ? Math.round(dpTotal * share / 100) : null;
                 row.setAttribute('data-igpas-orig', orig);
                 row.setAttribute('data-igpas-title',
                     row.hasAttribute('title') ? row.getAttribute('title') : '');
                 const newLabel = '#' + (i + 1) + ' ' + orig + (dpEst != null ? ' · ' + dpEst + ' DP' : '');
                 label.textContent = newLabel;
                 row.setAttribute('data-igpas-written', newLabel);
-                const advisorTitle = 'Priority #' + (i + 1) + ' — ' + (r.label || orig) + ': ' + r.val +
-                    ' → league max ' + (r.max == null ? '—' : r.max) +
-                    ' (gap ' + (r.gap == null ? '—' : r.gap) + '). ' +
-                    'Proposal ' + (dpEst != null ? '±' + dpEst + ' DP of ' + dpTotal + ' DP' : share + '% of the gap') +
-                    ' — estimate, not the game formula.';
+                const advisorTitle = 'Priority #' + (i + 1) + ' · ' + orig + ' — gap ' +
+                    (r.gap == null ? '—' : r.gap) + ' to league max (' +
+                    (r.val == null ? '—' : r.val) + ' to ' + (r.max == null ? '—' : r.max) + ') · ' +
+                    (dpEst != null ? 'proposal ' + dpEst + ' of ' + dpTotal + ' DP'
+                        : dpSuppressed ? suppressionNote + ' · ' + fmtPercent(share) + ' of readable gap'
+                            : 'proposal ' + fmtPercent(share) + ' of the gap') +
+                    ESTIMATE;
                 row.setAttribute('title', advisorTitle);
                 row.setAttribute('data-igpas-written-title', advisorTitle);
             });
         }
 
         // Cars Repair tab: fix parts / replace engine advice.
-        // Fully in-place (no new elements): game buttons are coloured by condition —
-        // red ≤50% (replace now), amber 50–60% (prepare), grey >60% (defer). Card
-        // titles are not written; cost, stock and threshold details stay in the button
-        // title and condition circle. Original style and title are restored by
-        // restoreRepair(), and buttons are never clicked or submitted.
+        // Fully in-place (no new elements): red ≤50% (act now), amber 50–60%
+        // (prepare), no fill >60% (defer; keep the game style). Card titles are not
+        // written; cost, stock and threshold details stay in the button title and
+        // condition circle. Original style and title are restored by restoreRepair(),
+        // and buttons are never clicked or submitted.
         const REPAIR_BUTTON_COLORS = {
-            now: { bg: '#c0392b', fg: '#ffffff' },
-            soon: { bg: '#d68910', fg: '#1b2631' },
-            hold: { bg: '#5d6d7e', fg: '#ffffff' },
+            now: COLORS.urgent,
+            soon: COLORS.consider,
         };
         function restoreRepair() {
             const repair = document.getElementById('repair');
@@ -1275,7 +1412,7 @@
             if (kind === 'parts') {
                 if (status === 'now') return 'fix now';
                 if (status === 'soon') return 'prepare to fix';
-                return 'still usable — defer fix';
+                return 'defer fix';
             }
             if (status === 'now') return 'replace now';
             if (status === 'soon') return 'prepare to replace';
@@ -1283,32 +1420,49 @@
         }
         function repairTitle(part, kind, restockRaces) {
             if (!part || part.value == null) {
+                // Use this side's own kind: never borrow the other side's value.
                 return (kind === 'parts' ? 'Parts' : 'Engine') +
-                    ' not read — no advice invented.';
+                    ' condition not read · no advice invented.';
             }
-            const unit = kind === 'parts' ? 'parts' : 'engine';
             const bits = [repairVerdictText(part, kind)];
             if (part.cost != null) {
-                bits.push(part.cost + ' ' + unit + (part.stock != null ? '; stock ' + part.stock : '; stock not read'));
+                const unit = kind === 'parts'
+                    ? (part.cost === 1 ? 'part' : 'parts')
+                    : (part.cost === 1 ? 'engine' : 'engines');
+                bits.push('cost ' + part.cost + ' ' + unit);
             } else {
                 bits.push('button cost not read');
             }
-            if (part.enough === false) bits.push('LOW STOCK');
-            if (kind === 'engine' && restockRaces != null) bits.push('restock ' + restockRaces + raceUnit(restockRaces));
-            bits.push('study threshold ≤50% replace, ≤60% prepare');
+            bits.push(part.stock != null ? 'stock ' + part.stock : 'stock not read');
+            if (part.enough === false) bits.push('low stock');
+            if (kind === 'engine' && restockRaces != null) {
+                bits.push('restock in ' + restockRaces + raceUnit(restockRaces));
+            }
+            bits.push('thresholds ≤50% / ≤60%');
             return (kind === 'parts' ? 'Parts ' : 'Engine ') + part.value + '% — ' + bits.join(' · ') +
-                ' — estimate, not the game formula.';
+                ESTIMATE;
         }
         function paintRepairButton(el, part, kind, restockRaces) {
             if (!el || !part || part.value == null || part.status === 'unknown') return;
+            // Every readable condition gets the advice tooltip, including "defer".
+            saveTitle(el);
+            const tip = repairTitle(part, kind, restockRaces);
+            el.setAttribute('title', tip);
+            el.setAttribute('data-igpas-written-title', tip);
             const color = REPAIR_BUTTON_COLORS[part.status];
-            if (!color) return;
+            if (!color) return; // no fill for hold: leave the game style alone
             applyInlineStyle(el, {
                 'background-color': color.bg,
                 'background-image': 'none',
                 'border-color': color.bg,
                 'color': color.fg,
             });
+        }
+        // A Fix/Replace button whose condition could not be read gets no colour (there is
+        // no advice to encode) but still says so, instead of leaving the user to guess
+        // why the other button is coloured and this one is not.
+        function annotateRepairButton(el, part, kind, restockRaces) {
+            if (!el || !part || part.value != null) return;
             saveTitle(el);
             const tip = repairTitle(part, kind, restockRaces);
             el.setAttribute('title', tip);
@@ -1350,6 +1504,8 @@
                 if (!res.ok) continue;
                 paintRepairButton(fixBtn, res.values.parts, 'parts', restockRaces);
                 paintRepairButton(engBtn, res.values.engine, 'engine', restockRaces);
+                annotateRepairButton(fixBtn, res.values.parts, 'parts', restockRaces);
+                annotateRepairButton(engBtn, res.values.engine, 'engine', restockRaces);
                 const annotateCircle = (el, part, kind) => {
                     if (!el) return;
                     saveTitle(el);
@@ -1362,20 +1518,16 @@
             }
         }
 
-        // Supply dialog (engine / fuel / tyre): alternative buttons are coloured by
-        // the recommendation — red means switch to this supplier, amber means active or
-        // candidate (keep or check), grey means not an option. The dialog header and its
-        // title keep the game's own look (no tint, no background or box-shadow override),
-        // so the active supplier card renders exactly like the original. Σ bonus, value
-        // per 1M and verdict details stay in the header title and card titles. Game cost
-        // text is unchanged. Original style and title are restored by restoreSupply(), and
-        // captures always run after restore so the adapter never reads the advisor's own
-        // output.
-        const SUPPLY_BUTTON_COLORS = {
-            now: { bg: '#c0392b', fg: '#ffffff' },
-            soon: { bg: '#d68910', fg: '#1b2631' },
-            hold: { bg: '#5d6d7e', fg: '#ffffff' },
-        };
+        // Supply dialog (engine / fuel / tyre): only the switch pick gets a fill —
+        // green when the recommendation is to switch, amber when the active supplier
+        // cannot be read and the best alternative is only a candidate. Every other
+        // button keeps the game style; no grey "hold" fill. The dialog header and its
+        // title keep the game's own look (no tint, no background or box-shadow
+        // override), so the active supplier card renders exactly like the original.
+        // Total bonus, value per 1M and verdict details stay in the header title and
+        // card titles. Game cost text is unchanged. Original style and title are
+        // restored by restoreSupply(), and captures always run after restore so the
+        // adapter never reads the advisor's own output.
         function restoreSupply() {
             // Strict dialog scope: Cars and Manufacturers data-igpas-* attributes
             // must stay untouched because renderAll mounts them in sequence.
@@ -1414,6 +1566,8 @@
                 el.removeAttribute('data-igpas-written-title');
             }
             for (const el of dlg.querySelectorAll('[data-igpas-orig-style]')) {
+                // Clear the elements the advisor only wrote a title on, too, so a link that
+                // stops being coloured does not keep a stale written-style marker.
                 try { restoreInlineStyle(el); } catch {}
             }
         }
@@ -1468,8 +1622,6 @@
             });
             const totalOps = n + (curValuePerCost != null ? 1 : 0);
             const bestAltRank = bestAlt ? pool.findIndex(r => r === bestAlt) + 1 : null;
-            const showRanks = curValuePerCost != null;
-            const cheapId = rank.values.cheapestId;
             // Card map keyed by eId. Parsing mirrors the adapter so eId=1 never matches
             // eId=10 as a substring.
             const cards = new Map();
@@ -1486,35 +1638,38 @@
                 const link = hit.link, card = hit.card;
                 const rankNo = ranks.get(String(r.eId)) || (i + 1);
                 const isBest = !!(bestAlt && r.id === bestAlt.id);
-                const isCheap = cheapId != null && r.id === cheapId;
-                let status = 'hold';
-                if (isBest) {
-                    if (switchRec) status = 'now';
-                    else if (curValuePerCost == null) status = 'soon';
+                // Only the recommended switch (or the best candidate when the active
+                // supplier is unreadable) gets a fill. Keep/hold keeps the game style.
+                const color = isBest
+                    ? (switchRec ? COLORS.recommended : (curValuePerCost == null ? COLORS.consider : null))
+                    : null;
+                if (color) {
+                    applyInlineStyle(link, {
+                        'background-color': color.bg,
+                        'background-image': 'none',
+                        'border-color': color.bg,
+                        'color': color.fg,
+                    });
                 }
-                const bc = SUPPLY_BUTTON_COLORS[status];
-                applyInlineStyle(link, {
-                    'background-color': bc.bg,
-                    'background-image': 'none',
-                    'border-color': bc.bg,
-                    'color': bc.fg,
-                });
                 if (card) {
                     // The title marker is always set ('' when the game had no title) so restore is
                     // precise and never wipes a game-owned title.
                     card.setAttribute('data-igpas-title',
                         card.hasAttribute('title') ? card.getAttribute('title') : '');
-                    const advisorTitle = (showRanks ? '#' + rankNo + ' of ' + totalOps : 'Alternative') +
-                        (isBest ? ' · switch recommended' : '') +
-                        (isCheap ? ' · cheapest' : '') +
-                        ' — Σ bonus ' + (r.value == null ? '—' : (r.value > 0 ? '+' : '') + r.value) +
-                        ' · ' + fmtMoney(r.cost) + '/race · value/1M ' +
-                        (r.valuePerCost == null ? '—' : r.valuePerCost) +
-                        (curValuePerCost != null
-                            ? ' · active #' + activeRank + ' (' + curValuePerCost + '/1M)' +
-                              (switchRec ? '' : ' — keep')
-                            : ' · active not read') +
-                        ' — estimate, not the game formula.';
+                    const verdict = isBest
+                        ? (switchRec ? 'switch recommended'
+                            : (curValuePerCost == null ? 'switch candidate' : 'best alternative'))
+                        : '';
+                    const facts = [
+                        r.value == null ? 'total bonus not read'
+                            : 'total bonus ' + (r.value > 0 ? '+' : '') + r.value,
+                        r.cost == null ? 'cost not read' : fmtMoney(r.cost) + '/race',
+                        'value per 1M ' + fmtRatio(r.valuePerCost),
+                        curValuePerCost != null ? 'active #' + activeRank : 'active not read',
+                    ];
+                    const advisorTitle = 'Alternative #' + rankNo + ' of ' + totalOps +
+                        (verdict ? ' — ' + verdict : '') +
+                        ' · ' + facts.join(' · ') + ESTIMATE;
                     card.setAttribute('title', advisorTitle);
                     card.setAttribute('data-igpas-written-title', advisorTitle);
                 }
@@ -1522,41 +1677,42 @@
             // The dialog header stays game-owned: it is never tinted and its background is
             // never overridden, so the active supplier card keeps its original appearance.
             // The active verdict lives only in the header title below.
-            if (cmp.ok) {
+            if (bestAlt) {
                 const h2 = dlg.querySelector('.dialog-subhead-content h2');
                 if (h2) {
                     h2.setAttribute('data-igpas-title',
                         h2.hasAttribute('title') ? h2.getAttribute('title') : '');
-                    const advisorTitle = 'Active supplier #' +
-                        (s.current.supplierId != null ? s.current.supplierId : '?') +
-                        ': Σ bonus ' + (curBonus == null ? '—' : (curBonus > 0 ? '+' : '') + curBonus) +
-                        ' · ' + fmtMoney(curCost) + '/race · value/1M ' +
-                        (curValuePerCost == null ? '—' : curValuePerCost) +
-                        (activeRank != null ? ' (#' + activeRank + ' of ' + totalOps + ')' : '') + '. ' +
-                        'Best alternative: ' + (bestAlt
-                            ? '#' + bestAltRank + ' · value/1M ' + bestAlt.valuePerCost +
-                              ' · ' + fmtMoney(bestAlt.cost) + '/race' +
-                              (gainPct == null ? '' : ' (+' + gainPct + '%)')
-                            : '—') + '. ' +
-                        'Rule: switch only when an alternative is ≥5% more efficient. ' +
-                        'Verdict: ' + (switchRec
-                            ? 'switch advised'
-                            : (curValuePerCost != null ? 'keep' : 'active not read — compare manually')) +
-                        ' — estimate, not the game formula.';
+                    let advisorTitle;
+                    if (curValuePerCost == null) {
+                        advisorTitle = 'Active not read — compare manually · best alternative #' +
+                            bestAltRank + ' at ' + fmtRatio(bestAlt.valuePerCost) +
+                            ' value per 1M · switch only at ≥5% gain' + ESTIMATE;
+                    } else {
+                        const bestPart = 'best #' + bestAltRank + ' at ' +
+                            fmtRatio(bestAlt.valuePerCost) + ' value per 1M' +
+                            (gainPct != null
+                                ? ' (+' + gainPct + '% vs ' + fmtRatio(curValuePerCost) + ')'
+                                : ' (vs ' + fmtRatio(curValuePerCost) + ')');
+                        advisorTitle = 'Active #' + (activeRank == null ? '?' : activeRank) +
+                            ' of ' + totalOps + ' — ' +
+                            (switchRec ? 'switch advised' : 'keep') + ' · ' + bestPart +
+                            ' · switch only at ≥5% gain' + ESTIMATE;
+                    }
                     h2.setAttribute('title', advisorTitle);
                     h2.setAttribute('data-igpas-written-title', advisorTitle);
                 }
             }
         }
 
-        // Manufacturers page: the ranking is written into each row's name column.
-        // Fully in-place (no new elements): each game row's original name becomes
-        // "#n Name" (+ ★ best-value engine). Rating, cost and rating-per-1M details
-        // plus the estimate label go in the same row's title attribute. Links, flags,
-        // ratings and other columns are untouched. Original text is stored in
-        // data-igpas-orig and restored by restoreManufacturers(); captures always run
-        // after restore so the adapter never reads the advisor's own output.
-        function restoreManufacturers() {
+        // Manufacturers page: rows are sorted by the advisor's rank and the ranking is
+        // written into each row's name column. Fully in-place (no new elements): each
+        // game row's original name becomes "#n Name"; rating, cost and rating-per-1M
+        // details plus the estimate label go in the same row's title attribute. Links,
+        // flags, ratings and other columns are untouched. Original text is stored in
+        // data-igpas-orig and original order in data-igpas-orig-order, both restored
+        // when the advisor leaves the page; captures always run after restore so the
+        // adapter never reads the advisor's own output.
+        function restoreManufacturers(restoreOrder) {
             for (const tid of ['engine-table', 'chassis-table']) {
                 let table = null;
                 try { table = document.getElementById(tid); } catch { table = null; }
@@ -1588,13 +1744,34 @@
                     tr.removeAttribute('data-igpas-title');
                     tr.removeAttribute('data-igpas-written-title');
                 }
+                if (!restoreOrder) continue;
+                const tbody = table.querySelector('tbody');
+                if (!tbody) continue;
+                const marked = Array.from(tbody.children).filter(tr =>
+                    tr.hasAttribute('data-igpas-orig-order'));
+                if (!marked.length) continue;
+                marked.sort((a, b) => Number(a.getAttribute('data-igpas-orig-order')) -
+                    Number(b.getAttribute('data-igpas-orig-order')));
+                for (const tr of marked) {
+                    tbody.appendChild(tr);
+                    tr.removeAttribute('data-igpas-orig-order');
+                }
             }
         }
-        function writeMfgRanks(table, ranked, bestValueId, withCost) {
+        function writeMfgRanks(table, ranked, withCost) {
             if (!table || !ranked) return;
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            const rows = Array.from(tbody.children).filter(el =>
+                el && String(el.tagName || '').toUpperCase() === 'TR');
+            rows.forEach((tr, i) => {
+                if (!tr.hasAttribute('data-igpas-orig-order')) {
+                    tr.setAttribute('data-igpas-orig-order', String(i));
+                }
+            });
             // Row map by manufacturer id (href d=brand&id=...) — guards against duplicates.
             const byId = new Map();
-            for (const tr of table.querySelectorAll('tbody tr')) {
+            for (const tr of rows) {
                 const tds = tr.querySelectorAll('td');
                 if (tds.length < 2) continue;
                 const a = tds[0].querySelector('a[href]');
@@ -1602,10 +1779,12 @@
                 if (idm && !byId.has(idm[1])) byId.set(idm[1], tr);
             }
             const written = new Set();
+            const ordered = [];
             ranked.forEach((r, i) => {
                 if (r.id == null) return;
                 const tr = byId.get(String(r.id));
                 if (!tr || written.has(tr)) return;
+                if (ordered.indexOf(tr) === -1) ordered.push(tr);
                 const tds = tr.querySelectorAll('td');
                 if (!tds.length) return;
                 let nameNode = null;
@@ -1620,61 +1799,62 @@
                 // name is split across children (text node "Akina" + <span>SpeedStars</span>),
                 // using the cell's textContent duplicates it, and restore then injects the
                 // combined text into the node.
-                const rawName = nameNode.textContent;
-                const orig = clean(rawName);
+                const orig = clean(nameNode.textContent);
                 const fullName = clean(tds[0].textContent) || orig;
                 if (!orig) return;
-                const star = withCost && bestValueId != null && r.id === bestValueId &&
-                    i !== 0 ? ' ★' : '';
                 tr.setAttribute('data-igpas-orig', orig);
                 tr.setAttribute('data-igpas-title',
                     tr.hasAttribute('title') ? tr.getAttribute('title') : '');
-                nameNode.textContent = '#' + (i + 1) + ' ' + orig + star;
+                nameNode.textContent = '#' + (i + 1) + ' ' + orig;
                 tr.setAttribute('data-igpas-written', nameNode.textContent);
-                const advisorTitle = '#' + (i + 1) + ' · ' + fullName +
-                    (star ? ' · best value' : '') + ': rating ' + r.rating + '%' +
-                    (withCost ? ' · ' + fmtMoney(r.cost) + '/race · rating/1M ' +
-                        (r.ratingPerCost == null ? '—' : r.ratingPerCost) : '') +
-                    ' — estimate, not the game formula.';
+                const facts = ['rating ' + r.rating + '%'];
+                if (withCost) {
+                    facts.push(r.cost == null ? 'cost not read' : fmtMoney(r.cost) + '/race');
+                    facts.push('rating per 1M ' +
+                        (r.ratingPerCost == null ? 'not read' : fmtRatio(r.ratingPerCost)));
+                }
+                const advisorTitle = '#' + (i + 1) + ' · ' + fullName + ' — ' +
+                    facts.join(' · ') + ESTIMATE;
                 tr.setAttribute('title', advisorTitle);
                 tr.setAttribute('data-igpas-written-title', advisorTitle);
                 written.add(tr);
             });
+            for (const tr of rows) if (ordered.indexOf(tr) === -1) ordered.push(tr);
+            // Already in rank order: do not re-append, so no childList mutation fires.
+            const current = rows;
+            if (current.length === ordered.length && current.every((tr, i) => tr === ordered[i])) {
+                return;
+            }
+            for (const tr of ordered) tbody.appendChild(tr);
         }
         function mountManufacturers() {
                     removeIfAny([PREFIX + '-mfg-engine', PREFIX + '-mfg-chassis']);
-            if (pageId() !== 'manufacturers') { restoreManufacturers(); return; }
-            restoreManufacturers(); // restore original text first so captures read pure data
+            if (pageId() !== 'manufacturers') { restoreManufacturers(true); return; }
+            restoreManufacturers(false); // restore text first so captures read pure data
             const m = IgpManufacturersAdapter.captures(document);
             // Engines: rating and cost per race, so efficiency is rating per 1M. Each table
             // fails honestly: without numbers it gets no modification and no panel.
             const et = document.getElementById('engine-table');
             if (et) {
                 const res = IGPCore.rankManufacturerItems({ items: m ? m.engines : [], withCost: true });
-                if (res.ok) writeMfgRanks(et, res.values.ranked, res.values.bestValueId, true);
+                if (res.ok) writeMfgRanks(et, res.values.ranked, true);
             }
             // Chassis: rating only, no cost.
             const ct = document.getElementById('chassis-table');
             if (ct) {
                 const res = IGPCore.rankManufacturerItems({ items: m ? m.chassis : [], withCost: false });
-                if (res.ok) writeMfgRanks(ct, res.values.ranked, null, false);
+                if (res.ok) writeMfgRanks(ct, res.values.ranked, false);
             }
         }
 
         // Full recovery ETA from health (%) and recovery rate (%/hour). Rounded
         // up so the advisor never promises a faster recovery than reality.
-        // Returns a string such as "13h 55m" or "2d 3h", or null.
+        // Returns a string such as "13h 55m", "2d 3h" or ">30d", or null.
         function formatRecoverEta(health, ratePerHour) {
             if (health == null || ratePerHour == null || !(ratePerHour > 0)) return null;
             const remain = 100 - health;
             if (remain <= 0) return null;
-            const mins = Math.ceil((remain / ratePerHour) * 60);
-            const days = Math.floor(mins / 1440);
-            const hours = Math.floor((mins % 1440) / 60);
-            const minutes = mins % 60;
-            if (days > 0) return days + 'd ' + hours + 'h';
-            if (hours > 0) return hours + 'h ' + minutes + 'm';
-            return minutes + 'm';
+            return formatDuration(Math.ceil((remain / ratePerHour) * 60), 30);
         }
 
         function mountTeam() {
@@ -1687,29 +1867,31 @@
             for (const [i, d] of (s.drivers || []).entries()) {
                 const name = document.querySelector('#d' + (i + 1) + 'Pic .driverName');
                 if (!name || !d.name) continue;
-                // Clean label: "<Name> | Full Recover 13h 55m", without the "low health"
+                // Clean label: "Hartono · fit 14h 49m", without the "low health"
                 // jargon. Raw numbers and recovery rate stay in the title.
                 const eta = (d.health != null && d.health < 100)
                     ? formatRecoverEta(d.health, d.recoveryPerHour)
                     : null;
-                const advice = [];
-                if (eta) advice.push('Full Recover ' + eta);
-                else if (d.health != null && d.health < 100) advice.push('Health ' + d.health + '%');
+                let advice = '';
+                if (eta) advice = ' · fit ' + eta;
+                else if (d.health != null && d.health < 100) advice = ' · health ' + fmtPercent(d.health);
                 // Preserve the game structure (.driverName > br + span): advice attaches to the
                 // existing name span, and hovering the container shows the details.
                 const span = name.querySelector('span:last-child');
                 saveTitle(name);
                 const tipParts = [];
-                if (d.health != null) tipParts.push('Health ' + d.health + '%');
-                if (d.recoveryPerHour != null) tipParts.push('recovery ' + d.recoveryPerHour + '/hr');
-                if (eta) tipParts.push('Full Recover ±' + eta);
-                const tip = tipParts.length
-                    ? 'Driver: ' + tipParts.join(' · ') + ' · estimate, not the game formula — the decision is still yours.'
-                    : '';
+                if (d.health != null) tipParts.push('Health ' + fmtPercent(d.health));
+                if (d.recoveryPerHour != null) {
+                    tipParts.push('recovery ' + fmtRatio(d.recoveryPerHour) + '%/hr');
+                } else if (d.health != null && d.health < 100) {
+                    tipParts.push('recovery not read');
+                }
+                if (eta) tipParts.push('fit in ' + eta);
+                const tip = tipParts.length ? tipParts.join(' · ') + ESTIMATE : '';
                 if (tip) { name.setAttribute('title', tip); name.setAttribute('data-igpas-written-title', tip); }
                 if (span) {
                     const orig = span.getAttribute('data-igpas-orig') || span.textContent;
-                    writeSelfText(span, orig + (advice.length ? ' | ' + advice.join(' · ') : ''));
+                    writeSelfText(span, orig + advice);
                 }
             }
             for (const card of document.querySelectorAll('#staff .c-wrap')) {
@@ -1720,8 +1902,11 @@
                 if (head) {
                     writeSelfText(head, (head.getAttribute('data-igpas-orig') || head.textContent));
                     saveTitle(head);
-                    const tip = (c.salaryPerRace != null ? 'Wage ' + fmtMoney(c.salaryPerRace) + '/race' : '') +
-                        (c.contract ? ' · contract ' + c.contract : '') + ' — card rating not read.';
+                    const facts = [];
+                    if (c.salaryPerRace != null) facts.push('Wage ' + fmtMoney(c.salaryPerRace) + '/race');
+                    facts.push(c.contract ? normaliseRaceCount(c.contract) : 'contract not read');
+                    facts.push('card rating not read');
+                    const tip = facts.join(' · ') + '.';
                     head.setAttribute('title', tip);
                     head.setAttribute('data-igpas-written-title', tip);
                 }
@@ -1747,6 +1932,10 @@
         // card header), so no child elements are destroyed.
         function writeSelfText(el, text) {
             if (!el) return;
+            // Already exactly what this render would write: touch nothing. Replacing the
+            // text node is a childList mutation inside a watched region, so an idempotent
+            // write used to re-trigger the observer on every render.
+            if (el.textContent === text && el.getAttribute('data-igpas-written') === text) return;
             if (!el.hasAttribute('data-igpas-orig')) el.setAttribute('data-igpas-orig', el.textContent);
             el.setAttribute('data-igpas-origmode', 'self');
             el.textContent = text;
@@ -1758,6 +1947,8 @@
             if (!container) return;
             const nd = Array.from(container.childNodes).find(n => n.nodeType === 3 && n.textContent.trim() !== '');
             if (!nd) return;
+            // Same idempotence rule as writeSelfText: a no-op write is still a mutation.
+            if (nd.textContent === text && container.getAttribute('data-igpas-written') === text) return;
             if (!container.hasAttribute('data-igpas-orig')) container.setAttribute('data-igpas-orig', nd.textContent);
             container.setAttribute('data-igpas-origmode', 'node');
             nd.textContent = text;
@@ -1805,10 +1996,8 @@
             const d = IGPCore.deadlineInfo({ endDate: item && item.endDate, now: nowMs });
             if (d.state === 'unknown') return '';
             if (d.state === 'ended') return ' · ended';
-            const total = d.remainingMin;
-            const h = Math.floor(total / 60);
-            const m = total % 60;
-            const left = (h > 0 ? h + 'h ' : '') + m + 'm';
+            // Cap long deadlines instead of printing hundreds of hours.
+            const left = formatDuration(d.remainingMin, 30);
             return (d.state === 'closing' ? ' · closing, ' : ' · ends in ') + left;
         }
 
@@ -1836,11 +2025,14 @@
                     const nd = Array.from(td.childNodes).find(n => n.nodeType === 3 && n.textContent.trim() !== '');
                     const original = td.getAttribute('data-igpas-orig') || (nd ? nd.textContent : td.textContent);
                     const rank = ranks.get(String(item.id));
-                    writeFirstTextNode(td, '#' + rank + ' ' + original.trim() + (rank === 1 ? ' ★ recommended' : ''));
+                    writeFirstTextNode(td, original.trim() + (rank === 1 ? ' · best' : ''));
                     saveTitle(td);
-                    const tip = label + ' #' + rank + ': overall ' + (item.overall == null ? '—' : item.overall) +
-                        ' · fee ' + fmtMoney(item.fee) +
-                        deadlineSuffix(item, nowMs) + ' — estimate, not the game formula.';
+                    const facts = [
+                        item.overall == null ? 'overall not read' : 'overall ' + fmtRatio(item.overall),
+                        item.fee == null ? 'fee not read' : 'fee ' + fmtMoney(item.fee),
+                    ];
+                    const tip = label + ' #' + rank + ' of ' + items.length + ' — ' +
+                        facts.join(' · ') + deadlineSuffix(item, nowMs) + ESTIMATE;
                     td.setAttribute('title', tip);
                     td.setAttribute('data-igpas-written-title', tip);
                 }
@@ -1852,14 +2044,10 @@
 
         // Sponsor dialog (Primary / Secondary): "best value" ranking on the existing
         // Sign buttons. Fully in-place (no new elements): the best total is green with
-        // "Sign ★", and an offer with the highest income (best guarantee) turns amber.
+        // "Sign ★", and the highest cash bonus becomes an amber "Sign (bonus)" trade-off.
         // Game numbers are unchanged; income, term, bonus and guarantee details live in
         // each button's title. Original text, style and title are restored by
         // restoreSponsor(), and captures always run after restore.
-        const SPONSOR_BUTTON_COLORS = {
-            best: { bg: '#1e8449', fg: '#ffffff' },
-            alternative: { bg: '#b9770e', fg: '#ffffff' },
-        };
         function restoreSponsor() {
             const table = document.getElementById('sponsorSignTable');
             if (!table) return;
@@ -1877,48 +2065,39 @@
             }
         }
         function sponsorTitle(r, values) {
-            const bits = [];
+            const isBest = r.rank === 1;
+            const isAlternative = String(r.eId) === String(values.alternativeEId);
+            const facts = [];
+            let verdict = '';
             if (values.incomeKind === 'token') {
                 // Tokens are a different unit from cash; never sum them.
-                bits.push('income ' + r.tokens + ' token/race (tokens are not converted to cash)');
-                if (r.bonus != null) {
-                    bits.push('cash bonus ' + fmtMoney(r.bonus) + '/race if the objective is met');
-                }
-                if (values.termRaces != null) {
-                    bits.push('≈ ' + (r.tokens * values.termRaces) + ' tokens over ' +
-                        values.termRaces + raceUnit(values.termRaces));
-                    if (r.bonus != null) {
-                        bits.push('max cash bonus ' + fmtMoney(r.bonus * values.termRaces) +
-                            ' if the objective is met every race');
-                    }
-                } else {
-                    bits.push('contract term not read — total not calculated');
-                }
-                bits.push('token preferred; cash bonus is a trade-off');
+                facts.push(tokenCount(r.tokens) + '/race');
+                if (r.bonus != null) facts.push('bonus ' + fmtMoney(r.bonus) + '/race if objective met');
+                if (values.termRaces == null) facts.push('term not read');
+                if (isBest) verdict = 'best token value';
+                else if (isAlternative) verdict = 'highest cash bonus';
+                if (isBest || isAlternative) facts.push('tokens and cash separate');
             } else {
-                bits.push('income ' + fmtMoney(r.income) + '/race (guaranteed every race)');
-                if (r.bonus != null) {
-                    bits.push('cash bonus ' + fmtMoney(r.bonus) + '/race if the objective is met');
+                facts.push('income ' + fmtMoney(r.income) + '/race guaranteed');
+                if (r.bonus != null) facts.push('bonus ' + fmtMoney(r.bonus) + '/race if objective met');
+                if (values.termRaces != null && !isAlternative) {
+                    facts.push('guaranteed ' + fmtMoney(r.guaranteeTotal) + ', max ' +
+                        fmtMoney(r.potentialTotal) + ' over ' + values.termRaces +
+                        raceUnit(values.termRaces));
+                } else if (values.termRaces == null) {
+                    facts.push('term not read');
                 }
-                if (values.termRaces != null) {
-                    bits.push('guaranteed ' + fmtMoney(r.guaranteeTotal) + ' (' + values.termRaces + raceUnit(values.termRaces) + ')');
-                    bits.push('max potential ' + fmtMoney(r.potentialTotal) + ' if the objective is met every race');
-                } else {
-                    bits.push('contract term not read — total not calculated');
-                }
-                if (String(r.eId) === String(values.alternativeEId)) {
-                    bits.push('highest cash bonus — trade-off against income' +
-                        (values.breakEvenP != null
-                            ? '; better when the objective is met in >' + Math.round(values.breakEvenP * 100) + '% of races'
-                            : ''));
+                if (isBest) verdict = 'best income';
+                else if (isAlternative) {
+                    verdict = 'highest cash bonus';
+                    if (values.breakEvenP != null) {
+                        facts.push('better when objective met >' +
+                            fmtPercent(values.breakEvenP * 100));
+                    }
                 }
             }
-            if (values.incomeKind === 'token' && String(r.eId) === String(values.alternativeEId)) {
-                bits.push('highest cash bonus — trade-off against tokens');
-            }
-            bits.push('estimate, not the game formula');
-            return 'Sponsor ' + (r.rank === 1 ? 'best value #1' : '#' + r.rank) +
-                ' of ' + values.ranked.length + ': ' + bits.join(' · ') + '.';
+            return 'Sponsor #' + r.rank + ' of ' + values.ranked.length +
+                (verdict ? ' — ' + verdict : '') + ' · ' + facts.join(' · ') + ESTIMATE;
         }
         function mountSponsor() {
             const table = document.getElementById('sponsorSignTable');
@@ -1948,17 +2127,18 @@
                 if (isBest) {
                     writeSelfText(a, 'Sign ★');
                     applyInlineStyle(a, {
-                        'background-color': SPONSOR_BUTTON_COLORS.best.bg,
+                        'background-color': COLORS.recommended.bg,
                         'background-image': 'none',
-                        'border-color': SPONSOR_BUTTON_COLORS.best.bg,
-                        'color': SPONSOR_BUTTON_COLORS.best.fg,
+                        'border-color': COLORS.recommended.bg,
+                        'color': COLORS.recommended.fg,
                     });
                 } else if (isAlternative) {
+                    writeSelfText(a, 'Sign (bonus)');
                     applyInlineStyle(a, {
-                        'background-color': SPONSOR_BUTTON_COLORS.alternative.bg,
+                        'background-color': COLORS.consider.bg,
                         'background-image': 'none',
-                        'border-color': SPONSOR_BUTTON_COLORS.alternative.bg,
-                        'color': SPONSOR_BUTTON_COLORS.alternative.fg,
+                        'border-color': COLORS.consider.bg,
+                        'color': COLORS.consider.fg,
                     });
                 }
                 saveTitle(a);
@@ -1972,36 +2152,32 @@
         // initial DOM, so waiting for a click plus a 250 ms debounce makes advice late.
         // MutationObserver reacts in the same microtask in which the game commits DOM,
         // before the next paint, with no debounce.
-        // Anti-loop: the observer is disconnected during renderAll so our own writes and
-        // panel are not recorded, then reconnected. Mutations that still slip through are
-        // filtered by relevance, ignoring our UI and advisor-written attributes.
+        // Anti-loop: while renderAll runs, its own writes and our panel must not be
+        // recorded. A `rendering` flag decides that, NOT the observer's state: mutating
+        // through an observer, disconnecting and reconnecting races with callbacks the
+        // engine already queued (a queued batch still runs while disconnected and can
+        // leave the observer unbound). With the flag the observer stays connected for
+        // the whole life of the page and the re-entrancy is impossible.
         let renderObserver = null;
         let renderObserving = false;
+        let rendering = false;
         const WATCH_SEL = '#carAttributesDisplay, #carAttributes, #carsDesignPoints,' +
             ' #leagueDesignData, #carAttributesBonuses, .carsSuppliers, #repair, .supplyDialog,' +
             ' #engine-table, #chassis-table, #drivers, #staff, #driverStatsTable,' +
             ' #driver-table, #staff-table, #cdTransfersRefresh, #sponsorSignTable, #pageId';
-        function observeOff() {
-            if (renderObserver && renderObserving) {
-                try { renderObserver.disconnect(); } catch {}
-                renderObserving = false;
-            }
-        }
         function observeOn() {
-            if (renderObserver || typeof MutationObserver === 'undefined') {
-                if (!renderObserver || renderObserving) return;
-            } else {
-                try { renderObserver = new MutationObserver(onMutations); }
-                catch { renderObserver = null; }
-                if (!renderObserver) return; // fallback: debounce on click/user action still runs
-            }
-            if (renderObserving || typeof document === 'undefined' || !document.body) return;
+            if (renderObserving || typeof MutationObserver === 'undefined') return;
+            if (typeof document === 'undefined' || !document.body) return; // retried on the next render
             // The observer is optional; the debounce fallback still runs.
             try {
+                if (!renderObserver) renderObserver = new MutationObserver(onMutations);
                 renderObserver.observe(document.body,
                     { childList: true, subtree: true, characterData: true, attributes: true });
                 renderObserving = true;
-            } catch {}
+            } catch {
+                renderObserver = null;
+                renderObserving = false;
+            }
         }
         // Game countdown timers tick every second and do not
         // affect recommendations, so they must not trigger a full DOM walk.
@@ -2014,22 +2190,45 @@
             if (m.type === 'attributes' && t && t.nodeType === 1) {
                 if (own(t)) return false;
                 const an = m.attributeName;
-                if (an === 'data-igpas-orig' || an === 'data-igpas-title') return false;
+                // Advisor bookkeeping attributes are never a game signal. `data-igpas-written`
+                // in particular is set on the watched row itself by every label write; reading
+                // it back is what turned one game update into an endless re-render.
+                if (an === 'data-igpas-orig' || an === 'data-igpas-title' ||
+                    an === 'data-igpas-written' || an === 'data-igpas-written-title' ||
+                    an === 'data-igpas-origmode' || an === 'data-igpas-form-orig' ||
+                    an === 'data-igpas-form-written' || an === 'data-igpas-orig-order' ||
+                    an === 'data-igpas-orig-style' || an === 'data-igpas-written-style') return false;
                 // Advisor-written titles on marked game elements (Cars rows,
                 // Manufacturers rows, Supply cards and headers) are not a game signal.
                 if (an === 'title' && t.closest && t.closest('[data-igpas-orig], [data-igpas-title]')) return false;
+                // Advisor-written fills are restored and re-applied on every render so
+                // captures read the pure game style. While the current style is exactly
+                // the advisor's last write, the style mutation is ours, not a game update.
+                if (an === 'style') {
+                    const written = t.getAttribute('data-igpas-written-style');
+                    if (written != null && (t.getAttribute('style') || '') === written) return false;
+                }
                 if (t === document.body) return false; // our own igpas-adv-hide class
             }
             if (m.type === 'characterData') {
                 const p = t && t.parentElement;
                 if (!p || own(p)) return false;
                 if (p.closest && p.closest(COUNTDOWN_SEL)) return false;
+                // A label span whose row is marked is advisor output, not a game update.
+                // Without this, the #n prefix and the Research/Upgrade label rewrite are
+                // read back as fresh game text and re-render forever. A game edit to the
+                // same marked label must still re-render, so compare with our last write.
+                try {
+                    const marked = p.closest &&
+                        p.closest('[data-igpas-orig], [data-igpas-form-orig]');
+                    if (marked) {
+                        const written = marked.getAttribute('data-igpas-written') ||
+                            marked.getAttribute('data-igpas-form-written');
+                        if (written != null && p.textContent === written) return false;
+                    }
+                } catch {}
                 try { return !!(p.closest && p.closest(WATCH_SEL)); }
                 catch { return false; }
-            }
-            if (t && t.nodeType === 1 && !own(t)) {
-                try { if (t.closest && t.closest(WATCH_SEL)) return true; }
-                catch {}
             }
             if (m.type === 'childList') {
                 const lists = [m.addedNodes, m.removedNodes];
@@ -2042,10 +2241,38 @@
                         } catch {}
                     }
                 }
+                // The advisor rewrites a ranked label by replacing its text node. That
+                // childList mutation targets the label itself and carries no element, so
+                // it must not be read back as a game update (same rule as characterData).
+                // Checked before the generic target test: the label sits inside a row that
+                // is itself a watched element.
+                const textOnly = (m.addedNodes.length + m.removedNodes.length) > 0 &&
+                    Array.prototype.every.call(m.addedNodes, n => n && n.nodeType !== 1) &&
+                    Array.prototype.every.call(m.removedNodes, n => n && n.nodeType !== 1);
+                if (textOnly) {
+                    const host = t && (t.nodeType === 1 ? t : t.parentElement);
+                    try {
+                        // Only a rewrite that still carries the advisor's own text is ours.
+                        // A game update to a marked label is a real change: the advisor must
+                        // re-adopt it, so it must stay relevant.
+                        const marked = host && host.closest &&
+                            host.closest('[data-igpas-orig], [data-igpas-form-orig]');
+                        const written = marked && (marked.getAttribute('data-igpas-written') ||
+                            marked.getAttribute('data-igpas-form-written'));
+                        if (marked && written != null && t.textContent === written) return false;
+                    } catch {}
+                }
+            }
+            if (t && t.nodeType === 1 && !own(t)) {
+                try {
+                    if (t.closest && t.closest(WATCH_SEL)) return true;
+                } catch {}
             }
             return false;
         }
         function onMutations(muts) {
+            // Our own writes: never a game signal, and never a nested render.
+            if (rendering) return;
             for (const m of (muts || [])) {
                 let hit = false;
                 try { hit = mutationRelevant(m); } catch { hit = false; }
@@ -2053,47 +2280,67 @@
             }
         }
 
+        // One stage failing must not rob the other pages of their advice: each stage runs
+        // on its own, and a failure is reported once per message instead of being thrown
+        // away (a silent catch is how a broken stage used to hide for a whole release).
+        const reported = new Set();
+        function noteFailure(e) {
+            const msg = String((e && (e.message || e)) || 'unknown error');
+            if (reported.has(msg)) return;
+            reported.add(msg);
+            if (typeof console !== 'undefined' && console.warn) {
+                console.warn('IGPAS advisor: ' + msg); // never break the game page
+            }
+        }
+        function stage(name, fn) {
+            try { fn(); } catch (e) { noteFailure(name + ': ' + ((e && e.message) || e)); }
+        }
+
         function renderAll() {
             if (typeof document === 'undefined' || !document.body) return;
-            const pid = pageId();
-            // The sponsor dialog can open from the Finances page, outside the study
-            // page list, so gate on the dialog DOM rather than on pageId.
-            const sponsorOpen = !!document.getElementById('sponsorSignTable');
-            if (!sponsorOpen && ['cars', 'manufacturers', 'staff', 'transfers'].indexOf(pid) === -1) {
-                // Everywhere else: no UI trace at all — the study-only discipline.
-                removeIfAny([PREFIX + '-toggle', PREFIX + '-style', PREFIX + '-design',
-                    PREFIX + '-supply', PREFIX + '-supply-compare', PREFIX + '-mfg-engine',
-                    PREFIX + '-mfg-chassis', PREFIX + '-team', PREFIX + '-team-compare',
-                    PREFIX + '-tx-driver', PREFIX + '-tx-staff', PREFIX + '-tx-compare']);
-                restoreDesign(); // restore original label text (no new elements)
-                restoreRepair(); // restore card titles + condition titles
-                restoreSupply(); // restore card cost text + dialog title
-                restoreManufacturers(); // restore original row name text
-                restoreTeamInPlace(); // restore staff/transfers names + titles
-                restoreSponsor(); // restore Sign buttons + title/style
-                return;
-            }
-            observeOff(); // our own writes must not trigger the observer
-            removeIfAny([PREFIX + '-style']);
+            if (rendering) return; // re-entrancy guard: our own writes are not a game signal
+            rendering = true;
             try {
-                restoreDesign();
-                restoreRepair();
-                restoreSupply();
-                restoreManufacturers();
-                restoreTeamInPlace();
-                restoreSponsor();
-                mountDesign();
-                mountRepair();
-                mountSupply();
-                mountManufacturers();
-                mountTeam();
-                mountTransfers();
-                mountSponsor();
-            } catch (e) {
-                if (typeof console !== 'undefined') console.warn('IGPAS advisor', e); // never break the game page
+                const pid = pageId();
+                // The sponsor dialog can open from the Finances page, outside the study
+                // page list, so gate on the dialog DOM rather than on pageId.
+                const sponsorOpen = !!document.getElementById('sponsorSignTable');
+                if (!sponsorOpen && ['cars', 'manufacturers', 'staff', 'transfers'].indexOf(pid) === -1) {
+                    // Everywhere else: no UI trace at all — the study-only discipline.
+                    removeIfAny([PREFIX + '-toggle', PREFIX + '-style', PREFIX + '-design',
+                        PREFIX + '-supply', PREFIX + '-supply-compare', PREFIX + '-mfg-engine',
+                        PREFIX + '-mfg-chassis', PREFIX + '-team', PREFIX + '-team-compare',
+                        PREFIX + '-tx-driver', PREFIX + '-tx-staff', PREFIX + '-tx-compare']);
+                    stage('restore', restoreDesign); // restore original label text (no new elements)
+                    stage('restore', restoreDesignOrder); // server row order returns
+                    stage('restore', restoreTabOrder); // Upgrade/Research server order returns
+                    stage('restore', restoreRepair); // restore card titles + condition titles
+                    stage('restore', restoreSupply); // restore card cost text + dialog title
+                    stage('restore', () => restoreManufacturers(true)); // row names + server order
+                    stage('restore', restoreTeamInPlace); // restore staff/transfers names + titles
+                    stage('restore', restoreSponsor); // restore Sign buttons + title/style
+                    return;
+                }
+                removeIfAny([PREFIX + '-style']);
+                // Every page restores before it mounts, so captures always read game data.
+                stage('restore', restoreDesign);
+                stage('restore', restoreRepair);
+                stage('restore', restoreSupply);
+                stage('restore', restoreManufacturers);
+                stage('restore', restoreTeamInPlace);
+                stage('restore', restoreSponsor);
+                stage('cars', mountDesign);
+                stage('cars', mountRepair);
+                stage('supply', mountSupply);
+                stage('manufacturers', mountManufacturers);
+                stage('staff', mountTeam);
+                stage('transfers', mountTransfers);
+                stage('sponsor', mountSponsor);
+                removeIfAny([PREFIX + '-toggle']);
+            } finally {
+                rendering = false;
+                observeOn(); // always rebound, even when a stage above failed
             }
-            removeIfAny([PREFIX + '-toggle']);
-            observeOn();
         }
 
         function start() {
@@ -2585,26 +2832,26 @@
         function install() {
             if (typeof document === 'undefined') return;
             if (typeof GM_registerMenuCommand !== 'function' || typeof GM_setClipboard !== 'function') return;
-            GM_registerMenuCommand('I.G.P.A.S: copy this page\'s DOM capture (fixture mapping)', () => {
+            GM_registerMenuCommand('I.G.P.A.S — Copy DOM capture (redacted)', () => {
                 const html = buildCapture(document);
                 if (!html) return;
                 GM_setClipboard(html, 'text/html');
                 if (typeof GM_notification === 'function') {
                     GM_notification({
-                        title: 'I.G.P.A.S v' + VERSION + ' — capture',
-                        text: 'Page DOM (PII redacted) copied to clipboard. Paste & send it for fixture mapping.',
+                        title: 'I.G.P.A.S — DOM capture',
+                        text: 'PII-redacted page DOM copied to the clipboard.',
                     });
                 }
             });
-            GM_registerMenuCommand('I.G.P.A.S: copy surface census (read-only map)', () => {
+            GM_registerMenuCommand('I.G.P.A.S — Copy surface census (structure only)', () => {
                 const census = buildCensus(document, typeof location === 'undefined' ? null : location,
                     typeof window === 'undefined' ? null : window);
                 if (!census) return;
                 GM_setClipboard(census, 'text/plain');
                 if (typeof GM_notification === 'function') {
                     GM_notification({
-                        title: 'I.G.P.A.S v' + VERSION + ' — census',
-                        text: 'Surface census copied (ids, forms, data-* only — no text, values or identity).',
+                        title: 'I.G.P.A.S — Surface census',
+                        text: 'Page structure copied to the clipboard. No text, values or identity.',
                     });
                 }
             });

@@ -49,7 +49,7 @@ supply-chain risk. One file = easiest audit.
 
 ## Adding support for a new page
 
-1. Capture the DOM via the userscript menu `I.G.P.A.S: copy capture of this page's DOM`
+1. Capture the DOM via the userscript menu `I.G.P.A.S — Copy DOM capture (redacted)`
    (automatic PII redaction) — save it as `test/fixtures/<page>.html`.
 2. Add a read-only parser `Igp<X>Adapter.captures(document)` with a `#pageId`/dialog gate; do not
    store or send data.

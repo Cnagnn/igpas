@@ -108,12 +108,12 @@ Not implemented, not planned, and not documented as recipes:
 
 ## 7. Surface census tool
 
-Menu: **"I.G.P.A.S: copy surface census (read-only map)"**. It copies a
+Menu: **“I.G.P.A.S — Copy surface census (structure only)”**. It copies a
 structural text map of the active page — no text, values, credentials, or
 identity. Sample (Cars fixture):
 
 ```text
-I.G.P.A.S surface census — v0.13.0
+I.G.P.A.S surface census — v0.14.0
 host: www.igpmanager.com  url: /app/p=cars
 page: cars
 

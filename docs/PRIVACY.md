@@ -20,10 +20,10 @@ their grants). There is no snapshot, profile, mailbox, or heartbeat.
 - The advisor only writes **temporary text/`title`/button colour** on the
   page's original elements and **restores** them automatically; no persisted
   copy exists.
-- The clipboard is filled only when you yourself choose the **"copy capture of
-  this page's DOM"** menu. There is no automatic copying/sending.
+- The clipboard is filled only when you yourself choose the **“I.G.P.A.S —
+  Copy DOM capture (redacted)”** menu. There is no automatic copying/sending.
 
-## 3. Capture DOM (`copy capture`)
+## 3. Capture DOM (`Copy DOM capture`)
 
 This feature copies the page DOM to the clipboard for fixture mapping. The
 result is **designed to be pasted into public issues/PRs**, so redaction is
@@ -64,7 +64,7 @@ Removed/redacted:
 For fixtures, use captures from **study** pages (not profile pages)
 and remove unique IDs before pasting.
 
-## 3b. Surface census (`copy surface census`)
+## 3b. Surface census (`Copy surface census`)
 
 A separate menu entry copies a **structural** map of the active page: page id,
 region list, form ids/types/callbacks, field shapes (`number:acceleration`,

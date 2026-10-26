@@ -35,43 +35,46 @@ itself has written.
 
 ## Features
 
-| Page                    | Advisor output                                                         | Form             |
-| ----------------------- | ---------------------------------------------------------------------- | ---------------- |
-| Cars — Overview         | Attribute order `#1..#n` + DP; val/max/gap in `title`                  | text + `title`   |
-| Cars — Research/Upgrade | Same `#1..#n` order + `#n` label prefix (rows moved, inputs intact)    | text + order     |
-| Cars — Repair           | `Fix`/`Replace` button colours: replace / get ready / postpone         | colour + `title` |
-| Manufacturers           | Engine & chassis ranking (`★` best); rating/cost in `title`            | text + `title`   |
-| Supply                  | Supplier buttons coloured by the switch recommendation                 | colour + `title` |
-| Drivers & Staff         | `Full Recover` countdown on the driver name; staff contract in `title` | text + `title`   |
-| Transfers               | Row ranking (driver/staff) + auction deadline (`closing`, time left)   | text + `title`   |
-| Sponsor                 | `Sign` button coloured by the value model (see below)                  | text + colour    |
+| Page                    | Advisor output                                                       | Form             |
+| ----------------------- | -------------------------------------------------------------------- | ---------------- |
+| Cars — Overview         | Attribute order `#1..#n` + DP; val/max/gap in `title`                | text + `title`   |
+| Cars — Research/Upgrade | Same `#1..#n` order + `#n` label prefix (rows moved, inputs intact)  | text + order     |
+| Cars — Repair           | Red act now, amber prepare, no fill defer; cost/stock in `title`     | colour + `title` |
+| Manufacturers           | Engine & chassis rows sorted `#1..#n`; rating/cost in `title`        | text + order     |
+| Supply                  | Only the switch pick is green; total bonus/value per 1M in `title`   | colour + `title` |
+| Drivers & Staff         | `fit` ETA on the driver name; recovery rate and wage in `title`      | text + `title`   |
+| Transfers               | Live order kept; top row ` · best`; rank/overall/deadline in `title` | text + `title`   |
+| Sponsor                 | Green `Sign ★` best, amber `Sign (bonus)` cash-bonus trade-off       | text + colour    |
 
 ### Sponsor: Primary vs Secondary
 
-- **Secondary (cash)** — green + `Sign ★` = highest **guaranteed** income/race; amber button =
-  highest cash bonus/race, together with the break-even objective chance.
-- **Primary (token)** — green + `Sign ★` = highest token/race; amber button = highest cash bonus
-  as a trade-off. Tokens and cash are different units and are **never summed**.
+- **Secondary (cash)** — green `Sign ★` = highest **guaranteed** income/race; amber
+  `Sign (bonus)` = highest cash bonus/race, together with the break-even objective chance.
+- **Primary (token)** — green `Sign ★` = highest token/race; amber `Sign (bonus)` = highest cash
+  bonus as a trade-off. Tokens and cash are different units and are **never summed**.
 - Bonuses are paid **per race** only when the objective is met; the contract total is shown only
   if the contract term can be read — no invented numbers.
+- Only the Sponsor uses `★`; tables that already contain game star icons never get another one.
 
 ### Cars: design & repair
 
-Design point priority uses the gap to the league max; the 50/60% repair thresholds decide
-replace, get ready, or postpone — cost, stock, and restock stay in `title`.
+Design point priority uses the gap to the league max. Repair uses the 50/60% thresholds: red means
+replace/fix now, amber means prepare, and no fill means defer — cost, stock, and restock stay in
+`title`.
 
 ### Supply: switch-aware
 
-Ranking combines the active supplier and candidates (Σ bonus per cost); the red alternative button
-appears only when ≥5% more efficient — preventing supplier switch loops.
+Ranking combines the active supplier and candidates (total bonus per cost). Only the recommended
+switch is green; the rule is to switch only at a **≥5%** value-per-1M gain, which prevents supplier
+switch loops. The active card and non-options keep the game style.
 
 ### Race, Setup, Strategy: never touched
 
 The advisor is active only on study pages and the Sponsor dialog. The Race, Setup, and Strategy
 pre-race tabs are neither read nor written — at all.
 
-Every write is labelled **"estimate — not the game formula"**: transparent heuristics over the
-displayed numbers, not a performance certainty.
+Advisor estimates use the exact disclaimer **“ — estimate, not the game formula.”**: transparent
+heuristics over the displayed numbers, not a performance certainty.
 
 ## Installation (Tampermonkey)
 
@@ -115,11 +118,12 @@ outside `igpmanager.com`. Every tagged release triggers a workflow that validate
 There is no promise of a release schedule. If page data cannot be read, the advisor is designed to
 fail honestly — hiding itself rather than writing invented numbers.
 
-The **"I.G.P.A.S: copy this page's DOM capture (fixture mapping)"** menu copies the active page DOM
-to the clipboard with PII automatically redacted — no automatic sending
-([docs/PRIVACY.md](docs/PRIVACY.md)). The **"copy surface census (read-only map)"** menu copies only
-the page's structure (ids, form/field shapes, `data-*` names, counts) for planning advisor work — no
-text, values, credentials, or identity ([docs/SURFACE.md](docs/SURFACE.md)).
+The **“I.G.P.A.S — Copy DOM capture (redacted)”** menu copies the active page DOM to the clipboard
+with PII automatically redacted — no automatic sending ([docs/PRIVACY.md](docs/PRIVACY.md)). The
+**“I.G.P.A.S — Copy surface census (structure only)”** menu copies only the page's structure (ids,
+form/field shapes, `data-*` names, counts) for planning advisor work — no text, values, credentials,
+or identity ([docs/SURFACE.md](docs/SURFACE.md)). The full UI contract is in
+[docs/UI-GUIDELINES.md](docs/UI-GUIDELINES.md).
 
 ## Development
 
