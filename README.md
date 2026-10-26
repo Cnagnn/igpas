@@ -1,172 +1,171 @@
-# I.G.P.A.S — iGP Manager study advisor userscript (read-only)
+# I.G.P.A.S
+
+**iGP Analytics & Study System — a read-only study advisor for [iGP Manager](https://igpmanager.com).**
 
 [![CI](https://github.com/Cnagnn/igpas/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Cnagnn/igpas/actions/workflows/ci.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
-**Read-only decision advisor for [iGP Manager](https://igpmanager.com) — right on the page you
-already have open.** I.G.P.A.S reads the numbers already displayed on study pages (design
-priority, part condition, supplier, sponsor offers, transfer targets) and writes its
-recommendations onto the game's original elements: text, `title` attributes, and temporary button
-colours. One userscript file, no build step, and **not a single new element** on the page — no
-panels, badges, or extra buttons.
+I.G.P.A.S reads the numbers already displayed on iGP Manager study pages and writes concise
+recommendations onto the game's original elements: text, native tooltips (`title`), and temporary
+colour. One userscript file. No build step. No new elements on the game page — no panels, badges, or
+extra buttons.
 
-**"Read-only" means no actions on the game.** No clicks or submits on your behalf, no network
-requests, and no game values changed. The **Race, Setup, and Strategy pages are never read or
-written**. Every advisor write is kept as original text and restored automatically on every
-re-render and on page changes; unreadable numbers are left blank — never replaced with guesses.
+Every annotation is reversible: the original text and style are restored on re-render and page
+change. Updates are handled through a `MutationObserver`, without polling, and the advisor never
+reads data it wrote itself.
 
-> ⚠️ **Study tool — not a racing tool.** No automation. The risk of interpreting iGP Manager's
-> ToS rests entirely with the user — details in
-> [docs/PRIVACY.md](docs/PRIVACY.md).
+**Status:** <b>v0.14.0</b> · GPL-3.0-or-later · no network · no persistent storage
 
-`Status: <b>v0.14.0</b> · GPL-3.0-or-later · no network · no persistent storage`
+[What it does](#what-it-does) · [Install](#install) · [Safety](#safety-model) · [FAQ](#faq) ·
+[Development](#development)
 
-[How it works](#how-it-works) · [Features](#features) · [Installation](#installation-tampermonkey) ·
-[Limitations](#limitations) · [FAQ](#faq)
+> [!WARNING]
+> **Study tool, not a racing tool.** I.G.P.A.S does not automate races or bypass game rules.
+> Interpreting iGP Manager's Terms of Service is your responsibility. If in doubt, do not use it
+> during a live race.
 
-## How it works
+## What it does
 
-Every recommendation follows the same cycle: an adapter **reads** the study page DOM (game numbers
-are not changed), pure heuristics **compute** the available options with openly documented
-thresholds, the result is **written** onto the original node as text/`title` or button colour, then
-**restored** exactly on re-render and page change. Rendering reacts through `MutationObserver`
-without polling, always after the original text is restored — reads never use data the advisor
-itself has written.
+Each recommendation follows the same cycle: **read** the displayed values, **compute** a documented
+heuristic, **annotate** the original element, then **restore** the original text and style when the
+page updates.
 
-## Features
+| Page                    | What you see                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| Cars — Overview         | Attribute order `#1..#n`, design priority (DP), and value/max/gap in `title`   |
+| Cars — Research/Upgrade | Ranked rows with `#n` prefixes; existing inputs and game order stay intact     |
+| Cars — Repair           | Red = act now, amber = prepare, no fill = defer; cost/stock in `title`         |
+| Manufacturers           | Engine and chassis rows sorted by rank; rating/cost in `title`                 |
+| Supply                  | Only the recommended switch is green; bonus/value per 1M in `title`            |
+| Drivers & Staff         | `fit` ETA on the driver name; recovery rate and wage in `title`                |
+| Transfers               | Live order preserved; top row gets ` · best`; rank/overall/deadline in `title` |
+| Sponsor                 | `Sign ★` for the best offer; `Sign (bonus)` for the cash-bonus trade-off       |
 
-| Page                    | Advisor output                                                       | Form             |
-| ----------------------- | -------------------------------------------------------------------- | ---------------- |
-| Cars — Overview         | Attribute order `#1..#n` + DP; val/max/gap in `title`                | text + `title`   |
-| Cars — Research/Upgrade | Same `#1..#n` order + `#n` label prefix (rows moved, inputs intact)  | text + order     |
-| Cars — Repair           | Red act now, amber prepare, no fill defer; cost/stock in `title`     | colour + `title` |
-| Manufacturers           | Engine & chassis rows sorted `#1..#n`; rating/cost in `title`        | text + order     |
-| Supply                  | Only the switch pick is green; total bonus/value per 1M in `title`   | colour + `title` |
-| Drivers & Staff         | `fit` ETA on the driver name; recovery rate and wage in `title`      | text + `title`   |
-| Transfers               | Live order kept; top row ` · best`; rank/overall/deadline in `title` | text + `title`   |
-| Sponsor                 | Green `Sign ★` best, amber `Sign (bonus)` cash-bonus trade-off       | text + colour    |
+### Reading the recommendations
 
-### Sponsor: Primary vs Secondary
-
-- **Secondary (cash)** — green `Sign ★` = highest **guaranteed** income/race; amber
-  `Sign (bonus)` = highest cash bonus/race, together with the break-even objective chance.
-- **Primary (token)** — green `Sign ★` = highest token/race; amber `Sign (bonus)` = highest cash
-  bonus as a trade-off. Tokens and cash are different units and are **never summed**.
-- Bonuses are paid **per race** only when the objective is met; the contract total is shown only
-  if the contract term can be read — no invented numbers.
-- Only the Sponsor uses `★`; tables that already contain game star icons never get another one.
-
-### Cars: design & repair
-
-Design point priority uses the gap to the league max. Repair uses the 50/60% thresholds: red means
-replace/fix now, amber means prepare, and no fill means defer — cost, stock, and restock stay in
-`title`.
-
-### Supply: switch-aware
-
-Ranking combines the active supplier and candidates (total bonus per cost). Only the recommended
-switch is green; the rule is to switch only at a **≥5%** value-per-1M gain, which prevents supplier
-switch loops. The active card and non-options keep the game style.
-
-### Race, Setup, Strategy: never touched
-
-The advisor is active only on study pages and the Sponsor dialog. The Race, Setup, and Strategy
-pre-race tabs are neither read nor written — at all.
-
-Advisor estimates use the exact disclaimer **“ — estimate, not the game formula.”**: transparent
-heuristics over the displayed numbers, not a performance certainty.
-
-## Installation (Tampermonkey)
-
-1. Install [Tampermonkey](https://www.tampermonkey.net/) (other runners, e.g. Violentmonkey, are
-   untested).
-2. Open [src/igpas.user.js](https://raw.githubusercontent.com/Cnagnn/igpas/main/src/igpas.user.js)
-   and accept the userscript install prompt.
-3. Open `igpmanager.com` — study pages and the Sponsor dialog immediately show recommendations;
-   other pages stay silent.
-4. Updates: reinstall from the link above or from the
-   [Releases page](https://github.com/Cnagnn/igpas/releases) (every release is tagged
-   `v*.*.*`), then a reload of the iGP tab is usually enough.
+- **Colour is a priority signal, not a guarantee.** Red means act now, amber means prepare, and no
+  fill means defer or no advice.
+- **Estimates are estimates.** The advisor appends the exact disclaimer
+  ` — estimate, not the game formula.` to its estimates. The heuristics are documented, but they are
+  not the game's internal formula.
+- **Unreadable data stays blank.** The advisor never replaces a missing value with `0` or a guess.
+- **Only Sponsor uses `★`.** Tables that already contain game star icons never get a second marker.
 
 <details>
-<summary>Manual installation alternative</summary>
+<summary>Advisor rules in detail</summary>
 
-Tampermonkey dashboard → **Create new script** → paste the contents of `src/igpas.user.js`, save,
-then reload the iGP tab. No build step or additional server.
+- **Cars.** Design priority uses the gap to the league maximum. Repair uses the 50/60% thresholds;
+  cost, stock, and restock stay in `title`.
+- **Manufacturers.** Rows are sorted by advisor rank; the original server order is restored when you
+  leave the page.
+- **Supply.** Ranking combines the active supplier and candidates by total bonus per cost. A switch
+  is recommended only at a ≥5% value-per-1M gain, which prevents supplier switch loops.
+- **Transfers.** The live game order is kept. Only the top row receives ` · best`.
+- **Sponsor.** Secondary (cash) offers compare guaranteed income per race; primary (token) offers
+  compare tokens per race. The amber `Sign (bonus)` marks the best cash-bonus trade-off, with the
+  break-even objective chance in `title`. Tokens and cash are never summed. Bonuses are paid per race
+  only when the objective is met; contract totals appear only when the term is readable.
+- **Never touched.** The advisor is active only on study pages and the Sponsor dialog. Race, Setup,
+  and Strategy are neither read nor written.
+
+Full UI contract: [docs/UI-GUIDELINES.md](docs/UI-GUIDELINES.md).
+
 </details>
+
+## Install
+
+1. Install [Tampermonkey](https://www.tampermonkey.net/). Other userscript managers, such as
+   Violentmonkey, are untested.
+2. Open [src/igpas.user.js](https://raw.githubusercontent.com/Cnagnn/igpas/main/src/igpas.user.js)
+   and accept the userscript install prompt.
+3. Open iGP Manager. Study pages and the Sponsor dialog show recommendations; other pages remain
+   unchanged.
+
+**Updates:** reinstall from the same link or from the
+[Releases page](https://github.com/Cnagnn/igpas/releases). A reload of the iGP Manager tab is usually
+enough.
+
+<details>
+<summary>Manual installation</summary>
+
+In Tampermonkey, choose **Create new script**, paste the contents of `src/igpas.user.js`, save, and
+reload the iGP Manager tab. No build step or additional server is required.
+
+</details>
+
+## Safety model
+
+I.G.P.A.S is **read-only with respect to the game**: it annotates existing elements but never changes
+game state.
+
+- **No network or remote code.** No `fetch`, XHR, `sendBeacon`, WebSocket, dynamic `import()`,
+  `@require`, or `@connect`; CI guards also reject `eval`, remote code, and `@match` outside
+  `igpmanager.com`.
+- **No persistence.** No GM storage, profile, snapshot, or mailbox. Internal `data-igpas-*` markers
+  exist only in the open page.
+- **No game actions.** No clicks, submits, value changes, or race-state changes. The advisor only
+  writes text, `title`, and temporary colour on existing elements.
+- **No new page elements.** No panels, badges, or extra buttons are added to the game.
+- **Clipboard only on request.** The `I.G.P.A.S — Copy DOM capture (redacted)` and
+  `I.G.P.A.S — Copy surface census (structure only)` menu items copy data only when you select them.
+  Nothing is sent automatically.
+
+See [docs/PRIVACY.md](docs/PRIVACY.md) for the privacy model and
+[docs/SURFACE.md](docs/SURFACE.md) for the surface census.
 
 ## Limitations
 
-- **No network** — no `fetch`, XHR, `sendBeacon`, WebSocket, dynamic `import()`, `@require`, or
-  `@connect`; enforced mechanically by `scripts/check-guards.mjs`.
-- **No persistent storage** — no GM storage, profile, snapshot, or mailbox. The clipboard is filled
-  only when you choose the capture menu; internal `data-igpas-*` markers live only in the DOM while
-  the page is open.
-- **No game actions** — no clicks/submits on game elements; the advisor never changes values,
-  state, or race order.
-- **ToS risk borne by the user** — the tool writes to the DOM, so the ToS interpretation remains
-  yours ([docs/PRIVACY.md](docs/PRIVACY.md)). If in doubt, do not install the userscript during a
-  live race.
-
-## Quality & maintenance
-
-`npm run verify` runs syntax, lint, format, version sync, guards, and **92 tests** (33 core + 14
-capture + 39 advisor + 6 guards) on Node 22 and 24. Guards reject network, `eval`, remote code, and `@match`
-outside `igpmanager.com`. Every tagged release triggers a workflow that validates tag =
-`package.json`, runs the full gate, and uploads the userscript asset.
-
-There is no promise of a release schedule. If page data cannot be read, the advisor is designed to
-fail honestly — hiding itself rather than writing invented numbers.
-
-The **“I.G.P.A.S — Copy DOM capture (redacted)”** menu copies the active page DOM to the clipboard
-with PII automatically redacted — no automatic sending ([docs/PRIVACY.md](docs/PRIVACY.md)). The
-**“I.G.P.A.S — Copy surface census (structure only)”** menu copies only the page's structure (ids,
-form/field shapes, `data-*` names, counts) for planning advisor work — no text, values, credentials,
-or identity ([docs/SURFACE.md](docs/SURFACE.md)). The full UI contract is in
-[docs/UI-GUIDELINES.md](docs/UI-GUIDELINES.md).
+- Other userscript managers are untested.
+- The tool depends on the game's current page structure; a game update can temporarily break a
+  recommendation.
+- Interpretation of iGP Manager's Terms of Service and account risk remain with you.
+- There is no guaranteed release schedule or coverage of every game page.
 
 ## Development
 
 ```bash
 npm install
-npm run verify   # syntax + lint + format + versions + guards + test
+npm run verify
 ```
 
-Pre-commit uses a native Git hook (`scripts/githooks`, installed automatically by `npm install` via
-the `prepare` script). Contribution guidelines, repo structure, and the fixture workflow are in
-[CONTRIBUTING.md](CONTRIBUTING.md); requires **Node ≥ 22.22.2** (`.nvmrc` uses 24).
+`npm run verify` runs syntax, lint, formatting, version sync, guards, and the full test suite. CI
+runs the same gate on Node.js 22 and 24; the local `.nvmrc` uses 24. The minimum supported Node.js
+version is 22.22.2.
+
+Tagged releases run the same gate and publish the userscript as a release asset. Pre-commit uses the
+native Git hook in `scripts/githooks`, installed automatically by `npm install`. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for repository structure and the fixture workflow. Security
+reports: [SECURITY.md](SECURITY.md).
 
 ## FAQ
 
 ### Is this a bot or a cheat?
 
-No. There are no clicks, submits, or automation; Race/Setup/Strategy are not touched.
+No. There are no clicks, submits, or automation. Race, Setup, and Strategy are not touched.
 
 ### Can my account get banned?
 
-There is no guarantee. The userscript writes to the game DOM, so interpreting iGP Manager's ToS is
-entirely the user's risk — do not install it during a live race if in doubt.
+There is no guarantee. The userscript writes to the game's page structure, so interpreting iGP
+Manager's Terms of Service is your responsibility. If in doubt, do not use it during a live race.
 
 ### Is my data sent anywhere?
 
-No. There are no network requests and no persistent storage; both are enforced by guards run in
-CI, not just a promise in the docs.
+No. There are no network requests and no persistent storage; both are enforced by CI guards.
 
 ### Why don't recommendations appear?
 
-Make sure a study page or the Sponsor dialog is open and the userscript is active. If data cannot
-be read, I.G.P.A.S deliberately writes nothing — rather than showing a `0`.
-
-### Is there a setup or race strategy calculator?
-
-No. The pre-race Setup and Strategy advisors were removed in v0.10.0; the focus remains on study
-pages and the Sponsor dialog.
+Check that a study page or the Sponsor dialog is open and the userscript is active. If the data
+cannot be read, I.G.P.A.S deliberately writes nothing rather than showing a `0`.
 
 ## License
 
-GPL-3.0-or-later (SPDX) — see [LICENSE](LICENSE).
-Related documents: [PRIVACY](docs/PRIVACY.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
-[SURFACE](docs/SURFACE.md) · [ROADMAP](docs/ROADMAP.md) ·
-[SECURITY](SECURITY.md) · [CONTRIBUTING](CONTRIBUTING.md) ·
-[Issues](https://github.com/Cnagnn/igpas/issues) ·
-[Releases](https://github.com/Cnagnn/igpas/releases).
+I.G.P.A.S is free software licensed under the **GNU General Public License, version 3 or later**
+(`GPL-3.0-or-later`).
+
+You may use, study, modify, and redistribute it under the terms of the GPL. If you distribute
+modified versions, you must make the modified source code available under the same license.
+
+The complete license text is available in [LICENSE](LICENSE). The software is provided without
+warranty, to the extent permitted by law.
+
+Copyright (C) 2026 I.G.P.A.S contributors.
