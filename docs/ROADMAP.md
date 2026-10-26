@@ -19,7 +19,7 @@ Source of record for what the client exposes: [SURFACE.md](SURFACE.md).
 
 | # | Feature | Page | Data already in the DOM | Output | Risk | Effort |
 | --- | --- | --- | --- | --- | --- | --- |
-| F1 | Transfer closes-in + deadline order | `transfers` | `data-enddate` on every row, `#cdTransfersRefresh` | time-left in `title`, "closing" flag | low | S |
+| ~~F1~~ | ~~Transfer closes-in + deadline order~~ | `transfers` | — | **done in v0.13.1** — time-left in `title`, "closing" flag | — | — |
 | F2 | Training focus value | `staff` | `#staff-card-train`, `data-preview-gain`, `data-current`, `data-maxed-focuses` | `#n` order + gain-per-focus in `title` | low | M |
 | F3 | Facility / building payback | HQ (needs capture) | building cost + income delta | payback estimate in `title` | low | M |
 | F4 | Auction board (read-only) | Auctions (needs capture) | row/bid markup, `data-enddate`-style fields | countdown + "no bid" marker | medium | L |

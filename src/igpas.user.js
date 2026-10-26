@@ -429,11 +429,34 @@
             return { verdict: better ? 'better' : 'worse', delta: delta, pct: pct };
         },
 
-        // Compare the active supplier with alternatives in the same Supply dialog
-        // (one page, one snapshot), not the outside market.
-        // Two axes: Σ bonus (higher is better) and cost per race (lower is better).
-        // The Σ bonus convention matches rankSuppliers — different stats are not
-        // equated by the game formula. This is a comparison, not a guarantee.
+        // Transfer deadline status (v0.13.1, roadmap F1).
+        // `now` is injected, never read from a global clock: this keeps the function
+        // pure and the tests deterministic. Callers pass Date.now() at render time.
+        // - state: 'open' | 'closing' (<= 60 min) | 'ended' | 'unknown'
+        // - Unreadable or missing date -> 'unknown', and callers write nothing.
+        // - remainingMin is rounded down (never overstates the time left).
+        deadlineInfo(p) {
+            const src = p || {};
+            const now = Utils.numOrNull(src.now);
+            const closingRaw = Utils.numOrNull(src.closingMin);
+            const closingMin = (closingRaw != null && closingRaw >= 0) ? closingRaw : 60;
+            const endRaw = src.endDate;
+            // Only a full ISO-8601 timestamp is accepted; anything else is "not read"
+            // rather than a guess from a partial string.
+            const m = String(endRaw == null ? '' : endRaw).trim().match(
+                /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$/
+            );
+            if (!m || now == null) return { state: 'unknown', remainingMin: null, endsAt: null };
+            const ms = Date.parse(String(endRaw).trim());
+            if (!Number.isFinite(ms)) return { state: 'unknown', remainingMin: null, endsAt: null };
+            const remainingMs = ms - now;
+            const remainingMin = Math.floor(remainingMs / 60000);
+            const state = remainingMs <= 0 ? 'ended'
+                : (remainingMin <= closingMin ? 'closing' : 'open');
+            return { state: state, remainingMin: remainingMin, endsAt: ms };
+        },
+
+
         compareSuppliers(p) {
             const cur = (p && p.current) ? p.current : null;
             const alts = (p && Array.isArray(p.alternatives)) ? p.alternatives : null;
@@ -863,6 +886,9 @@
                         traitsHtml: hover ? (hover.getAttribute('data-append') || '') : '',
                         fee: sortNum(tds[3]),
                         wage: sortNum(tds[4]),
+                        // Roadmap F1: the auction deadline the game already prints.
+                        // Kept raw; IGPCore.deadlineInfo() decides what it means.
+                        endDate: tr.getAttribute('data-enddate') || null,
                     };
                     if (isStaff) row.role = clean(tds[1].textContent);
                     else row.age = sortNum(tds[1]);
@@ -1771,6 +1797,21 @@
             }
         }
 
+        // Roadmap F1: append the auction deadline to the row tooltip. Returns '' when
+        // the date cannot be read, so an unreadable row simply gets no suffix — the
+        // advisor never guesses. Wording stays short: the tooltip already carries rank,
+        // overall and fee.
+        function deadlineSuffix(item, nowMs) {
+            const d = IGPCore.deadlineInfo({ endDate: item && item.endDate, now: nowMs });
+            if (d.state === 'unknown') return '';
+            if (d.state === 'ended') return ' · ended';
+            const total = d.remainingMin;
+            const h = Math.floor(total / 60);
+            const m = total % 60;
+            const left = (h > 0 ? h + 'h ' : '') + m + 'm';
+            return (d.state === 'closing' ? ' · closing, ' : ' · ends in ') + left;
+        }
+
         function mountTransfers() {
             const idD = PREFIX + '-tx-driver';
             const idS = PREFIX + '-tx-staff';
@@ -1779,6 +1820,8 @@
             if (pageId() !== 'transfers') return;
             const m = IgpTransfersAdapter.captures(document);
             if (!m) return;
+            // One clock reading per render keeps every row consistent with the others.
+            const nowMs = Date.now();
             const annotate = (table, items, label) => {
                 if (!table || !items.length) return;
                 const ranked = items.slice().sort((a, b) =>
@@ -1796,7 +1839,8 @@
                     writeFirstTextNode(td, '#' + rank + ' ' + original.trim() + (rank === 1 ? ' ★ recommended' : ''));
                     saveTitle(td);
                     const tip = label + ' #' + rank + ': overall ' + (item.overall == null ? '—' : item.overall) +
-                        ' · fee ' + fmtMoney(item.fee) + ' — estimate, not the game formula.';
+                        ' · fee ' + fmtMoney(item.fee) +
+                        deadlineSuffix(item, nowMs) + ' — estimate, not the game formula.';
                     td.setAttribute('title', tip);
                     td.setAttribute('data-igpas-written-title', tip);
                 }

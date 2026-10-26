@@ -94,14 +94,14 @@ There is no network, storage, or cross-tab sync step.
 
 ## 6. Testing
 
-- `test/core.test.js` — 30 pure tests for `IGPCore`/`Utils`.
+- `test/core.test.js` — 33 pure tests for `IGPCore`/`Utils`.
 - `test/capture.test.js` — 14 `PageCapture` redaction tests (jsdom).
-- `test/advisor.test.js` — 37 advisor tests against real DOM fixtures (jsdom):
+- `test/advisor.test.js` — 39 advisor tests against real DOM fixtures (jsdom):
   in-place, restore, idempotent, `#race` zero-UI, capture menu.
 - `test/guards.test.js` — 6 guard tests: @include/@grant allowlist, no network, no dead core.
 - `test/fixtures/*.html` — sanitised DOM captures (PII/scripts stripped).
 
-Total **87 tests**; run by `npm test` and `npm run verify` (CI Node 22/24).
+Total **92 tests**; run by `npm test` and `npm run verify` (CI Node 22/24).
 
 ## 7. Brief history
 

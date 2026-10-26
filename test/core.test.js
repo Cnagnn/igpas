@@ -318,7 +318,54 @@ t("rankSponsors token: empty/zero tokens skipped, all empty → honest error", (
   );
 });
 
-/* ---------- decision comparison (v0.8.0) ---------- */
+/* ---------- transfer deadline (v0.13.1, roadmap F1) ---------- */
+
+// `now` is injected, so these tests never depend on the wall clock.
+const NOW = Date.parse("2026-10-25T12:00:00.000Z");
+
+t("deadlineInfo: open / closing / ended from the injected clock", () => {
+  // 2 hours ahead -> open
+  const open = IGPCore.deadlineInfo({ endDate: "2026-10-25T14:00:00.000Z", now: NOW });
+  assert.strictEqual(open.state, "open");
+  assert.strictEqual(open.remainingMin, 120);
+  // 30 minutes ahead -> closing (default threshold 60)
+  const closing = IGPCore.deadlineInfo({ endDate: "2026-10-25T12:30:00.000Z", now: NOW });
+  assert.strictEqual(closing.state, "closing");
+  assert.strictEqual(closing.remainingMin, 30);
+  // exactly at the deadline -> ended (never "closing" forever)
+  const ended = IGPCore.deadlineInfo({ endDate: "2026-10-25T12:00:00.000Z", now: NOW });
+  assert.strictEqual(ended.state, "ended");
+  // in the past -> ended
+  assert.strictEqual(
+    IGPCore.deadlineInfo({ endDate: "2026-10-25T09:00:00.000Z", now: NOW }).state,
+    "ended"
+  );
+});
+
+t("deadlineInfo: unknown input yields no advice (never a guess)", () => {
+  for (const endDate of [null, "", "soon", "2026-10-25", "17/10/2026", "2026-13-45T99:99:00Z"]) {
+    const r = IGPCore.deadlineInfo({ endDate, now: NOW });
+    assert.strictEqual(r.state, "unknown", "accepted a non-ISO date: " + endDate);
+    assert.strictEqual(r.remainingMin, null);
+  }
+  // A readable date with no clock is still unknown: the caller must supply `now`.
+  assert.strictEqual(
+    IGPCore.deadlineInfo({ endDate: "2026-10-25T14:00:00.000Z", now: null }).state,
+    "unknown"
+  );
+});
+
+t("deadlineInfo: remaining minutes round down and a custom threshold is honoured", () => {
+  // 59.9 minutes left -> 59 (never overstates the time the user has)
+  const r = IGPCore.deadlineInfo({ endDate: "2026-10-25T12:59:54.000Z", now: NOW });
+  assert.strictEqual(r.remainingMin, 59);
+  assert.strictEqual(r.state, "closing");
+  // threshold 10 -> a 30 minute deadline is plain "open"
+  assert.strictEqual(
+    IGPCore.deadlineInfo({ endDate: "2026-10-25T12:30:00.000Z", now: NOW, closingMin: 10 }).state,
+    "open"
+  );
+});
 
 t('numberVerdict: upward direction, "same" tolerance, empty side = unknown', () => {
   assert.strictEqual(IGPCore.numberVerdict(60, 54).verdict, "better");

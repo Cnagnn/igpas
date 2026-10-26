@@ -43,7 +43,7 @@ itself has written.
 | Manufacturers           | Engine & chassis ranking (`★` best); rating/cost in `title`            | text + `title`   |
 | Supply                  | Supplier buttons coloured by the switch recommendation                 | colour + `title` |
 | Drivers & Staff         | `Full Recover` countdown on the driver name; staff contract in `title` | text + `title`   |
-| Transfers               | Market row ranking (driver/staff); links & flags stay live             | text + `title`   |
+| Transfers               | Row ranking (driver/staff) + auction deadline (`closing`, time left)   | text + `title`   |
 | Sponsor                 | `Sign` button coloured by the value model (see below)                  | text + colour    |
 
 ### Sponsor: Primary vs Secondary
@@ -107,8 +107,8 @@ then reload the iGP tab. No build step or additional server.
 
 ## Quality & maintenance
 
-`npm run verify` runs syntax, lint, format, version sync, guards, and **87 tests** (30 core + 14
-capture + 37 advisor + 6 guards) on Node 22 and 24. Guards reject network, `eval`, remote code, and `@match`
+`npm run verify` runs syntax, lint, format, version sync, guards, and **92 tests** (33 core + 14
+capture + 39 advisor + 6 guards) on Node 22 and 24. Guards reject network, `eval`, remote code, and `@match`
 outside `igpmanager.com`. Every tagged release triggers a workflow that validates tag =
 `package.json`, runs the full gate, and uploads the userscript asset.
 

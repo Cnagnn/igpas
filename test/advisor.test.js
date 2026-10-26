@@ -11,10 +11,13 @@ const { JSDOM } = require("jsdom");
 
 const load = fixtureFile => fs.readFileSync(path.join(__dirname, "fixtures", fixtureFile), "utf8");
 
-function bootOn(html, url, snapshotIds) {
+// `clock` (optional) returns the timestamp Date.now() should report, so features
+// that depend on the wall clock (e.g. transfer deadlines) stay deterministic.
+function bootOn(html, url, snapshotIds, clock) {
   const writes = []; // spy: the userscript MUST NOT write storage
   const dom = new JSDOM(html, { url, runScripts: "outside-only", pretendToBeVisual: true });
   const win = dom.window;
+  if (clock) win.Date.now = clock;
   win.GM_setValue = (k, _v) => {
     writes.push(k);
   };
@@ -808,6 +811,29 @@ t("Transfers advisor in-place for driver and staff", () => {
   s.close();
 });
 
+// Roadmap F1 (v0.13.1): the auction deadline is appended to the row tooltip, and
+// a row whose date cannot be read gets no suffix at all.
+t("Transfers deadline: row tooltip carries the time left, never a guess", () => {
+  const s = bootOn(load("transfers.html"), URL_TRANSFERS);
+  const tipOf = id => {
+    const td = s.doc.querySelector(`#driver-table tr[id="3_${id}"] td`);
+    return td ? td.getAttribute("title") || "" : "";
+  };
+  // Past date -> "ended"
+  assert(/ended/.test(tipOf("13673757")), "past deadline not marked ended: " + tipOf("13673757"));
+  // Far-future date -> "ends in", with an hour figure
+  const far = tipOf("15727552");
+  assert(/ends in .*\d+h/.test(far), "open deadline not shown: " + far);
+  // Missing data-enddate -> the tooltip keeps rank/overall/fee but no deadline claim
+  const none = tipOf("15894502");
+  assert(/overall/.test(none), "row lost its other details: " + none);
+  assert(
+    !/ended|closing|ends in/.test(none),
+    "advisor invented a deadline for a row without one: " + none
+  );
+  s.close();
+});
+
 /* In-place advisor contract: no comparison panels are injected. */
 t("Transfers comparison does not inject a panel", () => {
   const s = bootOn(load("transfers.html"), URL_TRANSFERS);
@@ -1083,6 +1109,25 @@ ta(
 );
 
 const tick = ms => new Promise(r => setTimeout(r, ms || 20));
+
+// Roadmap F1: with the clock frozen 30 minutes before a deadline, the row is
+// flagged "closing" — and the suffix does not survive a page change.
+ta("Transfers deadline: closing flag uses the injected clock and is restored", async () => {
+  const far = Date.parse("2099-01-01T00:00:00.000Z");
+  const s = bootOn(load("transfers.html"), URL_TRANSFERS, null, () => far - 30 * 60 * 1000);
+  const td = s.doc.querySelector('#driver-table tr[id="3_15727552"] td');
+  const tip = td.getAttribute("title") || "";
+  assert(/closing, 30m/.test(tip), "closing deadline not flagged: " + tip);
+
+  s.doc.getElementById("pageId").value = "cars";
+  s.doc.getElementById("driver-table").appendChild(s.doc.createElement("div"));
+  await tick(50);
+  assert(
+    !td.hasAttribute("title"),
+    "deadline tooltip outlived the page: " + td.getAttribute("title")
+  );
+  s.close();
+});
 
 ta(
   "Restore: game updates the Cars label → single annotation & orig follows the new text",
