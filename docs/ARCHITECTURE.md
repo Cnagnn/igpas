@@ -30,7 +30,7 @@ Current version 0.13.0.
 | Component | Role |
 | --- | --- |
 | `Utils` | Pure helpers: number/money parsing, `numOrNull`, `statIndex`, `roleCode`, formatting |
-| `IGPCore` | Pure & tested heuristic engine: `designPriority`, `repairAdvice`, `rankSuppliers`, `compareSuppliers`, `rankManufacturerItems`, `rankSponsors`, `stintSplit`, etc. |
+| `IGPCore` | Pure & tested heuristic engine: `designPriority`, `repairAdvice`, `rankSuppliers`, `compareSuppliers`, `rankManufacturerItems`, `rankSponsors`, `numberVerdict`. Every exported function has a production call site — dead code is removed rather than kept tested. |
 | `IgpCarsAdapter` | Read-only parser for the Cars page → `{ attrs, best, designPoints, suppliers, … }`; Overview tab sorted/labelled by `Advisor.mountDesign`, Repair tab by `Advisor.mountRepair` (condition, button cost, stock) — both in-place |
 | `IgpSupplyAdapter` | Read-only parser for the Supply dialog → `{ type, current, alternatives }` |
 | `IgpManufacturersAdapter` | Read-only parser for the engine + chassis table |
@@ -94,13 +94,14 @@ There is no network, storage, or cross-tab sync step.
 
 ## 6. Testing
 
-- `test/core.test.js` — 72 pure tests for `IGPCore`/`Utils`.
-- `test/capture.test.js` — 8 `PageCapture` redaction tests (jsdom).
-- `test/advisor.test.js` — 30 advisor tests against real DOM fixtures (jsdom):
+- `test/core.test.js` — 30 pure tests for `IGPCore`/`Utils`.
+- `test/capture.test.js` — 14 `PageCapture` redaction tests (jsdom).
+- `test/advisor.test.js` — 37 advisor tests against real DOM fixtures (jsdom):
   in-place, restore, idempotent, `#race` zero-UI, capture menu.
+- `test/guards.test.js` — 6 guard tests: @include/@grant allowlist, no network, no dead core.
 - `test/fixtures/*.html` — sanitised DOM captures (PII/scripts stripped).
 
-Total **110 tests**; run by `npm test` and `npm run verify` (CI Node 22/24).
+Total **87 tests**; run by `npm test` and `npm run verify` (CI Node 22/24).
 
 ## 7. Brief history
 

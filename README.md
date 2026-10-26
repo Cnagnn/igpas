@@ -107,19 +107,19 @@ then reload the iGP tab. No build step or additional server.
 
 ## Quality & maintenance
 
-`npm run verify` runs syntax, lint, format, version sync, guards, and **115 tests** (72 core + 8
-capture + 35 advisor) on Node 22 and 24. Guards reject network, `eval`, remote code, and `@match`
+`npm run verify` runs syntax, lint, format, version sync, guards, and **87 tests** (30 core + 14
+capture + 37 advisor + 6 guards) on Node 22 and 24. Guards reject network, `eval`, remote code, and `@match`
 outside `igpmanager.com`. Every tagged release triggers a workflow that validates tag =
 `package.json`, runs the full gate, and uploads the userscript asset.
 
 There is no promise of a release schedule. If page data cannot be read, the advisor is designed to
 fail honestly — hiding itself rather than writing invented numbers.
 
-The **"I.G.P.A.S: copy capture of this page's DOM"** menu copies the active page DOM to the
-clipboard with PII automatically redacted — no automatic sending
-([docs/PRIVACY.md](docs/PRIVACY.md)). The **"copy surface census"** menu copies only the page's
-structure (ids, form/field shapes, `data-*` names, counts) for planning advisor work — no text,
-values, credentials, or identity ([docs/SURFACE.md](docs/SURFACE.md)).
+The **"I.G.P.A.S: copy this page's DOM capture (fixture mapping)"** menu copies the active page DOM
+to the clipboard with PII automatically redacted — no automatic sending
+([docs/PRIVACY.md](docs/PRIVACY.md)). The **"copy surface census (read-only map)"** menu copies only
+the page's structure (ids, form/field shapes, `data-*` names, counts) for planning advisor work — no
+text, values, credentials, or identity ([docs/SURFACE.md](docs/SURFACE.md)).
 
 ## Development
 
