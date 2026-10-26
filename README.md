@@ -19,7 +19,7 @@ re-render and on page changes; unreadable numbers are left blank — never repla
 > ToS rests entirely with the user — details in
 > [docs/PRIVACY.md](docs/PRIVACY.md).
 
-`Status: <b>v0.13.0</b> · GPL-3.0-or-later · no network · no persistent storage`
+`Status: <b>v0.13.1</b> · GPL-3.0-or-later · no network · no persistent storage`
 
 [How it works](#how-it-works) · [Features](#features) · [Installation](#installation-tampermonkey) ·
 [Limitations](#limitations) · [FAQ](#faq)

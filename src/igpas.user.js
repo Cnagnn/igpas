@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.13.0
+// @version      0.13.1
 // @description  Read-only in-page study advisor for iGP Manager: #1..#n sorted design-point priorities, colour-coded supply and parts/engine repair buttons, supplier/manufacturer rankings, staff/transfer notes, and sponsor-offer value rankings written only as text/title/style on original page elements. Includes menu commands to copy a PII-redacted DOM capture and a read-only surface census. Study tool only, no automation, no network.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
@@ -35,7 +35,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.13.0';
+    const VERSION = '0.13.1';
 
     // =====================================================================
     // 1) CORE — pure functions, no DOM. Tested in Node (test/core.test.js).

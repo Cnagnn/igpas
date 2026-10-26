@@ -3,7 +3,7 @@
 A **read-only** study advisor for iGP Manager in a single userscript file, no
 build step, no web GUI, no network, and no storage.
 
-Current version 0.13.0.
+Current version 0.13.1.
 
 ## 1. Scope
 
@@ -131,6 +131,13 @@ Total **87 tests**; run by `npm test` and `npm run verify` (CI Node 22/24).
   values, credentials, or identity), plus [SURFACE.md](SURFACE.md) documenting
   the client surface and [ROADMAP.md](ROADMAP.md) listing the unbuilt backlog
   with acceptance criteria.
+- v0.13.1 is a correctness and privacy release, no new advisor features:
+  the DOM-capture redaction closed four identity leaks (free-text/select
+  fields, `aria-label`/`alt`/`title`, lazy-load `data-src`, `PHPSESSID`-style
+  params and nested JSON ids) without destroying game vocabulary; ~370 lines
+  of unreachable `IGPCore` code left by v0.10.0 were removed (72 → 30 core
+  tests, all reachable); the guards now reject `@include`/`@exclude`, network
+  grants and unreachable core methods, and are themselves tested.
 - Manual input/standalone calculator is no longer provided as a UI.
 
 ## 8. Ethics & limitations

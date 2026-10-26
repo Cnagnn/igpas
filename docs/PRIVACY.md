@@ -1,6 +1,6 @@
 # PRIVACY & RISK — I.G.P.A.S
 
-Applies to v0.13.0. Concise and factual: what the userscript does not do,
+Applies to v0.13.1. Concise and factual: what the userscript does not do,
 what is redacted during capture, and what risks remain.
 
 ## 1. No network
