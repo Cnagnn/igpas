@@ -9,7 +9,7 @@
     "node": ">=22.22.2"
   },
   "scripts": {
-    "test": "node test/core.test.js && node test/capture.test.js && node test/advisor.test.js",
+    "test": "node test/core.test.js && node test/capture.test.js && node test/advisor.test.js && node test/guards.test.js",
     "test:verbose": "npm test --silent 2>&1 | cat",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

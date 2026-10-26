@@ -2,7 +2,7 @@
 # Local pre-commit guard — CI remains the source of truth.
 # Enable: npm run prepare  (sets git config core.hooksPath)
 # The local gate intentionally mirrors core CI so drift does not reach the remote:
-# syntax, lint, guards (@match allowlist + anti network), versions, tests.
+# syntax, lint, format, guards (@match allowlist + anti network), versions, tests.
 if ! command -v npm >/dev/null 2>&1; then
   echo "[pre-commit] npm not found — skip"
   exit 0
@@ -11,6 +11,8 @@ echo "[pre-commit] syntax..."
 npm run syntax --silent || exit 1
 echo "[pre-commit] lint..."
 npm run lint --silent || exit 1
+echo "[pre-commit] format..."
+npm run format:check --silent || exit 1
 echo "[pre-commit] guards..."
 node scripts/check-guards.mjs || exit 1
 echo "[pre-commit] versions..."
