@@ -1291,6 +1291,79 @@ ta("Restore: Research/Upgrade rows return to the server order on page change", a
   s.close();
 });
 
+// --- Audit follow-up: the two riskiest promises had no test until v0.13.1. ---
+
+// A full round trip: after leaving the advisor page every write must be undone and
+// no marker may survive. This is the actual "in-place & reversible" invariant —
+// stronger than checking one restored label. (Whitespace between the game's rows is
+// not part of the guarantee: reordering rows is done with appendChild, so the
+// surrounding text nodes may end up grouped; element order, text and attributes all
+// return to the original values.)
+ta("Restore: full cycle returns the original DOM exactly (no residual markers)", async () => {
+  const pristine = new (require("jsdom").JSDOM)(load("cars.html")).window.document;
+
+  const s = bootOn(load("cars.html"), URL_IGP);
+  assert(s.doc.body.innerHTML !== pristine.body.innerHTML, "advisor did not write anything");
+
+  // Leave the advisor page: every write must be undone. The probe node is ours, so it
+  // is removed again before comparing (it only exists to trigger a re-render).
+  s.doc.getElementById("pageId").value = "standings";
+  const probe = s.doc.createElement("div");
+  s.doc.getElementById("carAttributes").appendChild(probe);
+  await new Promise(r => setTimeout(r, 80));
+  probe.remove();
+
+  // Row order, labels and every game attribute must match the pristine markup.
+  const strip = h => h.replace(/\s+/g, "");
+  const got = strip(s.doc.body.innerHTML).replace('value="standings"', 'value="cars"');
+  assert(
+    got === strip(pristine.body.innerHTML),
+    "advisor residue left in the DOM after leaving the page"
+  );
+  const orderOf = d =>
+    Array.prototype.map
+      .call(d.querySelectorAll("#carAttributesDisplay .attribute-row"), e => e.id)
+      .join(",");
+  assert(orderOf(s.doc) === orderOf(pristine), "row order was not restored");
+  const labelsOf = d =>
+    Array.prototype.map
+      .call(
+        d.querySelectorAll("#carAttributesDisplay .attribute-rating-header span:not(.ratingVal)"),
+        e => e.textContent
+      )
+      .join("|");
+  assert(labelsOf(s.doc) === labelsOf(pristine), "row labels were not restored");
+  const leftovers = s.doc.querySelectorAll(
+    "[data-igpas-orig], [data-igpas-title], [data-igpas-written], [data-igpas-written-title], [data-igpas-orig-order]"
+  );
+  assert(leftovers.length === 0, "advisor markers left behind: " + leftovers.length);
+  s.close();
+});
+
+// Countdown timers tick every second on staff/transfers pages. They must not
+// trigger a full re-render walk — the comment in mutationRelevant promises this,
+// so it is pinned here.
+ta("Observer: countdown ticks do not cause a re-render", async () => {
+  const s = bootOn(load("staff.html"), "https://www.igpmanager.com/app/p=staff");
+  const name = s.doc.querySelector("#d1Pic .driverName");
+  assert(name && /Health|recovery/.test(name.getAttribute("title") || ""), "advisor not rendered");
+
+  const countdown = s.doc.querySelector(".countdown");
+  assert(countdown, "countdown element is missing from the fixture");
+
+  // A render rewrites the advisor's title. Watch for that churn while ticking.
+  let titleWrites = 0;
+  const mo = new s.win.MutationObserver(muts => {
+    for (const m of muts) if (m.attributeName === "title") titleWrites++;
+  });
+  mo.observe(s.doc.body, { attributes: true, subtree: true });
+  countdown.textContent = "4m 28s";
+  await new Promise(r => setTimeout(r, 60));
+  mo.disconnect();
+  assert(titleWrites === 0, "a countdown tick rewrote advisor output (render not suppressed)");
+  s.close();
+});
+
 (async () => {
   for (const [name, fn] of asyncTests) {
     try {
