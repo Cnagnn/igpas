@@ -3,7 +3,7 @@
 A **read-only** study advisor for iGP Manager in a single userscript file, no
 build step, no web GUI, no network, and no storage.
 
-Current version 0.13.1.
+Current version 0.14.0.
 
 ## 1. Scope
 
@@ -131,6 +131,10 @@ Total **92 tests**; run by `npm test` and `npm run verify` (CI Node 22/24).
   values, credentials, or identity), plus [SURFACE.md](SURFACE.md) documenting
   the client surface and [ROADMAP.md](ROADMAP.md) listing the unbuilt backlog
   with acceptance criteria.
+- v0.14.0 adds the transfer auction deadline (roadmap F1): the row tooltip shows
+  "ends in 2h 15m", "closing, 30m" or "ended", read from the `data-enddate` the
+  game already prints. `IGPCore.deadlineInfo()` takes the clock as a parameter, so
+  CORE stays pure and the tests stay deterministic.
 - v0.13.1 is a correctness and privacy release, no new advisor features:
   the DOM-capture redaction closed four identity leaks (free-text/select
   fields, `aria-label`/`alt`/`title`, lazy-load `data-src`, `PHPSESSID`-style

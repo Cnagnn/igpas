@@ -1,6 +1,6 @@
 {
   "name": "igpas",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "private": true,
   "description": "I.G.P.A.S — iGP Analytics & Study System (iGP Manager strategy study userscript, no build step)",
   "license": "GPL-3.0-or-later",

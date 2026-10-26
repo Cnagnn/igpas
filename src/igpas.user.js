@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         I.G.P.A.S — iGP Analytics & Study System
 // @namespace    https://github.com/Cnagnn/igpas
-// @version      0.13.1
+// @version      0.14.0
 // @description  Read-only in-page study advisor for iGP Manager: #1..#n sorted design-point priorities, colour-coded supply and parts/engine repair buttons, supplier/manufacturer rankings, staff/transfer notes, and sponsor-offer value rankings written only as text/title/style on original page elements. Includes menu commands to copy a PII-redacted DOM capture and a read-only surface census. Study tool only, no automation, no network.
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/Cnagnn/igpas
@@ -35,7 +35,7 @@
 (function IGPAS() {
     'use strict';
 
-    const VERSION = '0.13.1';
+    const VERSION = '0.14.0';
 
     // =====================================================================
     // 1) CORE — pure functions, no DOM. Tested in Node (test/core.test.js).
@@ -429,7 +429,7 @@
             return { verdict: better ? 'better' : 'worse', delta: delta, pct: pct };
         },
 
-        // Transfer deadline status (v0.13.1, roadmap F1).
+        // Transfer deadline status (v0.14.0, roadmap F1).
         // `now` is injected, never read from a global clock: this keeps the function
         // pure and the tests deterministic. Callers pass Date.now() at render time.
         // - state: 'open' | 'closing' (<= 60 min) | 'ended' | 'unknown'
